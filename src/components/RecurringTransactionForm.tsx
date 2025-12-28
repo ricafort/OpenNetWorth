@@ -96,9 +96,9 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
                                         min="0"
                                         step="0.01"
                                         placeholder="0.00"
-                                        value={formData.amount}
+                                        value={formData.amount === 0 ? '' : formData.amount}
                                         onChange={e => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
-                                        className="w-full bg-card text-card-foreground border border-border rounded-xl py-3 pl-8 pr-4 outline-none focus:ring-2 focus:ring-primary/20 font-bold"
+                                        className="w-full bg-card text-card-foreground border border-border rounded-xl py-3 pl-14 pr-4 outline-none focus:ring-2 focus:ring-primary/20 font-bold"
                                     />
                                 </div>
                             </div>
