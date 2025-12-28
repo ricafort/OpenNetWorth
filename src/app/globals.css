@@ -1,26 +1,163 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer base {
+  :root {
+    --background: #ffffff;
+    --foreground: #020617;
+    /* Slate-950 for maximum primary contrast */
+    --muted: #f1f5f9;
+    --muted-foreground: #475569;
+    --card: #ffffff;
+    --card-foreground: #020617;
+    --popover: #ffffff;
+    --popover-foreground: #020617;
+    --border: #e2e8f0;
+    --input: #e2e8f0;
+    --primary: #0f172a;
+    --primary-foreground: #f8fafc;
+  }
+
+  /* Stealth Mode (Dark) */
+  .stealth,
+  .dark {
+    --background: #020617;
+    --foreground: #f8fafc;
+    --muted: #1e293b;
+    --muted-foreground: #94a3b8;
+    --card: #0f172a;
+    --card-foreground: #f8fafc;
+    --popover: #0f172a;
+    --popover-foreground: #f8fafc;
+    --border: #1e293b;
+    --input: #1e293b;
+    --primary: #f8fafc;
+    --primary-foreground: #0f172a;
+  }
+
+  /* Privacy Blur */
+  /* Ensure high specificity and importance to override other filters */
+  body.privacy-blur .privacy-value {
+    filter: blur(8px) !important;
+    transition: filter 0.2s ease;
+    cursor: default;
+    user-select: none;
+  }
+
+  body.privacy-blur .privacy-value:hover {
+    filter: blur(0) !important;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-inter), system-ui, sans-serif;
+    font-variation-settings: "opsz" 32;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    font-weight: 460;
+    letter-spacing: -0.011em;
+    line-height: 1.6;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-bold tracking-tight transition-colors duration-300;
+    color: var(--foreground);
+    letter-spacing: -0.025em;
+  }
+
+  /* High-Discretion Stealth Titles - Force override with !important */
+  /* Applies to both Stealth Mode and System Theme (when OS is dark) */
+  .stealth h1,
+  .stealth h2,
+  .stealth h3,
+  .stealth h4,
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark h4 {
+    color: var(--background) !important;
+  }
+
+  /* Subtle hint on hover for usability in Stealth Mode */
+  .stealth h1:hover,
+  .stealth h2:hover,
+  .stealth h3:hover,
+  .stealth h4:hover,
+  .dark h1:hover,
+  .dark h2:hover,
+  .dark h3:hover,
+  .dark h4:hover {
+    color: var(--muted-foreground) !important;
+    opacity: 0.5;
+  }
+
+  /* Dropdown/Select Styling for Dark Mode */
+  select {
+    color: var(--foreground);
+  }
+
+  select option {
+    background-color: var(--card);
+    color: var(--card-foreground);
+  }
+
+  /* Input and Textarea Styling for Theme Awareness */
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea {
+    color: var(--foreground) !important;
+  }
+
+  /* Placeholder text */
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted-foreground) !important;
+    opacity: 0.7;
+  }
+
+  /* Sharpen table data and monospaced numbers */
+
+  .font-mono {
+    font-feature-settings: "tnum", "lnum";
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
 }
