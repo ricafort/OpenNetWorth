@@ -7,6 +7,7 @@ import ActionConfirmCard from '@/components/ActionConfirmCard';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { saveAssets, saveLiabilities, loadAssets, loadLiabilities } from '@/lib/storage';
 import { Asset, Liability } from '@/types';
+import { formatCurrency, getCurrencySymbol } from '@/lib/currencyService';
 
 const mentors = [
     {
@@ -56,7 +57,7 @@ export default function MentorsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-    const { refreshAttributes, metrics } = useDashboard();
+    const { refreshAttributes, metrics, baseCurrency } = useDashboard();
     const [isGeneratingProfile, setIsGeneratingProfile] = useState(false);
 
     // Updated Chat State to support actions
@@ -209,7 +210,8 @@ export default function MentorsPage() {
                             userContext: {
                                 netWorth: metrics.netWorth,
                                 totalAssets: metrics.assets,
-                                totalLiabilities: metrics.liabilities
+                                totalLiabilities: metrics.liabilities,
+                                currency: baseCurrency
                             },
                             message: userMsg
                         })
@@ -290,7 +292,7 @@ export default function MentorsPage() {
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[calc(100vh-160px)] relative">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[calc(10vh-160px)] relative">
             {/* Modal: Add Custom Mentor */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -518,10 +520,10 @@ export default function MentorsPage() {
                             <div className="w-full max-w-sm space-y-3 px-4">
                                 <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Try saying...</p>
                                 {[
-                                    "💰 Add a savings account with $5,000",
+                                    `💰 Add a savings account with ${formatCurrency(5000, baseCurrency)}`,
                                     "📈 Log a new investment in Tesla",
-                                    "🏠 Track my home value at $450k",
-                                    "💳 Add a credit card balance of $1,200"
+                                    `🏠 Track my home value at ${formatCurrency(450000, baseCurrency)}`,
+                                    `💳 Add a credit card balance of ${formatCurrency(1200, baseCurrency)}`
                                 ].map((suggestion, i) => (
                                     <button
                                         key={i}

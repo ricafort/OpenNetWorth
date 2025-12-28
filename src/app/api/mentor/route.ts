@@ -22,9 +22,10 @@ export async function POST(req: NextRequest) {
       - MODE = 'reflect': Principle-based perspectives and mindset reflections on the user's financial situation.
       
       USER CONTEXT:
-      - Net Worth: $${userContext.netWorth}
-      - Total Assets: $${userContext.totalAssets}
-      - Total Liabilities: $${userContext.totalLiabilities}
+      - Preferred Currency: ${userContext.currency || 'USD'}
+      - Net Worth: ${userContext.netWorth}
+      - Total Assets: ${userContext.totalAssets}
+      - Total Liabilities: ${userContext.totalLiabilities}
       
       CONSTRAINTS:
       - NEVER give specific financial advice or buy/sell recommendations.
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
       - Maintain a calm, professional, and motivational tone.
       - Reference the user's numbers to make it personal but stay within educational/reflective boundaries.
       - Use clear, plain language.
+      - Always speak in the user's preferred currency (${userContext.currency || 'USD'}) when mentioning monetary values.
       - Always include this exact disclaimer at the end: "Educational perspective only. Not financial advice."
       
       PHILOSOPHY:

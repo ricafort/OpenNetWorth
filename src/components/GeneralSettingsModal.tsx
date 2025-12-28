@@ -104,12 +104,12 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
                                 Extra Monthly Payment
                             </label>
                             <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
                                 <input
                                     type="number"
                                     value={freedomSettings.extraMonthlyPayment}
                                     onChange={(e) => setFreedomSettings({ ...freedomSettings, extraMonthlyPayment: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 border-none rounded-xl py-3 pl-8 pr-4 font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    className="w-full bg-card border border-border rounded-xl py-3 pl-8 pr-4 font-bold text-foreground focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                                     placeholder="500"
                                 />
                             </div>
