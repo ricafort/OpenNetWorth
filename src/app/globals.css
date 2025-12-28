@@ -89,7 +89,8 @@
   .stealth h1,
   .stealth h2,
   .stealth h3,
-  .stealth h4 {
+  .stealth h4,
+  .stealth .privacy-value {
     color: var(--background) !important;
   }
 

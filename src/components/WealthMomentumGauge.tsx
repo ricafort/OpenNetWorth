@@ -83,7 +83,7 @@ export default function WealthMomentumGauge({ momentum }: Props) {
                 </div>
 
                 {/* Savings Rate Badge */}
-                <div className="mt-4 px-3 py-1 bg-slate-50 rounded-full border border-slate-100 text-xs font-bold text-slate-500">
+                <div className="mt-4 px-3 py-1 bg-muted rounded-full border border-border text-xs font-bold text-muted-foreground">
                     {momentum.savingsRate.toFixed(1)}% Savings Rate
                 </div>
             </div>
