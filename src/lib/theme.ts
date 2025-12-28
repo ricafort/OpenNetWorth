@@ -2,9 +2,9 @@ export type Theme = 'light' | 'stealth' | 'system';
 
 const THEME_KEY = 'clearworth_theme';
 
-export const getSystemTheme = (): 'light' | 'stealth' => {
+export const getSystemTheme = (): 'light' | 'dark' => {
     if (typeof window === 'undefined') return 'light';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'stealth' : 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 };
 
 export const loadTheme = (): Theme => {
@@ -17,7 +17,7 @@ export const saveTheme = (theme: Theme) => {
     localStorage.setItem(THEME_KEY, theme);
 };
 
-export const getEffectiveTheme = (theme: Theme): 'light' | 'stealth' => {
+export const getEffectiveTheme = (theme: Theme): 'light' | 'dark' | 'stealth' => {
     if (theme === 'system') return getSystemTheme();
     return theme;
 };

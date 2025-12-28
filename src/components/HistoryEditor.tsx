@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Save, Wand2 } from 'lucide-react';
 import { loadNetWorthHistory, saveNetWorthHistory, generateMockHistory } from '@/lib/storage';
 import { NetWorthSnapshot } from '@/types';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { convertAmount, formatCurrency } from '@/lib/currencyService';
 
 interface HistoryEditorProps {
     isOpen: boolean;
@@ -13,6 +15,7 @@ interface HistoryEditorProps {
 }
 
 export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditorProps) {
+    const { baseCurrency } = useDashboard();
     const [history, setHistory] = useState<NetWorthSnapshot[]>([]);
 
     // New Entry State
@@ -29,14 +32,18 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
     const handleAdd = () => {
         if (!newDate || !newAssets || !newLiabilities) return;
 
-        const assets = Number(newAssets);
-        const liabilities = Number(newLiabilities);
+        // Inputs are in baseCurrency, convert to USD for storage
+        const assetsBase = Number(newAssets);
+        const liabilitiesBase = Number(newLiabilities);
+
+        const assetsUSD = convertAmount(assetsBase, baseCurrency, 'USD');
+        const liabilitiesUSD = convertAmount(liabilitiesBase, baseCurrency, 'USD');
 
         const newEntry: NetWorthSnapshot = {
             date: newDate,
-            totalAssets: assets,
-            totalLiabilities: liabilities,
-            netWorth: assets - liabilities
+            totalAssets: Math.round(assetsUSD),
+            totalLiabilities: Math.round(liabilitiesUSD),
+            netWorth: Math.round(assetsUSD - liabilitiesUSD)
         };
 
         const updated = [...history, newEntry].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -100,11 +107,11 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
                                     type="date"
                                     value={newDate}
                                     onChange={e => setNewDate(e.target.value)}
-                                    className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                    className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-muted-foreground mb-1.5 uppercase tracking-wider">Total Assets</label>
+                                <label className="block text-xs font-black text-muted-foreground mb-1.5 uppercase tracking-wider">Total Assets ({baseCurrency})</label>
                                 <input
                                     type="number"
                                     placeholder="0"
@@ -114,7 +121,7 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-muted-foreground mb-1.5 uppercase tracking-wider">Total Debt</label>
+                                <label className="block text-xs font-black text-muted-foreground mb-1.5 uppercase tracking-wider">Total Debt ({baseCurrency})</label>
                                 <input
                                     type="number"
                                     placeholder="0"
@@ -157,30 +164,37 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border bg-card">
-                                    {history.map((entry) => (
-                                        <tr key={entry.date} className="hover:bg-muted/50 transition-colors group">
-                                            <td className="px-5 py-4 font-mono text-muted-foreground tracking-tight">
-                                                {entry.date}
-                                            </td>
-                                            <td className="px-5 py-4 text-right font-black text-emerald-600">
-                                                ${entry.totalAssets.toLocaleString()}
-                                            </td>
-                                            <td className="px-5 py-4 text-right font-black text-rose-500">
-                                                ${entry.totalLiabilities.toLocaleString()}
-                                            </td>
-                                            <td className="px-5 py-4 text-right font-black text-foreground">
-                                                ${entry.netWorth.toLocaleString()}
-                                            </td>
-                                            <td className="px-5 py-4 text-right">
-                                                <button
-                                                    onClick={() => handleDelete(entry.date)}
-                                                    className="text-muted-foreground/30 hover:text-rose-500 transition-all p-1 hover:scale-110"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {history.map((entry) => {
+                                        // Convert stored USD values to baseCurrency for display
+                                        const assetsBase = convertAmount(entry.totalAssets, 'USD', baseCurrency);
+                                        const liabilitiesBase = convertAmount(entry.totalLiabilities, 'USD', baseCurrency);
+                                        const netWorthBase = convertAmount(entry.netWorth, 'USD', baseCurrency);
+
+                                        return (
+                                            <tr key={entry.date} className="hover:bg-muted/50 transition-colors group">
+                                                <td className="px-5 py-4 font-mono text-muted-foreground tracking-tight">
+                                                    {entry.date}
+                                                </td>
+                                                <td className="px-5 py-4 text-right font-black text-emerald-600">
+                                                    {formatCurrency(assetsBase, baseCurrency)}
+                                                </td>
+                                                <td className="px-5 py-4 text-right font-black text-rose-500">
+                                                    {formatCurrency(liabilitiesBase, baseCurrency)}
+                                                </td>
+                                                <td className="px-5 py-4 text-right font-black text-foreground">
+                                                    {formatCurrency(netWorthBase, baseCurrency)}
+                                                </td>
+                                                <td className="px-5 py-4 text-right">
+                                                    <button
+                                                        onClick={() => handleDelete(entry.date)}
+                                                        className="text-muted-foreground/30 hover:text-rose-500 transition-all p-1 hover:scale-110"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                     {history.length === 0 && (
                                         <tr>
                                             <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">

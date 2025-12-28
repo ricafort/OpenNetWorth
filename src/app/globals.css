@@ -85,15 +85,11 @@
   }
 
   /* High-Discretion Stealth Titles - Force override with !important */
-  /* Applies to both Stealth Mode and System Theme (when OS is dark) */
+  /* Applies ONLY to Stealth Mode */
   .stealth h1,
   .stealth h2,
   .stealth h3,
-  .stealth h4,
-  .dark h1,
-  .dark h2,
-  .dark h3,
-  .dark h4 {
+  .stealth h4 {
     color: var(--background) !important;
   }
 
@@ -101,11 +97,7 @@
   .stealth h1:hover,
   .stealth h2:hover,
   .stealth h3:hover,
-  .stealth h4:hover,
-  .dark h1:hover,
-  .dark h2:hover,
-  .dark h3:hover,
-  .dark h4:hover {
+  .stealth h4:hover {
     color: var(--muted-foreground) !important;
     opacity: 0.5;
   }

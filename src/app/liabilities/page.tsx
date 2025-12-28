@@ -4,15 +4,18 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, TrendingDown } from 'lucide-react';
 import { Liability, LiabilityType, CurrencyCode } from '@/types';
 import { loadLiabilities, saveLiabilities } from '@/lib/storage';
-import CurrencySelector from '@/components/CurrencySelector';
-import { formatCurrency } from '@/lib/currencyService';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { formatCurrency, convertAmount } from '@/lib/currencyService';
 import { useTheme } from '@/contexts/ThemeContext';
+import CurrencySelector from '@/components/CurrencySelector';
 
 export default function LiabilitiesPage() {
     const [liabilities, setLiabilities] = useState<Liability[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
+    const { baseCurrency } = useDashboard(); // Get Global Base Currency
+
     const blurClass = isPrivacyBlur ? 'privacy-value' : '';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
@@ -23,7 +26,7 @@ export default function LiabilitiesPage() {
         }
     }, []);
 
-    const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>('USD');
+    const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>(baseCurrency);
 
     const handleAddLiability = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -81,6 +84,11 @@ export default function LiabilitiesPage() {
         }
     };
 
+    // Calculate Total in Base Currency
+    const totalLiabilities = liabilities.reduce((sum, liability) => {
+        return sum + convertAmount(liability.balance, liability.currency || 'USD', baseCurrency);
+    }, 0);
+
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-end">
@@ -89,7 +97,10 @@ export default function LiabilitiesPage() {
                     <p className="text-muted-foreground mt-2 font-medium">Track your debts and leverage profile.</p>
                 </div>
                 <button
-                    onClick={() => setIsAdding(true)}
+                    onClick={() => {
+                        setIsAdding(true);
+                        setDefaultCurrency(baseCurrency);
+                    }}
                     className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-medium transition-colors"
                 >
                     <Plus size={20} />
@@ -194,7 +205,7 @@ export default function LiabilitiesPage() {
                                             </span>
                                         </td>
                                         <td className={`px-6 py-5 text-right font-mono font-black text-rose-500 ${blurClass}`}>
-                                            {formatCurrency(liability.balance, liability.currency || 'USD')}
+                                            {formatCurrency(convertAmount(liability.balance, liability.currency || 'USD', baseCurrency), baseCurrency)}
                                         </td>
                                         <td className="px-6 py-5 text-right font-medium text-slate-500">
                                             {liability.interest_rate > 0 ? `${liability.interest_rate}%` : '-'}
@@ -218,7 +229,7 @@ export default function LiabilitiesPage() {
                         <tr>
                             <td colSpan={2} className="px-6 py-6 text-muted-foreground uppercase text-xs tracking-widest">Total Liabilities</td>
                             <td className={`px-6 py-6 text-right text-xl text-rose-500 font-black ${blurClass}`}>
-                                ${liabilities.reduce((sum, l) => sum + l.balance, 0).toLocaleString()}
+                                {formatCurrency(totalLiabilities, baseCurrency)}
                             </td>
                             <td colSpan={2}></td>
                         </tr>

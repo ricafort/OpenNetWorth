@@ -1,16 +1,16 @@
-
-// src/components/PortfolioSummary.tsx
-'use client';
-
 import { TrendingUp, DollarSign, PieChart } from 'lucide-react';
 import { PortfolioAnalysis } from '@/lib/portfolioAnalysis';
+import { formatCurrency } from '@/lib/currencyService';
+import { CurrencyCode } from '@/types';
 
 interface PortfolioSummaryProps {
     analysis: PortfolioAnalysis;
     privacyBlur?: boolean;
+    currencyCode?: CurrencyCode;
 }
 
-export default function PortfolioSummary({ analysis, privacyBlur = false }: PortfolioSummaryProps) {
+export default function PortfolioSummary({ analysis, privacyBlur = false, currencyCode = 'USD' }: PortfolioSummaryProps) {
+    // Note: The caller (GrowthEngineWidget) ensures 'analysis' values are already in 'currencyCode' units.
     const blurClass = privacyBlur ? 'privacy-value' : '';
 
     return (
@@ -24,7 +24,7 @@ export default function PortfolioSummary({ analysis, privacyBlur = false }: Port
                     <span className="text-sm font-medium text-muted-foreground">Portfolio Value</span>
                 </div>
                 <div className={`text-2xl font-bold text-foreground ${blurClass}`}>
-                    ${analysis.totalValue.toLocaleString()}
+                    {formatCurrency(analysis.totalValue, currencyCode)}
                 </div>
                 <div className="text-sm text-green-600 dark:text-green-400 font-medium mt-1">
                     Live Updated
@@ -40,7 +40,7 @@ export default function PortfolioSummary({ analysis, privacyBlur = false }: Port
                     <span className="text-sm font-medium text-muted-foreground">Total Return</span>
                 </div>
                 <div className={`text-2xl font-bold text-foreground flex items-baseline gap-2 ${blurClass}`}>
-                    ${analysis.totalGain.toLocaleString()}
+                    {formatCurrency(analysis.totalGain, currencyCode)}
                     <span className="text-sm text-green-600 font-medium">({analysis.totalGainPercent.toFixed(1)}%)</span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
@@ -57,7 +57,7 @@ export default function PortfolioSummary({ analysis, privacyBlur = false }: Port
                     <span className="text-sm font-medium text-muted-foreground">Projected Income</span>
                 </div>
                 <div className={`text-2xl font-bold text-foreground ${blurClass}`}>
-                    ${analysis.estimatedAnnualDividends.toLocaleString()}
+                    {formatCurrency(analysis.estimatedAnnualDividends, currencyCode)}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
                     / year in dividends (est.)

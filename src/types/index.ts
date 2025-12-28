@@ -1,6 +1,6 @@
 export type AssetType = 'cash' | 'investment' | 'crypto' | 'real_estate' | 'retirement' | 'other';
 export type LiabilityType = 'mortgage' | 'student_loan' | 'auto_loan' | 'credit_card' | 'other';
-export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD' | 'CHF' | 'CNY' | 'INR' | 'SGD';
+export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD' | 'CHF' | 'CNY' | 'INR' | 'SGD' | 'PHP';
 
 export interface InvestmentDetails {
     ticker: string;              // e.g., "AAPL", "VTI"
@@ -54,6 +54,7 @@ export interface Goal {
     name: string;
     targetAmount: number;
     currentAmount: number;
+    currency?: CurrencyCode; // Default 'USD'
     startAmount?: number;  // Initial amount when goal was created (crucial for debt payoff progress)
     deadline?: string;     // ISO date
     category: GoalCategory;

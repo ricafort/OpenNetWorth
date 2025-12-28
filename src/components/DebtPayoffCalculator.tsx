@@ -6,17 +6,34 @@ import { Liability, DebtPayoffResult, PayoffStrategy } from '@/types';
 import { calculatePayoff } from '@/lib/debtCalculator';
 import { loadLiabilities, loadFreedomSettings, saveFreedomSettings, updateDebtRecurringTransaction } from '@/lib/storage';
 import { TrendingDown, Calendar, DollarSign, ArrowRight, ShieldCheck } from 'lucide-react';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { formatCurrency, convertAmount } from '@/lib/currencyService';
 
 import PayoffScheduleChart from './PayoffScheduleChart';
 
 export default function DebtPayoffCalculator() {
+    const { baseCurrency } = useDashboard();
+
     // Lazy initialization to avoid overwriting storage on mount with defaults
-    const [extraPayment, setExtraPayment] = useState(() => {
+    // Note: We need to handle the initial extraPayment currency. 
+    // Assuming stored extraPayment is in USD.
+    const [extraPaymentUSD, setExtraPaymentUSD] = useState(() => {
         if (typeof window !== 'undefined') {
             return loadFreedomSettings().extraMonthlyPayment;
         }
         return 500;
     });
+
+    // We control the input in "Base Currency", but store in "USD"
+    // So we need a state for the Input Value which syncs with extraPaymentUSD
+    const extraPaymentBase = convertAmount(extraPaymentUSD, 'USD', baseCurrency);
+
+    const handleExtraPaymentChange = (val: number) => {
+        // val is in Base Currency
+        // Convert back to USD for storage
+        const valUSD = convertAmount(val, baseCurrency, 'USD');
+        setExtraPaymentUSD(valUSD);
+    };
 
     const [strategy, setStrategy] = useState<PayoffStrategy>(() => {
         if (typeof window !== 'undefined') {
@@ -32,29 +49,38 @@ export default function DebtPayoffCalculator() {
     useEffect(() => {
         const loaded = loadLiabilities();
         setLiabilities(loaded);
-        // Settings are already loaded via lazy state, no need to set them here
     }, []);
 
     useEffect(() => {
-        saveFreedomSettings({ strategy, extraMonthlyPayment: extraPayment });
-        updateDebtRecurringTransaction(extraPayment);
-    }, [strategy, extraPayment]);
+        // Save settings. converting stored USD value to what storage expects (USD) is default.
+        saveFreedomSettings({ strategy, extraMonthlyPayment: extraPaymentUSD });
+        updateDebtRecurringTransaction(extraPaymentUSD);
+    }, [strategy, extraPaymentUSD]);
+
+    // Derived: Converted Liabilities for Calculation
+    const calcLiabilities = useMemo(() => {
+        return liabilities.map(l => ({
+            ...l,
+            // Normalize balance to Base Currency
+            balance: convertAmount(l.balance, l.currency || 'USD', baseCurrency)
+        }));
+    }, [liabilities, baseCurrency]);
 
     useEffect(() => {
-        if (liabilities.length === 0) return;
+        if (calcLiabilities.length === 0) return;
 
-        // Calculate chosen strategy
-        const res = calculatePayoff(liabilities, extraPayment, strategy);
+        // Calculate using Base Currency values
+        const res = calculatePayoff(calcLiabilities, extraPaymentBase, strategy);
         setResult(res);
 
         // Calculate baseline (minimum only) for comparison
         if (strategy !== 'minimum') {
-            const baseline = calculatePayoff(liabilities, 0, 'minimum');
+            const baseline = calculatePayoff(calcLiabilities, 0, 'minimum');
             setBaselineResult(baseline);
         } else {
             setBaselineResult(null);
         }
-    }, [liabilities, extraPayment, strategy]);
+    }, [calcLiabilities, extraPaymentBase, strategy]);
 
     const savings = useMemo(() => {
         if (!result || !baselineResult) return null;
@@ -105,11 +131,13 @@ export default function DebtPayoffCalculator() {
                     <div>
                         <label className="block text-sm font-bold text-muted-foreground mb-3">Extra Monthly Payment</label>
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">
+                                {formatCurrency(0, baseCurrency).replace(/\d/g, '').replace(/[\.,\s]/g, '')}
+                            </span>
                             <input
                                 type="number"
-                                value={extraPayment}
-                                onChange={(e) => setExtraPayment(Number(e.target.value))}
+                                value={Math.round(extraPaymentBase)} // Display rounded for cleaner UI input
+                                onChange={(e) => handleExtraPaymentChange(Number(e.target.value))}
                                 className="w-full pl-8 pr-4 py-3 bg-muted border border-border rounded-xl font-bold text-foreground focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
@@ -146,9 +174,9 @@ export default function DebtPayoffCalculator() {
                                     <div className="flex items-baseline gap-2">
                                         <p className="text-2xl font-black">{
                                             (() => {
-                                                const totalBal = liabilities.reduce((sum, l) => sum + l.balance, 0);
+                                                const totalBal = calcLiabilities.reduce((sum, l) => sum + l.balance, 0);
                                                 if (totalBal === 0) return "0.0%";
-                                                const weightedRate = liabilities.reduce((sum, l) => sum + (l.balance * l.interest_rate), 0) / totalBal;
+                                                const weightedRate = calcLiabilities.reduce((sum, l) => sum + (l.balance * l.interest_rate), 0) / totalBal;
                                                 return weightedRate.toFixed(1) + "%";
                                             })()
                                         }</p>
@@ -163,8 +191,8 @@ export default function DebtPayoffCalculator() {
                                             (() => {
                                                 // Monthly Burn = Sum(Balance * MonthlyRate)
                                                 // This is the "interest cost" of the current month
-                                                const monthlyBurn = liabilities.reduce((sum, l) => sum + (l.balance * (l.interest_rate / 100 / 12)), 0);
-                                                return "$" + Math.round(monthlyBurn).toLocaleString();
+                                                const monthlyBurn = calcLiabilities.reduce((sum, l) => sum + (l.balance * (l.interest_rate / 100 / 12)), 0);
+                                                return formatCurrency(monthlyBurn, baseCurrency);
                                             })()
                                         }</p>
                                         <span className="text-xs text-blue-200 font-medium">lost to interest</span>
@@ -179,11 +207,11 @@ export default function DebtPayoffCalculator() {
                                 </div>
                                 <div>
                                     <p className="text-blue-100 text-sm font-medium mb-1">Total Interest</p>
-                                    <p className="text-2xl font-bold privacy-value">${result.totalInterestPaid.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                    <p className="text-2xl font-bold privacy-value">{formatCurrency(result.totalInterestPaid, baseCurrency)}</p>
                                 </div>
                                 <div>
                                     <p className="text-blue-100 text-sm font-medium mb-1">Total Paid</p>
-                                    <p className="text-2xl font-bold privacy-value">${result.totalPayments.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                    <p className="text-2xl font-bold privacy-value">{formatCurrency(result.totalPayments, baseCurrency)}</p>
                                 </div>
                             </div>
                         </div>
@@ -215,7 +243,7 @@ export default function DebtPayoffCalculator() {
                                         </div>
                                         <div>
                                             <p className="text-sm text-muted-foreground">Interest Saved</p>
-                                            <p className="text-2xl font-black text-emerald-600 privacy-value">${savings.interest.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                            <p className="text-2xl font-black text-emerald-600 privacy-value">{formatCurrency(savings.interest, baseCurrency)}</p>
                                         </div>
                                     </div>
 
@@ -268,10 +296,10 @@ export default function DebtPayoffCalculator() {
                                 }, {} as Record<string, any>)).slice(0, 12).map((row: any) => (
                                     <tr key={row.month} className="hover:bg-muted/50 transition-colors">
                                         <td className="px-6 py-4 font-mono font-medium text-foreground">{row.month}</td>
-                                        <td className="px-6 py-4 privacy-value">${row.payment.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                        <td className="px-6 py-4 text-emerald-600 privacy-value">${row.principal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                        <td className="px-6 py-4 text-rose-500 privacy-value">${row.interest.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                        <td className="px-6 py-4 font-bold text-foreground privacy-value">${row.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                        <td className="px-6 py-4 privacy-value">{formatCurrency(row.payment, baseCurrency)}</td>
+                                        <td className="px-6 py-4 text-emerald-600 privacy-value">{formatCurrency(row.principal, baseCurrency)}</td>
+                                        <td className="px-6 py-4 text-rose-500 privacy-value">{formatCurrency(row.interest, baseCurrency)}</td>
+                                        <td className="px-6 py-4 font-bold text-foreground privacy-value">{formatCurrency(row.balance, baseCurrency)}</td>
                                     </tr>
                                 ))}
                             </tbody>

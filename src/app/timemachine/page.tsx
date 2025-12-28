@@ -6,11 +6,13 @@ import { ArrowLeft, Calendar, AlertTriangle } from 'lucide-react';
 import { loadNetWorthHistory } from '@/lib/storage';
 import { NetWorthSnapshot, Asset, Liability } from '@/types';
 import TimeMachineControl from '@/components/TimeMachineControl';
-import { formatCurrency } from '@/lib/currencyService';
+import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { useDashboard } from '@/contexts/DashboardContext';
 
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function TimeMachinePage() {
+    const { baseCurrency } = useDashboard();
     const [history, setHistory] = useState<NetWorthSnapshot[]>([]);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [snapshot, setSnapshot] = useState<NetWorthSnapshot | null>(null);
@@ -75,9 +77,27 @@ export default function TimeMachinePage() {
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                    <StatCard title="Net Worth" value={snapshot.netWorth} color="text-[#2aa198]" privacyBlur={isPrivacyBlur} />
-                                    <StatCard title="Assets" value={snapshot.totalAssets} color="text-[#859900]" privacyBlur={isPrivacyBlur} />
-                                    <StatCard title="Liabilities" value={snapshot.totalLiabilities} color="text-[#dc322f]" privacyBlur={isPrivacyBlur} />
+                                    <StatCard
+                                        title="Net Worth"
+                                        value={convertAmount(snapshot.netWorth, 'USD', baseCurrency)}
+                                        currency={baseCurrency}
+                                        color="text-[#2aa198]"
+                                        privacyBlur={isPrivacyBlur}
+                                    />
+                                    <StatCard
+                                        title="Assets"
+                                        value={convertAmount(snapshot.totalAssets, 'USD', baseCurrency)}
+                                        currency={baseCurrency}
+                                        color="text-[#859900]"
+                                        privacyBlur={isPrivacyBlur}
+                                    />
+                                    <StatCard
+                                        title="Liabilities"
+                                        value={convertAmount(snapshot.totalLiabilities, 'USD', baseCurrency)}
+                                        currency={baseCurrency}
+                                        color="text-[#dc322f]"
+                                        privacyBlur={isPrivacyBlur}
+                                    />
                                 </div>
 
                                 {/* Assets Table */}
@@ -100,7 +120,7 @@ export default function TimeMachinePage() {
                                                     <tr key={a.id}>
                                                         <td className="py-3">{a.name}</td>
                                                         <td className={`py-3 text-right font-mono text-[#2aa198] ${blurClass}`}>
-                                                            {formatCurrency(a.value, a.currency || 'USD')}
+                                                            {formatCurrency(convertAmount(a.value, a.currency || 'USD', baseCurrency), baseCurrency)}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -134,7 +154,7 @@ export default function TimeMachinePage() {
                                                     <tr key={l.id}>
                                                         <td className="py-3">{l.name}</td>
                                                         <td className={`py-3 text-right font-mono text-[#dc322f] ${blurClass}`}>
-                                                            {formatCurrency(l.balance, l.currency || 'USD')}
+                                                            {formatCurrency(convertAmount(l.balance, l.currency || 'USD', baseCurrency), baseCurrency)}
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -167,12 +187,12 @@ export default function TimeMachinePage() {
     );
 }
 
-function StatCard({ title, value, color, privacyBlur = false }: { title: string, value: number, color: string, privacyBlur?: boolean }) {
+function StatCard({ title, value, color, currency = 'USD', privacyBlur = false }: { title: string, value: number, color: string, currency?: string, privacyBlur?: boolean }) {
     return (
         <div className="bg-[#fdf6e3] p-4 rounded-lg border border-[#93a1a1] shadow-sm">
             <p className="text-[#93a1a1] text-xs font-serif uppercase tracking-widest mb-1">{title}</p>
             <p className={`text-2xl font-mono font-bold ${color} ${privacyBlur ? 'privacy-value' : ''}`}>
-                {formatCurrency(value, 'USD')}
+                {formatCurrency(value, currency as any)}
             </p>
         </div>
     );

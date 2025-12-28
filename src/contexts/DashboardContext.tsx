@@ -10,6 +10,7 @@ interface DashboardContextType {
     // Financial Data
     metrics: { assets: number; liabilities: number; netWorth: number };
     metricsUSD: { assets: number; liabilities: number; netWorth: number };
+    netWorth: number; // Expose strictly
     assets: Asset[];
     liabilities: Liability[];
     goals: Goal[];
@@ -153,6 +154,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     return (
         <DashboardContext.Provider value={{
             assets, liabilities, goals, metrics, metricsUSD, netWorthHistory, momentum, baseCurrency,
+            netWorth: metrics.netWorth, // Pass top-level
             refreshAttributes: loadData,
             refreshHistory: () => setNetWorthHistory(loadNetWorthHistory()),
             isEditMode, setIsEditMode, layout, updateLayout, hideWidget, showWidget, resetLayout,

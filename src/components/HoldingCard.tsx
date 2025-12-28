@@ -1,7 +1,7 @@
-
-// src/components/HoldingCard.tsx
 import { ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
 import { clsx } from 'clsx';
+import { CurrencyCode } from '@/types';
+import { formatCurrency } from '@/lib/currencyService';
 
 interface HoldingCardProps {
     holding: {
@@ -18,9 +18,10 @@ interface HoldingCardProps {
         isConcentrated: boolean;
     };
     privacySensitive?: boolean;
+    currencyCode?: CurrencyCode;
 }
 
-export default function HoldingCard({ holding, privacySensitive = false }: HoldingCardProps) {
+export default function HoldingCard({ holding, privacySensitive = false, currencyCode = 'USD' }: HoldingCardProps) {
     const isPositive = holding.gain >= 0;
     const isDayPositive = holding.dayChange >= 0;
     const blurClass = privacySensitive ? 'privacy-value' : '';
@@ -42,7 +43,7 @@ export default function HoldingCard({ holding, privacySensitive = false }: Holdi
                 </div>
                 <div className="text-right">
                     <div className={clsx("text-lg font-bold text-foreground", blurClass)}>
-                        ${holding.value.toLocaleString()}
+                        {formatCurrency(holding.value, currencyCode)}
                     </div>
                     <div className="text-xs font-medium text-muted-foreground">
                         {holding.weight.toFixed(1)}% of Portfolio
@@ -58,7 +59,7 @@ export default function HoldingCard({ holding, privacySensitive = false }: Holdi
                         <span>{isPositive ? '+' : ''}{holding.gainPercent.toFixed(2)}%</span>
                     </div>
                     <p className={clsx("text-xs", isPositive ? "text-green-600/70" : "text-red-600/70", blurClass)}>
-                        {isPositive ? '+' : ''}${holding.gain.toLocaleString()}
+                        {isPositive ? '+' : ''}{formatCurrency(holding.gain, currencyCode)}
                     </p>
                 </div>
                 <div>
@@ -68,14 +69,14 @@ export default function HoldingCard({ holding, privacySensitive = false }: Holdi
                         <span>{isDayPositive ? '+' : ''}{holding.dayChangePercent.toFixed(2)}%</span>
                     </div>
                     <p className={clsx("text-xs", isDayPositive ? "text-green-600/70" : "text-red-600/70", blurClass)}>
-                        {isDayPositive ? '+' : ''}${Math.abs(holding.dayChange).toLocaleString()}
+                        {isDayPositive ? '+' : ''}{formatCurrency(Math.abs(holding.dayChange), currencyCode)}
                     </p>
                 </div>
             </div>
 
             <div className={clsx("mt-3 flex justify-between items-center text-xs text-muted-foreground bg-secondary/50 p-2 rounded-lg", blurClass)}>
                 {holding.ticker !== 'Manual' && holding.shares > 0 ? (
-                    <span>{holding.shares} shares @ ${holding.price.toFixed(2)}</span>
+                    <span>{holding.shares} shares @ {formatCurrency(holding.price, currencyCode)}</span>
                 ) : (
                     <span>Manual Valuation</span>
                 )}

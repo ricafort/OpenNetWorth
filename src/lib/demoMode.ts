@@ -24,6 +24,17 @@ function getProfileData(type: ProfileType): DemoProfile {
     }
 }
 
+function getProfileLabel(type: ProfileType): string {
+    switch (type) {
+        case 'getting_started': return 'Getting Started';
+        case 'stabilizing': return 'Stabilizing';
+        case 'building': return 'Building Foundations';
+        case 'family': return 'Working Family';
+        case 'growing': return 'Growing Wealth';
+        default: return 'Sample Data';
+    }
+}
+
 function generateHistory(baseAssets: number, baseLiabilities: number, currency: string): NetWorthSnapshot[] {
     const history: NetWorthSnapshot[] = [];
     const today = new Date();
@@ -89,6 +100,7 @@ export function enableDemoMode(profileType: ProfileType = 'getting_started', cur
     localStorage.setItem('clearworth_initialized', 'true');
 
     const baseData = getProfileData(profileType);
+    localStorage.setItem('clearworth_demo_profile_label', getProfileLabel(profileType));
 
     // Scale Logic Helper
     const scaleAsset = (a: Asset) => ({ ...a, value: scaleAmount(a.value, currency), currency: currency as any }); // Cast as any or CurrencyCode if imported
@@ -125,6 +137,17 @@ export function enableDemoMode(profileType: ProfileType = 'getting_started', cur
     localStorage.setItem('clearworth_freedom_settings', JSON.stringify(freedomSettings));
 
     localStorage.setItem('clearworth_price_cache', JSON.stringify(SAMPLE_PRICE_CACHE));
+
+    // Initialize Last Check-In to NOW to prevent immediate popup
+    const currentSettings = JSON.parse(localStorage.getItem('clearworth_settings') || '{}');
+    const newSettings = {
+        baseCurrency: 'USD',
+        theme: 'system',
+        checkInFrequency: 'monthly',
+        ...currentSettings,
+        lastCheckIn: new Date().toISOString()
+    };
+    localStorage.setItem('clearworth_settings', JSON.stringify(newSettings));
 
     // Force reload
     window.location.reload();

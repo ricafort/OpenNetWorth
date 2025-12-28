@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { RecurringTransaction } from '@/types';
 import { X, Save, Calendar, Repeat } from 'lucide-react';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { getCurrencySymbol } from '@/lib/currencyService';
 
 interface Props {
     onSave: (transaction: RecurringTransaction) => void;
@@ -11,6 +13,8 @@ interface Props {
 }
 
 export default function RecurringTransactionForm({ onSave, onCancel, initialData }: Props) {
+    const { baseCurrency } = useDashboard();
+    const currencySymbol = getCurrencySymbol(baseCurrency);
     const [formData, setFormData] = useState<Partial<RecurringTransaction>>({
         name: '',
         amount: 0,
@@ -85,7 +89,7 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
                             <div>
                                 <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Amount</label>
                                 <div className="relative">
-                                    <span className="absolute left-4 top-3 text-muted-foreground font-bold">$</span>
+                                    <span className="absolute left-4 top-3 text-muted-foreground font-bold">{currencySymbol}</span>
                                     <input
                                         type="number"
                                         required

@@ -578,7 +578,7 @@ export default function MentorsPage() {
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             placeholder={mode === 'learn' ? "Explain liquidity ratio..." : "Ask your board a question..."}
-                            className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-6 pr-16 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all text-slate-900"
+                            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 pl-6 pr-16 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all text-slate-900 dark:text-white dark:placeholder-slate-400"
                         />
                         <button
                             onClick={handleSend}

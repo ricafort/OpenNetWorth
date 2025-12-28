@@ -2,17 +2,45 @@ import WidgetWrapper from './WidgetWrapper';
 import PortfolioSummary from '@/components/PortfolioSummary';
 import { analyzePortfolio } from '@/lib/portfolioAnalysis';
 import { useDashboard } from '@/contexts/DashboardContext';
+import { convertAmount } from '@/lib/currencyService';
+import { useMemo } from 'react';
 import Link from 'next/link';
 
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function GrowthEngineWidget() {
-    const { assets: allAssets, isEditMode, hideWidget } = useDashboard();
+    const { assets: allAssets, baseCurrency, isEditMode, hideWidget } = useDashboard();
     const { isPrivacyBlur } = useTheme();
 
     const assets = allAssets.filter(a =>
         a.type === 'investment' || a.type === 'crypto' || (a.investment && a.investment.ticker)
     );
+
+    // Convert assets to base currency for analysis
+    const convertedAssets = useMemo(() => {
+        return assets.map(a => {
+            const conversionRate = a.currency && a.currency !== baseCurrency
+                ? convertAmount(1, a.currency, baseCurrency)
+                : (a.currency === undefined && baseCurrency !== 'USD' ? convertAmount(1, 'USD', baseCurrency) : 1);
+
+            // Create a deep copy with converted values
+            const newAsset = { ...a, currency: baseCurrency };
+
+            // Convert raw value
+            newAsset.value = a.value * conversionRate;
+
+            // Convert investment details if present
+            if (a.investment) {
+                newAsset.investment = {
+                    ...a.investment,
+                    costBasis: a.investment.costBasis * conversionRate,
+                    currentPrice: (a.investment.currentPrice || 0) * conversionRate,
+                    previousClose: a.investment.previousClose ? a.investment.previousClose * conversionRate : undefined
+                };
+            }
+            return newAsset;
+        });
+    }, [assets, baseCurrency]);
 
     // Logic to hide if empty, but in Widget system usually we let user decide layout.
     // But if no investments, it's empty.
@@ -44,7 +72,7 @@ export default function GrowthEngineWidget() {
             isEditMode={isEditMode}
             onRemove={() => hideWidget('growth-engine')}
         >
-            <PortfolioSummary analysis={analyzePortfolio(assets)} privacyBlur={isPrivacyBlur} />
+            <PortfolioSummary analysis={analyzePortfolio(convertedAssets)} privacyBlur={isPrivacyBlur} currencyCode={baseCurrency} />
             <div className="mt-4 text-center">
                 <Link href="/portfolio" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline">
                     View Detailed Analysis &rarr;

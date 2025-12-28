@@ -3,15 +3,17 @@
 import { useState, useEffect } from 'react';
 import { Target, Plus, Trophy, Trash2, Edit2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Goal, NetWorthSnapshot } from '@/types';
-import { loadGoals, saveGoals, loadNetWorthHistory, loadAssets, loadLiabilities } from '@/lib/storage';
+import { loadGoals, saveGoals, loadNetWorthHistory } from '@/lib/storage';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { formatCurrency, convertAmount } from '@/lib/currencyService';
 
 export default function GoalsPage() {
     const [goals, setGoals] = useState<Goal[]>([]);
-    const [currentNetWorth, setCurrentNetWorth] = useState(0);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
+    const { netWorth, baseCurrency } = useDashboard(); // Use Context
     const blurClass = isPrivacyBlur ? 'privacy-value' : '';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
@@ -19,13 +21,6 @@ export default function GoalsPage() {
         // Load Goals
         const savedGoals = loadGoals();
         setGoals(savedGoals);
-
-        // Calculate Current Net Worth for auto-tracking
-        const assets = loadAssets();
-        const liabilities = loadLiabilities();
-        const totalAssets = assets.reduce((sum, item) => sum + item.value, 0);
-        const totalLiabilities = liabilities.reduce((sum, item) => sum + item.balance, 0);
-        setCurrentNetWorth(totalAssets - totalLiabilities);
     }, []);
 
     const handleAddGoal = (e: React.FormEvent<HTMLFormElement>) => {
@@ -35,13 +30,14 @@ export default function GoalsPage() {
         const target = parseFloat(formData.get('targetAmount') as string) || 0;
 
         // Auto-set current amount if it's a Net Worth goal
-        const current = type === 'net_worth' ? currentNetWorth : parseFloat(formData.get('currentAmount') as string) || 0;
+        const current = type === 'net_worth' ? netWorth : parseFloat(formData.get('currentAmount') as string) || 0;
 
         const newGoal: Goal = {
             id: `goal-${Date.now()}`,
             name: formData.get('name') as string,
             targetAmount: target,
             currentAmount: current,
+            currency: baseCurrency, // Save formatted in current base currency
             deadline: formData.get('deadline') as string,
             category: type as any,
             createdAt: new Date().toISOString(),
@@ -60,7 +56,7 @@ export default function GoalsPage() {
         const formData = new FormData(e.currentTarget);
         const type = formData.get('category') as string;
         const target = parseFloat(formData.get('targetAmount') as string) || 0;
-        const current = type === 'net_worth' ? currentNetWorth : parseFloat(formData.get('currentAmount') as string) || 0;
+        const current = type === 'net_worth' ? netWorth : parseFloat(formData.get('currentAmount') as string) || 0;
 
         const updated = goals.map(g => {
             if (g.id === id) {
@@ -70,6 +66,10 @@ export default function GoalsPage() {
                     category: type as any,
                     targetAmount: target,
                     currentAmount: current,
+                    // keep existing currency or update? 
+                    // Ideally we assume user enters values in CURRENT baseCurrency when editing?
+                    // Let's assume editing updates it to current Base Currency for simplicity of input
+                    currency: baseCurrency,
                     deadline: formData.get('deadline') as string
                 };
             }
@@ -91,7 +91,11 @@ export default function GoalsPage() {
 
     const updateProgress = (id: string, newAmount: number) => {
         const updated = goals.map(g => {
-            if (g.id === id) return { ...g, currentAmount: newAmount };
+            if (g.id === id) return {
+                ...g,
+                currentAmount: newAmount,
+                currency: baseCurrency // Update currency if modifying value
+            };
             return g;
         });
         setGoals(updated);
@@ -133,7 +137,7 @@ export default function GoalsPage() {
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-muted-foreground">Target Amount ($)</label>
+                            <label className="text-sm font-medium text-muted-foreground">Target Amount ({baseCurrency})</label>
                             <input name="targetAmount" type="number" placeholder="100000" className="w-full bg-card text-gray-900 dark:text-gray-100 border border-border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/20" required />
                         </div>
                         <div className="space-y-1">
@@ -162,33 +166,50 @@ export default function GoalsPage() {
                         <p className="text-muted-foreground">Start by defining what you want to achieve.</p>
                     </div>
                 ) : goals.map(goal => {
-                    // Logic to prioritize showing auto-tracked value if net_worth
-                    const currentVal = goal.category === 'net_worth' ? currentNetWorth : (goal.currentAmount || 0);
+                    // Logic to ensure values are in Base Currency for display
+
+                    // 1. Target Value
+                    const targetVal = convertAmount(goal.targetAmount, goal.currency || 'USD', baseCurrency);
+
+                    // 2. Current Value
+                    let currentVal = 0;
+                    if (goal.category === 'net_worth') {
+                        // Net Worth from context is already in Base Currency
+                        currentVal = netWorth;
+                    } else {
+                        // Convert manual current amount
+                        currentVal = convertAmount(goal.currentAmount || 0, goal.currency || 'USD', baseCurrency);
+                    }
 
                     // Determine if Debt Goal (inverse logic)
                     const isDebt = goal.category === 'debt_payoff';
+
+                    // Start Value for progress calc (also convert)
+                    const startVal = convertAmount(goal.startAmount || 0, goal.currency || 'USD', baseCurrency);
 
                     let progress = 0;
                     if (isDebt) {
                         // For debt: Progress is how much we've paid down from the start
                         // If startAmount is missing (old data), assume 0% progress unless completed
-                        const start = goal.startAmount || Math.max(currentVal, goal.targetAmount);
-                        const totalToPay = start - goal.targetAmount;
-                        const paidSoFar = start - currentVal;
+
+                        // We use the converted values for calculation to ensure consistent scale
+                        const effectiveStart = startVal || Math.max(currentVal, targetVal);
+                        const totalToPay = effectiveStart - targetVal;
+                        const paidSoFar = effectiveStart - currentVal;
 
                         if (totalToPay > 0) {
                             progress = (paidSoFar / totalToPay) * 100;
                         }
                     } else {
                         // For savings/investing: Progress is current / target
-                        if (goal.targetAmount > 0) {
-                            progress = (currentVal / goal.targetAmount) * 100;
+                        if (targetVal > 0) {
+                            progress = (currentVal / targetVal) * 100;
                         }
                     }
                     progress = Math.min(100, Math.max(0, progress));
 
                     // Completion check
-                    const isCompleted = isDebt ? currentVal <= goal.targetAmount : currentVal >= goal.targetAmount;
+                    const isCompleted = isDebt ? currentVal <= targetVal : currentVal >= targetVal;
 
                     // Check for deadline warning: < 90% progress and deadline within 30 days or passed
                     let isWarning = false;
@@ -208,12 +229,17 @@ export default function GoalsPage() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="text-xs font-bold text-muted-foreground">Target ($)</label>
-                                            <input name="targetAmount" type="number" defaultValue={goal.targetAmount} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm" />
+                                            {/* Note: In edit mode, we show/edit raw values? 
+                                                OR we show converted? 
+                                                If we show converted, we must save as new currency. 
+                                                Given we update currency to baseCurrency on save, showing converted (targetVal) makes sense.
+                                            */}
+                                            <label className="text-xs font-bold text-muted-foreground">Target ({baseCurrency})</label>
+                                            <input name="targetAmount" type="number" defaultValue={targetVal} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm" />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-muted-foreground">Current ($)</label>
-                                            <input name="currentAmount" type="number" defaultValue={goal.currentAmount} disabled={goal.category === 'net_worth'} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm disabled:opacity-50" />
+                                            <label className="text-xs font-bold text-muted-foreground">Current ({baseCurrency})</label>
+                                            <input name="currentAmount" type="number" defaultValue={currentVal} disabled={goal.category === 'net_worth'} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm disabled:opacity-50" />
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -288,10 +314,10 @@ export default function GoalsPage() {
 
                                 <div className="flex justify-between items-baseline">
                                     <div className="text-xs font-black text-muted-foreground uppercase tracking-wider">
-                                        Target: <span className={`text-sm text-foreground ${blurClass}`}>${goal.targetAmount.toLocaleString()}</span>
+                                        Target: <span className={`text-sm text-foreground ${blurClass}`}>{formatCurrency(targetVal, baseCurrency)}</span>
                                     </div>
                                     <div className={`text-2xl font-black text-foreground tracking-tighter ${blurClass}`}>
-                                        ${currentVal.toLocaleString()}
+                                        {formatCurrency(currentVal, baseCurrency)}
                                     </div>
                                 </div>
 

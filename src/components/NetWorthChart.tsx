@@ -10,6 +10,8 @@ import {
     Tooltip
 } from 'recharts';
 import { NetWorthSnapshot } from '@/types';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { convertAmount, formatCurrency } from '@/lib/currencyService';
 
 interface NetWorthChartProps {
     data: NetWorthSnapshot[];
@@ -17,21 +19,31 @@ interface NetWorthChartProps {
 }
 
 export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
+    const { baseCurrency } = useDashboard();
+
     const filteredData = useMemo(() => {
-        if (timeRange === 'all') return data;
-
-        const now = new Date();
-        const monthsBack = timeRange === '6m' ? 6 : 12;
-        const cutoff = new Date(now.setMonth(now.getMonth() - monthsBack));
-
-        return data.filter(d => new Date(d.date) >= cutoff);
-    }, [data, timeRange]);
-
-    const formatCurrency = (value: number) => {
-        if (Math.abs(value) >= 1000000) {
-            return `$${(value / 1000000).toFixed(1)}M`;
+        let relevantData = data;
+        if (timeRange !== 'all') {
+            const now = new Date();
+            const monthsBack = timeRange === '6m' ? 6 : 12;
+            const cutoff = new Date(now.setMonth(now.getMonth() - monthsBack));
+            relevantData = data.filter(d => new Date(d.date) >= cutoff);
         }
-        return `$${(value / 1000).toFixed(0)}k`;
+
+        // Convert data to base currency
+        // Assuming history snapshots are stored in USD (or we treat them as such for normalization)
+        return relevantData.map(d => ({
+            ...d,
+            netWorth: convertAmount(d.netWorth, 'USD', baseCurrency),
+            totalAssets: convertAmount(d.totalAssets, 'USD', baseCurrency),
+            totalLiabilities: convertAmount(d.totalLiabilities, 'USD', baseCurrency)
+        }));
+    }, [data, timeRange, baseCurrency]);
+
+    const formatCurrencyAxis = (value: number) => {
+        // Use custom compact format but respecting currency symbol
+        // formatCurrency returns full string, we stick to compact for axis
+        return formatCurrency(value, baseCurrency, { notation: 'compact', maximumFractionDigits: 1 } as any);
     };
 
     const formatDate = (dateStr: string) => {
@@ -75,7 +87,7 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
                     tickLine={false}
                 />
                 <YAxis
-                    tickFormatter={formatCurrency}
+                    tickFormatter={formatCurrencyAxis}
                     className="text-muted-foreground"
                     tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
                     axisLine={false}
@@ -92,7 +104,7 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
                     formatter={(value: any, name: any) => {
                         const num = Number(value);
                         const label = name === 'netWorth' ? 'Net Worth' : 'Total Debt';
-                        return [`$${num.toLocaleString()}`, label];
+                        return [formatCurrency(num, baseCurrency), label];
                     }}
                     labelFormatter={formatDate}
                     labelStyle={{ color: 'var(--muted-foreground)', marginBottom: '4px', fontSize: '12px' }}

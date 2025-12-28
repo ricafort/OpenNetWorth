@@ -6,9 +6,11 @@ import { useEffect, useState } from 'react';
 
 export default function DemoBanner() {
     const [visible, setVisible] = useState(false);
+    const [label, setLabel] = useState<string>('');
 
     useEffect(() => {
         setVisible(isDemoMode());
+        setLabel(localStorage.getItem('clearworth_demo_profile_label') || 'Sample Data');
     }, []);
 
     if (!visible) return null;
@@ -18,7 +20,7 @@ export default function DemoBanner() {
             <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2 text-amber-800 text-sm font-medium">
                     <AlertCircle size={16} />
-                    <span>Demo Mode: You are exploring with sample data.</span>
+                    <span>Demo Mode: You are exploring <strong>{label}</strong>.</span>
                 </div>
                 <div className="flex gap-2">
                     <button

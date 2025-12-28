@@ -36,6 +36,11 @@ ClearWorth is a personal net worth tracking application designed to help you vis
 *   **Data Ownership**: Full control over your data with export and delete capabilities.
 *   **Row-Level Security**: Built on Supabase RLS to ensure data isolation.
 
+### 🌍 **Global Currency Support**
+*   **Dynamic Conversion**: Set your preferred base currency (e.g., PHP, EUR, GBP).
+*   **Intelligent Forms**: Input fields automatically adapt to your selected currency.
+*   **Unified Display**: All widgets, charts, and historical values automatically converted and normalized.
+
 ### 🎮 **Gamification**
 *   **Achievement Badges**: Unlock badges for financial milestones (e.g., "Positive Net Worth," "Debt Free").
 *   **Onboarding Tour**: Interactive guide for new users.

@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, PieChart } from 'lucide-react';
 import { Asset, AssetType, CurrencyCode } from '@/types';
 import { loadAssets, saveAssets } from '@/lib/storage';
-import CurrencySelector from '@/components/CurrencySelector';
-import { formatCurrency } from '@/lib/currencyService';
+import { useDashboard } from '@/contexts/DashboardContext'; // Import useDashboard
+import { formatCurrency, convertAmount } from '@/lib/currencyService'; // Import convertAmount
+import CurrencySelector from '@/components/CurrencySelector'; // Restore Import
 
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -14,6 +15,8 @@ export default function AssetsPage() {
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
+    const { baseCurrency } = useDashboard(); // Get baseCurrency
+
     const blurClass = isPrivacyBlur ? 'privacy-value' : '';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
@@ -26,7 +29,7 @@ export default function AssetsPage() {
 
 
 
-    const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>('USD');
+    const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>(baseCurrency);
 
     const handleAddAsset = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -111,6 +114,11 @@ export default function AssetsPage() {
         }
     };
 
+    // Calculate Total in Base Currency
+    const totalValue = assets.reduce((sum, asset) => {
+        return sum + convertAmount(asset.value, asset.currency || 'USD', baseCurrency);
+    }, 0);
+
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-end">
@@ -119,7 +127,10 @@ export default function AssetsPage() {
                     <p className="text-muted-foreground mt-2 font-medium">Manage everything you own in one place.</p>
                 </div>
                 <button
-                    onClick={() => setIsAdding(true)}
+                    onClick={() => {
+                        setIsAdding(true);
+                        setDefaultCurrency(baseCurrency);
+                    }}
                     className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold transition-all shadow-lg shadow-primary/10 active:scale-95 hover:opacity-90"
                 >
                     <Plus size={20} />
@@ -276,7 +287,7 @@ export default function AssetsPage() {
                                             </span>
                                         </td>
                                         <td className={`px-6 py-5 text-right font-mono font-black text-foreground ${blurClass}`}>
-                                            {formatCurrency(asset.value, asset.currency || 'USD')}
+                                            {formatCurrency(convertAmount(asset.value, asset.currency || 'USD', baseCurrency), baseCurrency)}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex justify-center items-center gap-3">
@@ -297,7 +308,7 @@ export default function AssetsPage() {
                         <tr>
                             <td colSpan={2} className="px-6 py-6 text-muted-foreground uppercase text-xs tracking-widest">Total Portfolio Value</td>
                             <td className={`px-6 py-6 text-right text-xl text-emerald-600 font-black ${blurClass}`}>
-                                ${assets.reduce((sum, a) => sum + a.value, 0).toLocaleString()}
+                                {formatCurrency(totalValue, baseCurrency)}
                             </td>
                             <td></td>
                         </tr>

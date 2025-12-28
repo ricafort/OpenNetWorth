@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, TrendingUp, TrendingDown, DollarSign, Repeat, History } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { RecurringTransaction, CashFlowEntry } from '@/types';
 import {
     loadRecurringTransactions,
@@ -11,8 +11,12 @@ import {
 } from '@/lib/storage';
 import RecurringList from '@/components/RecurringList';
 import RecurringTransactionForm from '@/components/RecurringTransactionForm';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { formatCurrency, convertAmount } from '@/lib/currencyService';
 
 export default function CashFlowPage() {
+    const { baseCurrency } = useDashboard();
+
     // Shared State
     const [view, setView] = useState<'history' | 'autopilot'>('history');
 
@@ -60,10 +64,6 @@ export default function CashFlowPage() {
         const month = formData.get('month') as string;
         const income = parseFloat(formData.get('income') as string) || 0;
         const expenses = parseFloat(formData.get('expenses') as string) || 0;
-
-        // Check if recurring should be auto-applied (if newly creating a month)
-        // This is a simple logic: if user is creating a new entry, we can ask or just do it.
-        // For now, simpler manual entry.
 
         const newEntry: CashFlowEntry = {
             id: editingId || `cf-${Date.now()}`,
@@ -124,8 +124,19 @@ export default function CashFlowPage() {
 
     // --- Derived Metrics ---
     const latest = entries[entries.length - 1] || { income: 0, expenses: 0 };
-    const net = latest.income - latest.expenses;
-    const savingsRate = latest.income > 0 ? (net / latest.income) * 100 : 0;
+
+    // Currency Conversion for Display
+    const latestIncome = convertAmount(latest.income, 'USD', baseCurrency);
+    const latestExpenses = convertAmount(latest.expenses, 'USD', baseCurrency);
+    const net = latestIncome - latestExpenses;
+    const savingsRate = latestIncome > 0 ? (net / latestIncome) * 100 : 0;
+
+    // Convert entries for Chart
+    const chartData = entries.map(e => ({
+        ...e,
+        income: convertAmount(e.income, 'USD', baseCurrency),
+        expenses: convertAmount(e.expenses, 'USD', baseCurrency)
+    }));
 
     return (
         <div className="space-y-8 max-w-5xl mx-auto">
@@ -180,11 +191,11 @@ export default function CashFlowPage() {
                                     <input name="month" type="month" defaultValue={new Date().toISOString().slice(0, 7)} className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-muted-foreground">Total Income ($)</label>
+                                    <label className="text-sm font-medium text-muted-foreground">Total Income ({baseCurrency})</label>
                                     <input name="income" type="number" step="0.01" placeholder="0.00" className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-muted-foreground">Total Expenses ($)</label>
+                                    <label className="text-sm font-medium text-muted-foreground">Total Expenses ({baseCurrency})</label>
                                     <input name="expenses" type="number" step="0.01" placeholder="0.00" className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
                                 </div>
                                 <div className="flex gap-2">
@@ -204,7 +215,7 @@ export default function CashFlowPage() {
                                 </div>
                                 <span className="text-muted-foreground font-medium">Income</span>
                             </div>
-                            <p className="text-2xl font-bold text-foreground privacy-value">${latest.income.toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-foreground privacy-value">{formatCurrency(latestIncome, baseCurrency)}</p>
                         </div>
                         <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
                             <div className="flex items-center gap-3 mb-2">
@@ -213,7 +224,7 @@ export default function CashFlowPage() {
                                 </div>
                                 <span className="text-muted-foreground font-medium">Expenses</span>
                             </div>
-                            <p className="text-2xl font-bold text-foreground privacy-value">${latest.expenses.toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-foreground privacy-value">{formatCurrency(latestExpenses, baseCurrency)}</p>
                         </div>
                         <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
                             <div className="flex items-center gap-3 mb-2">
@@ -224,7 +235,7 @@ export default function CashFlowPage() {
                             </div>
                             <div className="flex justify-between items-baseline">
                                 <p className={`text-2xl font-bold ${net >= 0 ? 'text-emerald-600' : 'text-rose-600'} privacy-value`}>
-                                    {net >= 0 ? '+' : ''}${net.toLocaleString()}
+                                    {net >= 0 ? '+' : ''}{formatCurrency(net, baseCurrency)}
                                 </p>
                                 <span className="text-sm font-semibold text-slate-400">{savingsRate.toFixed(1)}% Rate</span>
                             </div>
@@ -235,7 +246,7 @@ export default function CashFlowPage() {
                     <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
                         <h3 className="text-lg font-bold text-foreground mb-6">Monthly Trends</h3>
                         <div className="w-full flex items-center justify-center">
-                            <BarChart width={900} height={350} data={entries} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                            <BarChart width={900} height={350} data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                 <XAxis
                                     dataKey="month"
@@ -248,12 +259,12 @@ export default function CashFlowPage() {
                                     axisLine={false}
                                     tickLine={false}
                                     tick={{ fill: '#64748b', fontSize: 12 }}
-                                    tickFormatter={(val) => `$${val / 1000}k`}
+                                    tickFormatter={(val) => formatCurrency(val, baseCurrency, 'en-US').replace(/\p{Sc}/u, '').trim()}
                                 />
                                 <Tooltip
                                     cursor={{ fill: '#f1f5f9' }}
                                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    formatter={(val: any) => `$${Number(val).toLocaleString()}`}
+                                    formatter={(val: any) => formatCurrency(Number(val), baseCurrency)}
                                 />
                                 <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
                                 <Bar dataKey="expenses" name="Expenses" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20} />
@@ -277,23 +288,28 @@ export default function CashFlowPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-sm">
-                                {entries.slice().reverse().map((entry) => (
-                                    <tr key={entry.id} className="hover:bg-muted transition-colors">
-                                        <td className="px-6 py-4 font-semibold text-slate-800">{entry.month}</td>
-                                        <td className="px-6 py-4 text-right text-emerald-600 font-medium privacy-value">+${entry.income.toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-right text-rose-600 font-medium privacy-value">-${entry.expenses.toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-right font-bold text-slate-900 privacy-value">${(entry.income - entry.expenses).toLocaleString()}</td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex justify-center items-center gap-3">
-                                                <button className="text-slate-400 hover:text-blue-500" onClick={() => {
-                                                    setIsAdding(true); /* Reuse form logic manually or refactor */
-                                                    /* NOTE: Simplified for now, real implementation would populate form */
-                                                }}>Edit</button>
-                                                <button className="text-slate-400 hover:text-rose-500" onClick={() => handleDeleteEntry(entry.id)}>Delete</button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {entries.slice().reverse().map((entry) => {
+                                    const inc = convertAmount(entry.income, 'USD', baseCurrency);
+                                    const exp = convertAmount(entry.expenses, 'USD', baseCurrency);
+                                    const netVal = inc - exp;
+
+                                    return (
+                                        <tr key={entry.id} className="hover:bg-muted transition-colors">
+                                            <td className="px-6 py-4 font-semibold text-slate-800">{entry.month}</td>
+                                            <td className="px-6 py-4 text-right text-emerald-600 font-medium privacy-value">+{formatCurrency(inc, baseCurrency)}</td>
+                                            <td className="px-6 py-4 text-right text-rose-600 font-medium privacy-value">-{formatCurrency(exp, baseCurrency)}</td>
+                                            <td className="px-6 py-4 text-right font-bold text-slate-900 privacy-value">{formatCurrency(netVal, baseCurrency)}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex justify-center items-center gap-3">
+                                                    <button className="text-slate-400 hover:text-blue-500" onClick={() => {
+                                                        setIsAdding(true); /* Reuse form logic manually or refactor */
+                                                    }}>Edit</button>
+                                                    <button className="text-slate-400 hover:text-rose-500" onClick={() => handleDeleteEntry(entry.id)}>Delete</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -328,6 +344,7 @@ export default function CashFlowPage() {
                         onEdit={setEditingRecurring}
                         onDelete={handleDeleteRecurring}
                         onToggle={handleToggleRecurring}
+                        currencyCode={baseCurrency}
                     />
 
                     {/* Editor Modal */}

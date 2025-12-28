@@ -54,7 +54,15 @@ export default function OnboardingTour() {
         setMounted(true);
         // Only run on dashboard and if not completed before
         const hasCompletedTour = localStorage.getItem('clearworth_tour_completed');
-        if (!hasCompletedTour && pathname === '/') {
+        const isDemo = localStorage.getItem('clearworth_demo_mode') === 'true';
+        const isInitialized = localStorage.getItem('clearworth_initialized') === 'true';
+
+        // Conditions:
+        // 1. Not completed tour
+        // 2. On dashboard
+        // 3. User passed welcome screen (isInitialized)
+        // 4. NOT in demo mode (user asked not to show it there)
+        if (!hasCompletedTour && pathname === '/' && isInitialized && !isDemo) {
             // Small delay to ensure layout is ready
             setTimeout(() => startTour(), 1000);
         }

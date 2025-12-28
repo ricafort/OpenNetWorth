@@ -2,16 +2,21 @@
 
 import { PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import { Asset } from '@/types';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { convertAmount, formatCurrency } from '@/lib/currencyService';
 
 interface AssetAllocationChartProps {
     assets: Asset[];
 }
 
 export default function AssetAllocationChart({ assets }: AssetAllocationChartProps) {
-    // 1. Group assets by type and sum values
+    const { baseCurrency } = useDashboard();
+
+    // 1. Group assets by type and sum values (Converted to Base Currency)
     const dataByType = assets.reduce((acc, asset) => {
         const type = asset.type;
-        acc[type] = (acc[type] || 0) + asset.value;
+        const val = convertAmount(asset.value, asset.currency || 'USD', baseCurrency);
+        acc[type] = (acc[type] || 0) + val;
         return acc;
     }, {} as Record<string, number>);
 
@@ -63,7 +68,7 @@ export default function AssetAllocationChart({ assets }: AssetAllocationChartPro
                         ))}
                     </Pie>
                     <Tooltip
-                        formatter={(value: any) => [`$${Number(value).toLocaleString()}`, 'Value']}
+                        formatter={(value: any) => [formatCurrency(Number(value), baseCurrency), 'Value']}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                     <Legend

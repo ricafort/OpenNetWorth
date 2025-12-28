@@ -6,7 +6,7 @@ import { Theme, loadTheme, saveTheme, getEffectiveTheme } from '@/lib/theme';
 interface ThemeContextType {
     theme: Theme;
     setTheme: (theme: Theme) => void;
-    effectiveTheme: 'light' | 'stealth';
+    effectiveTheme: 'light' | 'dark' | 'stealth';
     isPrivacyBlur: boolean;
     togglePrivacyBlur: () => void;
 }
@@ -44,6 +44,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (effectiveTheme === 'stealth') {
             root.classList.add('stealth');
             root.classList.add('dark'); // Map stealth to dark
+        } else if (effectiveTheme === 'dark') {
+            root.classList.add('dark');
         } else {
             root.classList.add('light');
         }

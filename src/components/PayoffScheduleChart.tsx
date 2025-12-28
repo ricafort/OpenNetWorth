@@ -2,12 +2,16 @@
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PayoffScheduleEntry } from '@/types';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { formatCurrency } from '@/lib/currencyService';
 
 interface PayoffScheduleChartProps {
     schedule: PayoffScheduleEntry[];
 }
 
 export default function PayoffScheduleChart({ schedule }: PayoffScheduleChartProps) {
+    const { baseCurrency } = useDashboard();
+
     if (!schedule || schedule.length === 0) return null;
 
     // Aggregate by month to get total remaining balance curve
@@ -47,7 +51,7 @@ export default function PayoffScheduleChart({ schedule }: PayoffScheduleChartPro
                         hide
                     />
                     <Tooltip
-                        formatter={(value: any) => [`$${Number(value).toLocaleString()}`, 'Remaining Debt']}
+                        formatter={(value: any) => [formatCurrency(Number(value), baseCurrency), 'Remaining Debt']}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                     <Area

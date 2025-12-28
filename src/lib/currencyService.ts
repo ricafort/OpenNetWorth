@@ -11,6 +11,7 @@ export const SUPPORTED_CURRENCIES: { code: CurrencyCode; symbol: string; name: s
     { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
     { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
     { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+    { code: 'PHP', symbol: '₱', name: 'Philippine Peso' },
 ];
 
 // Mock Exchange Rates (Base: USD)
@@ -25,9 +26,14 @@ const EXCHANGE_RATES: Record<CurrencyCode, number> = {
     'CHF': 0.91,  // 1 USD = 0.91 CHF
     'CNY': 7.24,  // 1 USD = 7.24 CNY
     'INR': 83.5,  // 1 USD = 83.5 INR
-    'SGD': 1.35   // 1 USD = 1.35 SGD
+    'SGD': 1.35,  // 1 USD = 1.35 SGD
+    'PHP': 56.5   // 1 USD = 56.5 PHP
 };
 
+/**
+ * Calculates the exchange rate between two currencies via USD as the base.
+ * Formula: Target Rate / Source Rate
+ */
 export const getExchangeRate = (from: CurrencyCode, to: CurrencyCode): number => {
     const fromRate = EXCHANGE_RATES[from] || 1;
     const toRate = EXCHANGE_RATES[to] || 1;
@@ -37,16 +43,36 @@ export const getExchangeRate = (from: CurrencyCode, to: CurrencyCode): number =>
     return toRate / fromRate;
 };
 
+/**
+ * Converts an amount from one currency to another.
+ * @param amount The value to convert
+ * @param from Source Currency Code
+ * @param to Target Currency Code
+ */
 export const convertAmount = (amount: number, from: CurrencyCode, to: CurrencyCode): number => {
     if (from === to) return amount;
     const rate = getExchangeRate(from, to);
     return amount * rate;
 };
 
+/**
+ * Formats a number as a currency string.
+ * @param amount The number to format
+ * @param currency The currency code (e.g., 'USD', 'PHP')
+ * @param locale The locale string (default 'en-US')
+ */
 export const formatCurrency = (amount: number, currency: CurrencyCode, locale: string = 'en-US'): string => {
     return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currency,
         maximumFractionDigits: 0
     }).format(amount);
+};
+
+/**
+ * Returns the currency symbol for a given currency code.
+ * @param currency The currency code
+ */
+export const getCurrencySymbol = (currency: CurrencyCode): string => {
+    return SUPPORTED_CURRENCIES.find(c => c.code === currency)?.symbol || '$';
 };

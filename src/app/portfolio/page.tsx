@@ -15,6 +15,8 @@ import { Plus, ArrowRight, TrendingUp } from 'lucide-react';
 import AllocationPieChart from '@/components/AllocationPieChart';
 import { generateInvestmentAdviceAction } from '@/app/actions';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { convertAmount } from '@/lib/currencyService';
 
 export default function PortfolioPage() {
     const [assets, setAssets] = useState<Asset[]>([]);
@@ -22,6 +24,7 @@ export default function PortfolioPage() {
     const [loading, setLoading] = useState(true);
     const [advice, setAdvice] = useState<string>('');
     const { isPrivacyBlur } = useTheme();
+    const { baseCurrency } = useDashboard(); // Get Base Currency
 
     useEffect(() => {
         const loadData = async () => {
@@ -48,42 +51,69 @@ export default function PortfolioPage() {
                     return { ticker: t, type };
                 });
 
-            // Fetch live prices
+            // Fetch live prices (Assume USD)
+            let prices = new Map<string, any>();
             if (requests.length > 0) {
-                const prices = await fetchAllPrices(requests);
-
-                // Update assets with live prices
-                investmentAssets.forEach(asset => {
-                    if (asset.investment && asset.investment.ticker) {
-                        const priceData = prices.get(asset.investment.ticker);
-                        if (priceData) {
-                            asset.investment.currentPrice = priceData.price;
-                            asset.investment.previousClose = priceData.previousClose;
-                            asset.investment.lastPriceUpdate = priceData.lastUpdated;
-                        }
-                    }
-                });
+                prices = await fetchAllPrices(requests);
             }
 
-            // Run analysis
-            // We pass ALL loaded assets, but the analysis logic primarily handles those with investment details
-            // However, to show true portfolio weight, we might want to include all assets?
-            // For "Growth Engine", we usually just want liquid investments.
-            // Let's pass all assets but the analysis will distinguish.
-            // Actually, for this specific "Growth Engine" page, let's focus on the investment assets.
+            // Normalize Assets to Base Currency
+            const normalizedAssets = investmentAssets.map(asset => {
+                const newAsset = { ...asset }; // shallow copy
 
-            const result = analyzePortfolio(investmentAssets);
+                // 1. Handle Investments with Tickers
+                if (newAsset.investment && newAsset.investment.ticker) {
+                    const priceData = prices.get(newAsset.investment.ticker);
+                    if (priceData) {
+                        // Price is likely USD. Convert to Base Currency.
+                        const priceInBase = convertAmount(priceData.price, 'USD', baseCurrency);
+                        const prevCloseInBase = convertAmount(priceData.previousClose, 'USD', baseCurrency);
+
+                        newAsset.investment = {
+                            ...newAsset.investment,
+                            currentPrice: priceInBase,
+                            previousClose: prevCloseInBase,
+                            lastPriceUpdate: priceData.lastUpdated,
+                            costBasis: convertAmount(newAsset.investment.costBasis, 'USD', baseCurrency) // Assume costBasis was USD? Or User Input?
+                            // Wait, costBasis is user input. We don't know the currency of costBasis unless we store it.
+                            // AssetsPage stores manual assets with `currency`. But investments?
+                            // In AssetsPage, investment assets ALSO have a top-level `currency` field.
+                        };
+
+                        // IMPORTANT: costBasis is likely entered in the asset.currency.
+                        // So we should convert costBasis from asset.currency to baseCurrency.
+                        newAsset.investment.costBasis = convertAmount(asset.investment!.costBasis, asset.currency || 'USD', baseCurrency);
+                    }
+                }
+
+                // 2. Handle Manual Value (Normalize top-level value)
+                // analyzePortfolio uses `value` as fallback if not investment.
+                // But it also sets `value = shares * price` if investment.
+                // So for investments, `currentPrice` matters.
+                // For non-investments (if any leak in), `value` matters.
+
+                // Let's normalize `value` anyway.
+                newAsset.value = convertAmount(asset.value, asset.currency || 'USD', baseCurrency);
+
+                return newAsset;
+            });
+
+            // Run analysis on Normalized Assets
+            const result = analyzePortfolio(normalizedAssets);
             setAnalysis(result);
-            setAssets(investmentAssets);
+            setAssets(normalizedAssets);
             setLoading(false);
 
-            // Fetch Advice
+            // Fetch Advice (Use normalized total value)
+            const totalValueUSD = convertAmount(result.totalValue, baseCurrency, 'USD'); // AI expects USD context usually? Or just numbers?
+            // "Warren Buffett" persona probably thinks in USD.
+
             if (investmentAssets.length > 0) {
                 generateInvestmentAdviceAction(
-                    "Warren Buffett", // Default archetype suitable for investing
+                    "Warren Buffett",
                     "the Oracle of Omaha, focused on value and long-term holding",
                     {
-                        totalValue: result.totalValue,
+                        totalValue: totalValueUSD,
                         totalGainPercent: result.totalGainPercent,
                         topHoldings: result.holdings.slice(0, 3).map(h => ({ ticker: h.ticker, percentage: h.weight })),
                         sectorAllocation: result.sectorBreakdown.slice(0, 3).map(s => ({ sector: s.sector, percentage: s.weight })),
@@ -94,7 +124,7 @@ export default function PortfolioPage() {
         };
 
         loadData();
-    }, []);
+    }, [baseCurrency]); // Re-run when baseCurrency changes
 
     if (loading) {
         return (
@@ -131,7 +161,7 @@ export default function PortfolioPage() {
             ) : (
                 <div className="space-y-8">
                     {/* Summary Cards */}
-                    <PortfolioSummary analysis={analysis} privacyBlur={isPrivacyBlur} />
+                    <PortfolioSummary analysis={analysis} privacyBlur={isPrivacyBlur} currencyCode={baseCurrency} />
 
                     {/* Concentration Warnings */}
                     <ConcentrationWarning warnings={analysis.concentrationWarnings} />
@@ -148,7 +178,7 @@ export default function PortfolioPage() {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {analysis.holdings.map((holding, idx) => (
-                                    <HoldingCard key={`${holding.ticker}-${idx}`} holding={holding} privacySensitive={isPrivacyBlur} />
+                                    <HoldingCard key={`${holding.ticker}-${idx}`} holding={holding} privacySensitive={isPrivacyBlur} currencyCode={baseCurrency} />
                                 ))}
                             </div>
                         </div>

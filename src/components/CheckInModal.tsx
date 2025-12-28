@@ -70,7 +70,7 @@ export default function CheckInModal({ isOpen, onClose, onUpdate }: CheckInModal
                             className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
                         >
                             <CheckCircle2 size={18} />
-                            Update Now
+                            Review Dashboard
                         </button>
                     </div>
                 </div>

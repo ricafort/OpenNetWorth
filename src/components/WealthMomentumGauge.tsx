@@ -1,15 +1,26 @@
 'use client';
 
-import { WealthMomentum } from '@/types';
+import { WealthMomentum, CurrencyCode } from '@/types';
 import { PieChart, Pie, Cell } from 'recharts';
 import { Info } from 'lucide-react';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { convertAmount, formatCurrency } from '@/lib/currencyService';
 
 interface Props {
     momentum: WealthMomentum;
 }
 
 export default function WealthMomentumGauge({ momentum }: Props) {
-    const { score, monthlySavings, annualProjectedSavings } = momentum;
+    const { baseCurrency } = useDashboard();
+    const { score, monthlySavings, annualProjectedSavings, monthlyRecurringIncome, monthlyRecurringExpenses } = momentum;
+
+    // Convert values to base currency (Assuming momentum is calculated in USD)
+    // If momentum inputs (recurring transactions) are mixed, convertAmount logic in storage should handle it, 
+    // but typically we assume the calculated momentum struct is in USD if not otherwise specified.
+    // For this implementation, we assume momentum is in USD.
+    const monthlySavingsBase = convertAmount(monthlySavings, 'USD', baseCurrency);
+    const annualProjectedBase = convertAmount(annualProjectedSavings, 'USD', baseCurrency);
+
 
     // Determine color based on score
     let color = '#ef4444'; // Red (0-30)
@@ -64,10 +75,10 @@ export default function WealthMomentumGauge({ momentum }: Props) {
 
                 <div className="mt-4 text-center space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">
-                        Autopilot Savings: <span className="font-bold text-foreground privacy-value">${monthlySavings.toLocaleString()}/mo</span>
+                        Autopilot Savings: <span className="font-bold text-foreground privacy-value">{formatCurrency(monthlySavingsBase, baseCurrency)}/mo</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
-                        Projected <span className="font-bold text-emerald-600 privacy-value">${annualProjectedSavings.toLocaleString()}</span> / year
+                        Projected <span className="font-bold text-emerald-600 privacy-value">{formatCurrency(annualProjectedBase, baseCurrency)}</span> / year
                     </p>
                 </div>
 

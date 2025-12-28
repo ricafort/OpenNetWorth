@@ -3,6 +3,8 @@
 import React from 'react';
 import { NetWorthSnapshot } from '@/types';
 import { History, Calendar } from 'lucide-react';
+import { useDashboard } from '@/contexts/DashboardContext';
+import { formatCurrency, convertAmount } from '@/lib/currencyService';
 
 interface TimeMachineControlProps {
     history: NetWorthSnapshot[];
@@ -11,6 +13,8 @@ interface TimeMachineControlProps {
 }
 
 export default function TimeMachineControl({ history, currentDate, onSelectDate }: TimeMachineControlProps) {
+    const { baseCurrency } = useDashboard();
+
     if (history.length === 0) return null;
 
     // Filter to only snapshots that might have data (or all, if we want to show everything)
@@ -48,8 +52,8 @@ export default function TimeMachineControl({ history, currentDate, onSelectDate 
                 <button
                     onClick={() => onSelectDate(null)}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-between transition-all ${!currentDate
-                            ? 'bg-slate-900 text-white shadow-md'
-                            : 'hover:bg-slate-50 text-slate-600'
+                        ? 'bg-slate-900 text-white shadow-md'
+                        : 'hover:bg-slate-50 text-slate-600'
                         }`}
                 >
                     <span className="flex items-center gap-2">
@@ -64,8 +68,8 @@ export default function TimeMachineControl({ history, currentDate, onSelectDate 
                         key={snap.date}
                         onClick={() => onSelectDate(snap.date)}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-between transition-all ${currentDate === snap.date
-                                ? 'bg-amber-500 text-white shadow-md'
-                                : 'hover:bg-amber-100/50 text-slate-600'
+                            ? 'bg-amber-500 text-white shadow-md'
+                            : 'hover:bg-amber-100/50 text-slate-600'
                             }`}
                     >
                         <span className="flex items-center gap-2">
@@ -80,7 +84,7 @@ export default function TimeMachineControl({ history, currentDate, onSelectDate 
                                 <span className="opacity-30" title="Net Worth Only">📉</span>
                             )}
                             <span className="opacity-70 text-xs font-mono">
-                                ${snap.netWorth.toLocaleString()}
+                                {formatCurrency(convertAmount(snap.netWorth, 'USD', baseCurrency), baseCurrency)}
                             </span>
                         </div>
                     </button>
