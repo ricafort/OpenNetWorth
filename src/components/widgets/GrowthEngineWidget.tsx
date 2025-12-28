@@ -7,8 +7,12 @@ import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function GrowthEngineWidget() {
-    const { assets, isEditMode, hideWidget } = useDashboard();
+    const { assets: allAssets, isEditMode, hideWidget } = useDashboard();
     const { isPrivacyBlur } = useTheme();
+
+    const assets = allAssets.filter(a =>
+        a.type === 'investment' || a.type === 'crypto' || (a.investment && a.investment.ticker)
+    );
 
     // Logic to hide if empty, but in Widget system usually we let user decide layout.
     // But if no investments, it's empty.

@@ -177,8 +177,38 @@ export const fetchCryptoPrice = async (ticker: string): Promise<PriceData> => {
     }
 };
 
+// Consistent Mock Prices for Demo Personas
+const DEMO_PRICES: Record<string, number> = {
+    'VTI': 293,
+    'TSLA': 358,
+    'AAPL': 189,
+    'VOO': 502,
+    'BTC': 42500,
+    'ETH': 2350,
+    'SCHD': 78,
+    'QQQ': 408,
+    'BND': 72,
+    'VT': 105,
+    'MSFT': 420,
+    'NVDA': 950,
+    'AMZN': 185
+};
+
 // Fallback Mock Generator
 const getMockPrice = (ticker: string) => {
+    // Check if we have a defined demo price
+    if (DEMO_PRICES[ticker]) {
+        return {
+            ticker: ticker.toUpperCase(),
+            price: DEMO_PRICES[ticker],
+            previousClose: parseFloat((DEMO_PRICES[ticker] * 0.995).toFixed(2)), // Slight random movement
+            change: parseFloat((DEMO_PRICES[ticker] * 0.005).toFixed(2)),
+            changePercent: 0.5,
+            lastUpdated: new Date().toISOString(),
+            isMock: true
+        };
+    }
+
     const seed = ticker.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
     const basePrice = (seed % 500) + 50;
     const change = (Math.random() * 10) - 5;

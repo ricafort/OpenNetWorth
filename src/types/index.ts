@@ -11,7 +11,7 @@ export interface InvestmentDetails {
     lastPriceUpdate?: string;    // ISO timestamp
     dividendYield?: number;      // Annual yield %
     sector?: string;             // e.g., "Technology"
-    assetClass: 'stock' | 'etf' | 'crypto' | 'other';
+    assetClass: 'stock' | 'etf' | 'crypto' | 'bond' | 'mutual_fund' | 'index_fund' | 'real_estate' | 'other';
 }
 
 export interface Asset {

@@ -9,8 +9,13 @@ ClearWorth is a personal net worth tracking application designed to help you vis
 ### 📊 **Comprehensive Dashboard**
 *   **Net Worth Tracking**: Real-time calculation of Assets - Liabilities.
 *   **Interactive Widgets**: Drag-and-drop grid layout to customize your view.
-*   **Visualizations**: Asset Allocation pie charts and Net Worth history graphs.
+*   **Growth Engine**: Analyze portfolio performance, allocation, and projected dividend income.
 *   **Wealth Momentum**: Gauge your financial velocity and progress.
+
+### 🎭 **Smart Demo System**
+*   **5 Distinct Personas**: Experience the app as a Student, Family, Wealth Builder, and more.
+*   **Realistic Data**: Powered by a factory pattern with realistic asset prices (MSFT, AAPL, etc) and dividend yields.
+*   **Adopt Data**: Seamlessly convert your favorite demo profile into your starting real-world data.
 
 ### 🧠 **AI Mentorship ("Wisdom")**
 *   **Multi-Persona AI**: Consult with distinct AI personalities like generic "Long-Term Thinker," "Risk Guardian," and more.
