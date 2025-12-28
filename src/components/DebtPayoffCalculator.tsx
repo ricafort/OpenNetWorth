@@ -138,7 +138,7 @@ export default function DebtPayoffCalculator() {
                                 type="number"
                                 value={Math.round(extraPaymentBase)} // Display rounded for cleaner UI input
                                 onChange={(e) => handleExtraPaymentChange(Number(e.target.value))}
-                                className="w-full pl-8 pr-4 py-3 bg-muted border border-border rounded-xl font-bold text-foreground focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full pl-14 pr-4 py-3 bg-muted border border-border rounded-xl font-bold text-foreground focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
                         {strategy === 'minimum' && (
