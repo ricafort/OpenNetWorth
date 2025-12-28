@@ -14,7 +14,7 @@ export default function GoalsPage() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
     const { netWorth, baseCurrency } = useDashboard(); // Use Context
-    const blurClass = isPrivacyBlur ? 'privacy-value' : '';
+    const blurClass = 'privacy-value';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
     useEffect(() => {

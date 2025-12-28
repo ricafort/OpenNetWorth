@@ -172,7 +172,7 @@ export default function DebtPayoffCalculator() {
                                 <div>
                                     <p className="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Effective APR</p>
                                     <div className="flex items-baseline gap-2">
-                                        <p className="text-2xl font-black">{
+                                        <p className="text-2xl font-black privacy-value">{
                                             (() => {
                                                 const totalBal = calcLiabilities.reduce((sum, l) => sum + l.balance, 0);
                                                 if (totalBal === 0) return "0.0%";
@@ -203,7 +203,7 @@ export default function DebtPayoffCalculator() {
                             <div className="flex flex-wrap gap-8">
                                 <div>
                                     <p className="text-blue-100 text-sm font-medium mb-1">Time to Payoff</p>
-                                    <p className="text-2xl font-bold">{Math.ceil(result.monthsToPayoff)} months</p>
+                                    <p className="text-2xl font-bold privacy-value">{Math.ceil(result.monthsToPayoff)} months</p>
                                 </div>
                                 <div>
                                     <p className="text-blue-100 text-sm font-medium mb-1">Total Interest</p>

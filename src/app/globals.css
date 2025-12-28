@@ -90,6 +90,7 @@
   .stealth h2,
   .stealth h3,
   .stealth h4,
+  /* Stealth Mode: Forces text color to match background for sensitive values */
   .stealth .privacy-value {
     color: var(--background) !important;
   }

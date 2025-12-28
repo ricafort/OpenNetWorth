@@ -24,7 +24,7 @@ interface HoldingCardProps {
 export default function HoldingCard({ holding, privacySensitive = false, currencyCode = 'USD' }: HoldingCardProps) {
     const isPositive = holding.gain >= 0;
     const isDayPositive = holding.dayChange >= 0;
-    const blurClass = privacySensitive ? 'privacy-value' : '';
+    const blurClass = 'privacy-value';
 
     return (
         <div className={clsx(

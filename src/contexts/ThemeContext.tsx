@@ -43,7 +43,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
         if (effectiveTheme === 'stealth') {
             root.classList.add('stealth');
-            root.classList.add('dark'); // Map stealth to dark
+            root.classList.add('dark'); // Stealth Mode enforces Dark Mode + Hidden Values
         } else if (effectiveTheme === 'dark') {
             root.classList.add('dark');
         } else {

@@ -16,7 +16,7 @@ export default function LiabilitiesPage() {
     const { isPrivacyBlur } = useTheme();
     const { baseCurrency } = useDashboard(); // Get Global Base Currency
 
-    const blurClass = isPrivacyBlur ? 'privacy-value' : '';
+    const blurClass = 'privacy-value';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
     useEffect(() => {

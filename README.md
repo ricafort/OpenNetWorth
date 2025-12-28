@@ -32,7 +32,8 @@ ClearWorth is a personal net worth tracking application designed to help you vis
 *   **Payoff Visuals**: Interactive charts showing interest savings and payoff dates.
 
 ### 🛡️ **Privacy & Security**
-*   **Privacy Mode**: One-click "Blur Values" feature for using the app in public spaces or sharing screenshots.
+*   **Stealth Mode**: A dedicated "Stealth" theme that forces dark mode and completely hides sensitive financial values (matching them to the background color) for safe usage in public spaces.
+*   **Privacy Blur**: One-click "Blur Values" feature for temporarily obscuring figures when sharing screens.
 *   **Data Ownership**: Full control over your data with export and delete capabilities.
 *   **Row-Level Security**: Built on Supabase RLS to ensure data isolation.
 
@@ -102,7 +103,8 @@ ClearWorth is a personal net worth tracking application designed to help you vis
 *   **Adding Data**: Use the (+) buttons in Assets or Liabilities sections to add items.
 *   **Customizing Dashboard**: Click the "Customize" button to drag, resize, or hide widgets.
 *   **Consulting AI**: Click the "Get Insights" button or access the Mentors page to start a chat.
-*   **Privacy Mode**: Toggle the "Eye" icon in the top navigation to blur all financial figures.
+*   **Stealth Mode**: Switch to the "Stealth" theme in settings (or via the theme toggle) to activate dark mode with hidden values.
+*   **Privacy Blur**: Toggle the "Eye" icon to blur values without changing the theme.
 
 ## 🤝 Contributing
 
