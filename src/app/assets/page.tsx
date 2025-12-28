@@ -5,8 +5,8 @@ import { Plus, Trash2, Edit2, PieChart } from 'lucide-react';
 import { Asset, AssetType, CurrencyCode } from '@/types';
 import { loadAssets, saveAssets } from '@/lib/storage';
 import { useDashboard } from '@/contexts/DashboardContext'; // Import useDashboard
-import { formatCurrency, convertAmount } from '@/lib/currencyService'; // Import convertAmount
-import CurrencySelector from '@/components/CurrencySelector'; // Restore Import
+import { formatCurrency, convertAmount, getCurrencySymbol } from '@/lib/currencyService';
+import CurrencySelector from '@/components/CurrencySelector';
 
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -188,7 +188,7 @@ export default function AssetsPage() {
                                 <input name="shares" type="number" step="0.0001" placeholder="0" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Cost Basis ($)</label>
+                                <label className="text-sm font-bold text-muted-foreground">Cost Basis ({getCurrencySymbol(defaultCurrency)})</label>
                                 <input name="cost_basis" type="number" step="0.01" placeholder="Total Cost" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
                             </div>
                             <div className="space-y-1">
