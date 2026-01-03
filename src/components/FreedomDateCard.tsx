@@ -4,20 +4,21 @@
 import { useState, useEffect } from 'react';
 import { Liability, DebtPayoffResult } from '@/types';
 import { calculatePayoff } from '@/lib/debtCalculator';
-import { loadLiabilities, loadFreedomSettings } from '@/lib/storage';
+import { loadFreedomSettings } from '@/lib/storage';
 import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
+import { useProfile } from '@/contexts/ProfileContext';
 
 import { generateDebtAdviceAction } from '@/app/actions';
 
 export default function FreedomDateCard() {
+    const { liabilities } = useProfile();
     const [freedomDate, setFreedomDate] = useState<string | null>(null);
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
     const [hasDebt, setHasDebt] = useState(false);
     const [advice, setAdvice] = useState<string>('Analyzing your path to freedom...');
 
     useEffect(() => {
-        const liabilities = loadLiabilities();
         const activeDebts = liabilities.filter(l => l.balance > 0);
 
         if (activeDebts.length > 0) {
@@ -50,9 +51,33 @@ export default function FreedomDateCard() {
         } else {
             setHasDebt(false);
         }
-    }, []);
+    }, [liabilities]);
 
-    if (!hasDebt) return null;
+    if (!hasDebt) {
+        return (
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden h-full flex flex-col justify-between">
+                <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-2xl"></div>
+                <div className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm w-fit">
+                    <TrendingUp size={14} className="text-emerald-100" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-50">Status</span>
+                </div>
+
+                <div className="mt-4">
+                    <h3 className="text-3xl font-black tracking-tight">Debt Free! 🎉</h3>
+                    <p className="text-emerald-100 font-medium mt-1">You have no active liabilities.</p>
+                </div>
+
+                <div className="mt-6">
+                    <Link
+                        href="/freedom"
+                        className="text-xs font-bold bg-white text-emerald-600 px-4 py-2 rounded-lg inline-block hover:bg-emerald-50 transition-colors"
+                    >
+                        Plan Next Goal →
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden group">

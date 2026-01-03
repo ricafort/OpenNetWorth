@@ -6,12 +6,13 @@
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed": "npx tsx scripts/seed-benchmarks.ts",
+    "hydrate": "npx tsx scripts/hydrate-templates.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.89.0",
     "@types/react-grid-layout": "^1.3.6",
     "clsx": "^2.1.1",
     "core-js": "^3.47.0",
@@ -19,22 +20,28 @@
     "jspdf": "^3.0.4",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
+    "plaid": "^41.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-grid-layout": "^2.1.1",
     "react-joyride": "^2.9.3",
+    "react-plaid-link": "^4.1.1",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.89.0",
     "@tailwindcss/postcss": "^4",
     "@types/html2canvas": "^0.5.35",
     "@types/jspdf": "^1.3.3",
     "@types/node": "^20",
+    "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "pg": "^8.16.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

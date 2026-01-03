@@ -24,7 +24,8 @@ export default function RecurringList({ transactions, onEdit, onDelete, onToggle
             .filter(t => t.isActive)
             .reduce((sum, t) => {
                 const monthlyUSD = toMonthlyAmount(t.amount, t.frequency);
-                const monthlyConverted = convertAmount(monthlyUSD, 'USD', currencyCode);
+                // Convert from item's currency, not assume USD
+                const monthlyConverted = convertAmount(monthlyUSD, t.currency || 'USD', currencyCode);
                 return sum + monthlyConverted;
             }, 0);
     };
@@ -47,9 +48,9 @@ export default function RecurringList({ transactions, onEdit, onDelete, onToggle
                 ) : (
                     items.map(t => {
                         // Convert individual item amounts for display
-                        const amountConverted = convertAmount(t.amount, 'USD', currencyCode);
+                        const amountConverted = convertAmount(t.amount, t.currency || 'USD', currencyCode);
                         const monthlyUSD = toMonthlyAmount(t.amount, t.frequency);
-                        const monthlyConverted = convertAmount(monthlyUSD, 'USD', currencyCode);
+                        const monthlyConverted = convertAmount(monthlyUSD, t.currency || 'USD', currencyCode);
 
                         return (
                             <div key={t.id} className={`flex items-center gap-3 p-3 bg-white rounded-xl border transition-all ${t.isActive ? 'border-slate-200 shadow-sm' : 'border-border opacity-60 grayscale'}`}>

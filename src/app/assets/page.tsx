@@ -3,35 +3,39 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, PieChart } from 'lucide-react';
 import { Asset, AssetType, CurrencyCode } from '@/types';
-import { loadAssets, saveAssets } from '@/lib/storage';
-import { useDashboard } from '@/contexts/DashboardContext'; // Import useDashboard
+// import { loadAssets, saveAssets } from '@/lib/storage'; // Removed
+import { useDashboard } from '@/contexts/DashboardContext';
+import { useProfile } from '@/contexts/ProfileContext'; // Added
 import { formatCurrency, convertAmount, getCurrencySymbol } from '@/lib/currencyService';
 import CurrencySelector from '@/components/CurrencySelector';
 
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function AssetsPage() {
-    const [assets, setAssets] = useState<Asset[]>([]);
+    const {
+        assets,
+        addAsset,
+        updateAsset,
+        deleteAsset
+    } = useProfile();
+
+    const { baseCurrency } = useDashboard();
+
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
-    const { baseCurrency } = useDashboard(); // Get baseCurrency
 
     const blurClass = 'privacy-value';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
-    useEffect(() => {
-        const saved = loadAssets();
-        if (saved.length > 0) {
-            setAssets(saved);
-        }
-    }, []);
-
-
-
     const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>(baseCurrency);
 
-    const handleAddAsset = (e: React.FormEvent<HTMLFormElement>) => {
+    // Sync default currency with base (layout) currency when opening modal
+    useEffect(() => {
+        setDefaultCurrency(baseCurrency);
+    }, [baseCurrency]);
+
+    const handleAddAsset = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
 
@@ -41,14 +45,16 @@ export default function AssetsPage() {
         const costBasis = parseFloat(formData.get('cost_basis') as string) || 0;
         const sector = formData.get('sector') as string;
         const dividendYield = parseFloat(formData.get('dividend_yield') as string) || 0;
+        const interestRate = parseFloat(formData.get('interest_rate') as string) || 0;
 
         const newAsset: Asset = {
-            id: `asset-${Date.now()}`,
+            id: crypto.randomUUID(),
             name: formData.get('name') as string,
             type,
             value: parseFloat(formData.get('value') as string) || 0,
             currency: defaultCurrency,
             is_liquid: type === 'cash' || type === 'investment',
+            interest_rate: interestRate > 0 ? interestRate : undefined,
             last_updated: new Date().toISOString(),
             investment: (type === 'investment' || type === 'crypto') && ticker ? {
                 ticker,
@@ -60,57 +66,52 @@ export default function AssetsPage() {
             } : undefined
         };
 
-        const updated = [...assets, newAsset];
-        setAssets(updated);
-        saveAssets(updated);
+        await addAsset(newAsset);
         setIsAdding(false);
     };
 
-    const handleUpdateAsset = (e: React.FormEvent<HTMLFormElement>, id: string) => {
+    const handleUpdateAsset = async (e: React.FormEvent<HTMLFormElement>, id: string) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const currency = formData.get('currency') as CurrencyCode;
 
-        const updatedAssets = assets.map(asset => {
-            if (asset.id === id) {
-                const type = formData.get('type') as AssetType;
-                const ticker = formData.get('ticker') as string;
-                const shares = parseFloat(formData.get('shares') as string) || 0;
-                const costBasis = parseFloat(formData.get('cost_basis') as string) || 0;
-                const sector = formData.get('sector') as string;
-                const dividendYield = parseFloat(formData.get('dividend_yield') as string) || 0;
+        const existing = assets.find(a => a.id === id);
+        if (!existing) return;
 
-                return {
-                    ...asset,
-                    name: formData.get('name') as string,
-                    type,
-                    value: parseFloat(formData.get('value') as string) || 0,
-                    currency,
-                    is_liquid: type === 'cash' || type === 'investment',
-                    last_updated: new Date().toISOString(),
-                    investment: (type === 'investment' || type === 'crypto') && ticker ? {
-                        ticker,
-                        shares,
-                        costBasis,
-                        sector,
-                        dividendYield,
-                        assetClass: (type === 'crypto' ? 'crypto' : 'stock') as 'crypto' | 'stock' | 'etf' | 'other'
-                    } : undefined
-                };
-            }
-            return asset;
-        });
+        const type = formData.get('type') as AssetType;
+        const ticker = formData.get('ticker') as string;
+        const shares = parseFloat(formData.get('shares') as string) || 0;
+        const costBasis = parseFloat(formData.get('cost_basis') as string) || 0;
+        const sector = formData.get('sector') as string;
+        const dividendYield = parseFloat(formData.get('dividend_yield') as string) || 0;
+        const interestRate = parseFloat(formData.get('interest_rate') as string) || 0;
 
-        setAssets(updatedAssets);
-        saveAssets(updatedAssets);
+        const updatedAsset: Asset = {
+            ...existing, // Keep ID and other props
+            name: formData.get('name') as string,
+            type,
+            value: parseFloat(formData.get('value') as string) || 0,
+            currency,
+            is_liquid: type === 'cash' || type === 'investment',
+            interest_rate: interestRate > 0 ? interestRate : undefined,
+            last_updated: new Date().toISOString(),
+            investment: (type === 'investment' || type === 'crypto') && ticker ? {
+                ticker,
+                shares,
+                costBasis,
+                sector,
+                dividendYield,
+                assetClass: (type === 'crypto' ? 'crypto' : 'stock') as 'crypto' | 'stock' | 'etf' | 'other'
+            } : undefined
+        };
+
+        await updateAsset(updatedAsset);
         setEditingId(null);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('Delete this asset?')) {
-            const updated = assets.filter(a => a.id !== id);
-            setAssets(updated);
-            saveAssets(updated);
+            await deleteAsset(id);
         }
     };
 
@@ -176,6 +177,10 @@ export default function AssetsPage() {
                                 <label className="text-sm font-bold text-muted-foreground">Value</label>
                                 <input name="value" type="number" placeholder="0.00" step="0.01" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" required />
                             </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-bold text-muted-foreground">Yield %</label>
+                                <input name="interest_rate" type="number" placeholder="e.g 4.5" step="0.01" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
+                            </div>
                         </div>
 
                         <div id="add-investment-fields" className="md:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-xl border border-dashed border-border" style={{ display: 'none' }}>
@@ -215,6 +220,7 @@ export default function AssetsPage() {
                         <tr>
                             <th className="px-6 py-4">Name</th>
                             <th className="px-6 py-4">Type</th>
+                            <th className="px-6 py-4 text-right">Rate</th>
                             <th className="px-6 py-4 text-right">Value</th>
                             <th className="px-6 py-4 text-center">Actions</th>
                         </tr>
@@ -252,6 +258,7 @@ export default function AssetsPage() {
                                                     <option value="INR">INR</option>
                                                     <option value="SGD">SGD</option>
                                                 </select>
+                                                <input name="interest_rate" type="number" step="0.01" defaultValue={asset.interest_rate} placeholder="Rate %" className="w-full bg-background border border-border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" />
                                                 <input name="value" type="number" step="0.01" defaultValue={asset.value} className="w-full bg-background border border-border rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" required placeholder="Value" />
                                             </div>
 
@@ -285,6 +292,9 @@ export default function AssetsPage() {
                                             <span className="capitalize px-2 py-1 bg-muted text-muted-foreground rounded-md text-xs font-bold">
                                                 {asset.type.replace('_', ' ')}
                                             </span>
+                                        </td>
+                                        <td className="px-6 py-5 text-right font-mono text-sm text-muted-foreground">
+                                            {asset.interest_rate ? `${asset.interest_rate}%` : '-'}
                                         </td>
                                         <td className={`px-6 py-5 text-right font-mono font-black text-foreground ${blurClass}`}>
                                             {formatCurrency(convertAmount(asset.value, asset.currency || 'USD', baseCurrency), baseCurrency)}

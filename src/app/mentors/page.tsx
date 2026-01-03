@@ -6,8 +6,9 @@ import MentorSettings from '@/components/MentorSettings';
 import ActionConfirmCard from '@/components/ActionConfirmCard';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { saveAssets, saveLiabilities, loadAssets, loadLiabilities } from '@/lib/storage';
-import { Asset, Liability } from '@/types';
+import { Asset, Liability, Goal } from '@/types';
 import { formatCurrency, getCurrencySymbol } from '@/lib/currencyService';
+import { useProfile } from '@/contexts/ProfileContext';
 
 const mentors = [
     {
@@ -58,6 +59,7 @@ export default function MentorsPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const { refreshAttributes, metrics, baseCurrency } = useDashboard();
+    const { addAsset, addLiability, addGoal, profile } = useProfile(); // Use ProfileContext
     const [isGeneratingProfile, setIsGeneratingProfile] = useState(false);
 
     // Updated Chat State to support actions
@@ -109,35 +111,63 @@ export default function MentorsPage() {
         );
     };
 
-    const handleActionConfirm = (intent: any) => {
+    const handleActionConfirm = async (intent: any) => {
         try {
+            // Helper to safely parse amounts (handle "100,000", strings, etc)
+            const parseAmount = (val: any) => {
+                if (typeof val === 'number') return val;
+                if (typeof val === 'string') return parseFloat(val.replace(/,/g, '').replace(/[^0-9.-]/g, '')) || 0;
+                return 0;
+            };
+
+            const amount = parseAmount(intent.amount);
+
             if (intent.action === 'add_asset') {
-                const assets = loadAssets();
                 const newAsset: Asset = {
-                    id: `asset-${Date.now()}`,
+                    id: crypto.randomUUID(),
                     name: intent.name || 'New Asset',
-                    value: intent.amount || 0,
+                    value: amount, // Use parsed amount
                     type: intent.type || 'other', // strictly typed
-                    currency: intent.currency || 'USD',
+                    currency: intent.currency || baseCurrency || 'USD',
                     is_liquid: true,
                     last_updated: new Date().toISOString()
                 };
-                saveAssets([...assets, newAsset]);
+                await addAsset(newAsset);
             } else if (intent.action === 'add_liability') {
-                const liabilities = loadLiabilities();
                 const newLiability: Liability = {
-                    id: `liab-${Date.now()}`,
-                    user_id: 'user-1', // Default user
+                    id: crypto.randomUUID(),
+                    // Use actual profile ID if available, otherwise fallback (context handles the DB insert ID usually, but good to be explicit)
+                    user_id: profile?.id || 'user-1',
                     name: intent.name || 'New Liability',
-                    balance: intent.amount || 0,
+                    balance: amount, // Use parsed amount
                     type: intent.type || 'other', // strictly typed
-                    currency: intent.currency || 'USD',
+                    currency: intent.currency || baseCurrency || 'USD',
                     interest_rate: 0,
                     minimum_payment: 0,
                     is_good_debt: false,
                     last_updated: new Date().toISOString()
                 };
-                saveLiabilities([...liabilities, newLiability]);
+                await addLiability(newLiability);
+            } else if (intent.action === 'add_goal') {
+                const newGoal: Goal = {
+                    id: crypto.randomUUID(),
+                    name: intent.name || 'New Goal',
+                    targetAmount: amount || 10000, // Use parsed amount
+                    currentAmount: 0,
+                    startAmount: 0,
+                    currency: intent.currency || baseCurrency || 'USD',
+                    category: 'custom', // Default category
+                    createdAt: new Date().toISOString()
+                };
+                await addGoal(newGoal);
+            }
+
+            // Determine saved name for feedback
+            let savedName = intent.name;
+            if (!savedName) {
+                if (intent.action === 'add_asset') savedName = 'New Asset';
+                else if (intent.action === 'add_liability') savedName = 'New Liability';
+                else if (intent.action === 'add_goal') savedName = 'New Goal';
             }
 
             // Refresh Context
@@ -149,7 +179,7 @@ export default function MentorsPage() {
                 return [...filtered, {
                     role: 'mentor',
                     mentorName: 'System',
-                    content: `✅ Successfully added **${intent.name}** to your dashboard.`
+                    content: `✅ Successfully added **${savedName}** to your dashboard.`
                 }];
             });
 
@@ -189,7 +219,7 @@ export default function MentorsPage() {
             const intent = await parseResp.json();
 
             // 2. If valid action detected with high confidence
-            if (intent.action && intent.confidence > 0.7 && ['add_asset', 'add_liability'].includes(intent.action)) {
+            if (intent.action && intent.confidence > 0.7 && ['add_asset', 'add_liability', 'add_goal'].includes(intent.action)) {
                 setChat(prev => [...prev, { role: 'action_confirm', actionIntent: intent }]);
                 setIsLoading(false);
                 return;

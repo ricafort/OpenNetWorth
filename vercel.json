@@ -1,0 +1,34 @@
+{
+    "cron": [
+        {
+            "path": "/api/cron/sync-banks",
+            "schedule": "0 1 * * *"
+        },
+        {
+            "path": "/api/cron/update-prices",
+            "schedule": "0 8 * * 1-5"
+        }
+    ],
+    "regions": [
+        "syd1"
+    ],
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "X-Content-Type-Options",
+                    "value": "nosniff"
+                },
+                {
+                    "key": "X-Frame-Options",
+                    "value": "DENY"
+                },
+                {
+                    "key": "X-XSS-Protection",
+                    "value": "1; mode=block"
+                }
+            ]
+        }
+    ]
+}

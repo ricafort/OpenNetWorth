@@ -5,7 +5,8 @@ import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import { loadAssets } from '@/lib/storage';
 import { Asset } from '@/types';
-import { fetchAllPrices } from '@/lib/priceService';
+import { getPricesAction } from '@/app/actions/getPrices';
+import { isDemoMode } from '@/lib/demoMode';
 import { analyzePortfolio, PortfolioAnalysis } from '@/lib/portfolioAnalysis';
 import PortfolioSummary from '@/components/PortfolioSummary';
 import ConcentrationWarning from '@/components/ConcentrationWarning';
@@ -51,10 +52,12 @@ export default function PortfolioPage() {
                     return { ticker: t, type };
                 });
 
-            // Fetch live prices (Assume USD)
+            // Fetch live prices (SERVER ACTION)
             let prices = new Map<string, any>();
             if (requests.length > 0) {
-                prices = await fetchAllPrices(requests);
+                // Pass demo mode status explicitely
+                const pricesObj = await getPricesAction(requests, { isDemo: isDemoMode() });
+                prices = new Map(Object.entries(pricesObj));
             }
 
             // Normalize Assets to Base Currency

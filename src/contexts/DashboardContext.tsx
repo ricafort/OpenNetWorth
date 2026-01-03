@@ -1,10 +1,11 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Asset, Liability, Goal, NetWorthSnapshot, WealthMomentum, CurrencyCode, UserSettings, DashboardConfig } from '@/types';
-import { loadAssets, loadLiabilities, loadGoals, loadNetWorthHistory, loadSettings, calculateWealthMomentum, loadDashboardLayout, saveDashboardLayout } from '@/lib/storage';
+import { Asset, Liability, Goal, NetWorthSnapshot, WealthMomentum, CurrencyCode, UserSettings, DashboardConfig, RecurringTransaction } from '@/types';
+import { loadSettings, loadDashboardLayout, saveDashboardLayout, toMonthlyAmount } from '@/lib/storage';
 import { convertAmount } from '@/lib/currencyService';
 import { getDefaultLayout } from '@/lib/widgetRegistry';
+import { useProfile } from '@/contexts/ProfileContext';
 
 interface DashboardContextType {
     // Financial Data
@@ -38,69 +39,103 @@ interface DashboardContextType {
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-    // --- Financial State ---
-    const [assets, setAssets] = useState<Asset[]>([]);
-    const [liabilities, setLiabilities] = useState<Liability[]>([]);
-    const [goals, setGoals] = useState<Goal[]>([]);
-    const [netWorthHistory, setNetWorthHistory] = useState<NetWorthSnapshot[]>([]);
+    // --- Financial State (Sourced from ProfileContext) ---
+    const {
+        profile, isDemoMode,
+        assets, liabilities, goals, history, recurring,
+        refreshData: refreshProfileData
+    } = useProfile();
+
     const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('USD');
     const [momentum, setMomentum] = useState<WealthMomentum | null>(null);
     const [metrics, setMetrics] = useState({ assets: 0, liabilities: 0, netWorth: 0 });
     const [metricsUSD, setMetricsUSD] = useState({ assets: 0, liabilities: 0, netWorth: 0 });
 
     const loadData = useCallback(() => {
-        // Settings
-        const settings = loadSettings();
-        setBaseCurrency(settings.baseCurrency);
+        // Settings / Currency Logic
+        // 1. If in Demo Mode (or profile has a preference), use that currency.
+        // 2. Otherwise fall back to local device settings.
+        let targetCurrency: CurrencyCode = 'USD';
 
-        // Assets & Liabilities & Goals
-        const loadedAssets = loadAssets();
-        const loadedLiabilities = loadLiabilities();
-        const loadedGoals = loadGoals();
+        if (profile?.currency_code) {
+            // We trust the profile currency if it exists (Template or User preference)
+            targetCurrency = profile.currency_code as CurrencyCode;
+        } else {
+            const settings = loadSettings();
+            targetCurrency = settings.baseCurrency;
+        }
 
-        setAssets(loadedAssets);
-        setLiabilities(loadedLiabilities);
-        setGoals(loadedGoals);
+        setBaseCurrency(targetCurrency);
 
         // Calculate Totals (USD)
-        const totalAssetsUSD = loadedAssets.reduce((sum, a) => {
+        const totalAssetsUSD = assets.reduce((sum: number, a: Asset) => {
             return sum + convertAmount(a.value, a.currency || 'USD', 'USD');
         }, 0);
 
-        const totalLiabilitiesUSD = loadedLiabilities.reduce((sum, l) => {
-            return sum + convertAmount(l.balance, l.currency || 'USD', 'USD');
+        const totalLiabilitiesUSD = liabilities.reduce((sum: number, l: Liability) => {
+            const converted = convertAmount(l.balance, l.currency || 'USD', 'USD');
+            return sum + converted;
         }, 0);
 
         const netWorthUSD = totalAssetsUSD - totalLiabilitiesUSD;
         setMetricsUSD({ assets: totalAssetsUSD, liabilities: totalLiabilitiesUSD, netWorth: netWorthUSD });
 
         // Calculate Totals (Base Currency)
-        const totalAssetsBase = convertAmount(totalAssetsUSD, 'USD', settings.baseCurrency);
-        const totalLiabilitiesBase = convertAmount(totalLiabilitiesUSD, 'USD', settings.baseCurrency);
+        const totalAssetsBase = convertAmount(totalAssetsUSD, 'USD', targetCurrency);
+        const totalLiabilitiesBase = convertAmount(totalLiabilitiesUSD, 'USD', targetCurrency);
+
         setMetrics({
             assets: totalAssetsBase,
             liabilities: totalLiabilitiesBase,
             netWorth: totalAssetsBase - totalLiabilitiesBase
         });
 
-        // History
-        setNetWorthHistory(loadNetWorthHistory());
+        // Momentum Calculation (Live & Currency Aware)
+        // We calculate this HERE instead of storage.ts to use the Supabase data
+        const activeRecurring = recurring.filter(t => t.isActive);
 
-        // Momentum
-        setMomentum(calculateWealthMomentum());
-    }, []);
+        const monthlyIncome = activeRecurring
+            .filter(t => t.type === 'income')
+            .reduce((sum: number, t: RecurringTransaction) => {
+                const monthly = toMonthlyAmount(t.amount, t.frequency);
+                return sum + convertAmount(monthly, t.currency || 'USD', targetCurrency);
+            }, 0);
+
+        const monthlyExpenses = activeRecurring
+            .filter(t => t.type === 'expense')
+            .reduce((sum: number, t: RecurringTransaction) => {
+                const monthly = toMonthlyAmount(t.amount, t.frequency);
+                return sum + convertAmount(monthly, t.currency || 'USD', targetCurrency);
+            }, 0);
+
+        const monthlySavings = monthlyIncome - monthlyExpenses;
+        const savingsRate = monthlyIncome > 0 ? (monthlySavings / monthlyIncome) * 100 : 0;
+
+        let score = savingsRate;
+        if (savingsRate > 50) score += 10;
+        else if (savingsRate > 30) score += 5;
+        else if (savingsRate > 20) score += 5;
+        if (savingsRate < 0) score -= 10;
+        score = Math.max(0, Math.min(100, score));
+
+        setMomentum({
+            score: Math.round(score),
+            monthlyRecurringIncome: monthlyIncome,
+            monthlyRecurringExpenses: monthlyExpenses,
+            monthlySavings,
+            savingsRate,
+            annualProjectedSavings: monthlySavings * 12
+        });
+
+    }, [assets, liabilities, goals, profile, recurring]); // Added recurring dependency
 
     useEffect(() => {
         loadData();
-
-        // Listen for data updates across the app (storage.ts dispatches this)
-        const handleDataUpdate = () => {
-            loadData();
-        };
-
-        window.addEventListener('clearworth_data_updated', handleDataUpdate);
-        return () => window.removeEventListener('clearworth_data_updated', handleDataUpdate);
     }, [loadData]);
+    // We removed the event listener because ProfileContext should trigger re-renders when its data changes.
+    // However, if we write to LocalStorage directly bypassing ProfileContext (which we shouldn't), we might miss updates.
+    // ProfileContext handles writes now.
+
 
 
     // --- Layout State ---
@@ -153,10 +188,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     return (
         <DashboardContext.Provider value={{
-            assets, liabilities, goals, metrics, metricsUSD, netWorthHistory, momentum, baseCurrency,
+            assets, liabilities, goals, metrics, metricsUSD, netWorthHistory: history, momentum, baseCurrency,
             netWorth: metrics.netWorth, // Pass top-level
             refreshAttributes: loadData,
-            refreshHistory: () => setNetWorthHistory(loadNetWorthHistory()),
+            refreshHistory: refreshProfileData, // Just reload profile data
             isEditMode, setIsEditMode, layout, updateLayout, hideWidget, showWidget, resetLayout,
             openSettings, closeSettings, isSettingsOpen
         }}>

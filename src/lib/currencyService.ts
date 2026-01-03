@@ -12,6 +12,7 @@ export const SUPPORTED_CURRENCIES: { code: CurrencyCode; symbol: string; name: s
     { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
     { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
     { code: 'PHP', symbol: '₱', name: 'Philippine Peso' },
+    { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
 ];
 
 // Mock Exchange Rates (Base: USD)
@@ -27,7 +28,8 @@ const EXCHANGE_RATES: Record<CurrencyCode, number> = {
     'CNY': 7.24,  // 1 USD = 7.24 CNY
     'INR': 83.5,  // 1 USD = 83.5 INR
     'SGD': 1.35,  // 1 USD = 1.35 SGD
-    'PHP': 56.5   // 1 USD = 56.5 PHP
+    'PHP': 56.5,   // 1 USD = 56.5 PHP
+    'KRW': 1380.0  // 1 USD = ~1380 KRW
 };
 
 /**

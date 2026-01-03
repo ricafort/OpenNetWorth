@@ -5,6 +5,7 @@ import OnboardingProgress from '@/components/OnboardingProgress';
 import DashboardModals from '@/components/DashboardModals';
 import WidgetDrawer from '@/components/WidgetDrawer';
 import AchievementBadges from '@/components/AchievementBadges';
+import BankStatusCard from '@/components/bank/BankStatusCard';
 import dynamic from 'next/dynamic';
 
 import WelcomeScreen from '@/components/WelcomeScreen';
@@ -27,6 +28,10 @@ export default function DashboardPage() {
       <OnboardingProgress />
 
       <AchievementBadges />
+
+      <div className="mx-auto max-w-2xl transform transition-all duration-500 ease-in-out">
+        <BankStatusCard />
+      </div>
 
       {/* Main Draggable Grid */}
       <DashboardGrid />

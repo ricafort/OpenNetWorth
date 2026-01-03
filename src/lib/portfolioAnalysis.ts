@@ -33,11 +33,16 @@ export interface PortfolioAnalysis {
 export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
     // calculate total value first for weighting
     const totalValue = investments.reduce((sum, inv) => {
+        // Use manual value as primary source of truth if available
+        if (inv.value && inv.value > 0) {
+            return sum + inv.value;
+        }
+
         if (inv.investment) {
             const price = inv.investment.currentPrice || 0;
             return sum + (inv.investment.shares * price);
         }
-        return sum + inv.value; // Fallback for manual value
+        return sum + inv.value; // Fallback
     }, 0);
 
     const totalCostBasis = investments.reduce((sum, inv) =>
@@ -53,11 +58,20 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
         let ticker = 'Manual';
 
         if (inv.investment) {
-            price = inv.investment.currentPrice || 0;
-            shares = inv.investment.shares;
-            value = shares * price;
-            costBasis = inv.investment.costBasis;
             ticker = inv.investment.ticker;
+            shares = inv.investment.shares;
+
+            // FIX: Respect the Asset's manual value as the source of truth if it exists
+            // This ensures parity with the Assets page.
+            if (inv.value && inv.value > 0) {
+                value = inv.value;
+                price = shares > 0 ? value / shares : 0;
+            } else {
+                price = inv.investment.currentPrice || 0;
+                value = shares * price;
+            }
+
+            costBasis = inv.investment.costBasis;
 
             // Calculate Day Change
             // If we have previousClose, use it. Otherwise 0.
@@ -110,7 +124,10 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
     const assetClassMap = new Map<string, number>();
     investments.forEach(inv => {
         const type = inv.investment?.assetClass || 'other';
-        const value = inv.investment ? (inv.investment.shares * (inv.investment.currentPrice || 0)) : inv.value;
+        let value = inv.value;
+        if (!value && inv.investment) {
+            value = inv.investment.shares * (inv.investment.currentPrice || 0);
+        }
         assetClassMap.set(type, (assetClassMap.get(type) || 0) + value);
     });
 
@@ -126,7 +143,10 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
     const sectorMap = new Map<string, number>();
     investments.forEach(inv => {
         const sector = inv.investment?.sector || 'Unknown';
-        const value = inv.investment ? (inv.investment.shares * (inv.investment.currentPrice || 0)) : inv.value;
+        let value = inv.value;
+        if (!value && inv.investment) {
+            value = inv.investment.shares * (inv.investment.currentPrice || 0);
+        }
         sectorMap.set(sector, (sectorMap.get(sector) || 0) + value);
     });
 

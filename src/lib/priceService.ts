@@ -12,6 +12,10 @@ export interface PriceData {
     isMock?: boolean; // Track if data is real or mock
 }
 
+export interface FetchOptions {
+    isDemo?: boolean;
+}
+
 // In-memory cache to avoid hitting rate limits too often during a session
 const PRICE_CACHE = new Map<string, { data: PriceData, timestamp: number }>();
 const CACHE_KEY = 'clearworth_price_cache';
@@ -51,9 +55,10 @@ const saveCache = () => {
 // Initial load
 loadCache();
 
-export const fetchStockPrice = async (ticker: string): Promise<PriceData> => {
+export const fetchStockPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData> => {
     // 0. Check Demo Mode
-    if (isDemoMode()) {
+    const useDemo = options?.isDemo ?? isDemoMode();
+    if (useDemo) {
         return getMockPrice(ticker);
     }
 
@@ -63,7 +68,9 @@ export const fetchStockPrice = async (ticker: string): Promise<PriceData> => {
         return cached.data;
     }
 
-    const apiKey = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_KEY;
+    // Check strict environment variable first (server-side), then public one
+    const apiKey = process.env.ALPHA_VANTAGE_KEY || process.env.NEXT_PUBLIC_ALPHA_VANTAGE_KEY;
+
     if (!apiKey) {
         // Graceful degradation if no API key
         console.warn('Missing Alpha Vantage API Key - using mock data');
@@ -117,8 +124,9 @@ export const fetchStockPrice = async (ticker: string): Promise<PriceData> => {
     }
 };
 
-export const fetchCryptoPrice = async (ticker: string): Promise<PriceData> => {
-    if (isDemoMode()) return getMockPrice(ticker);
+export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData> => {
+    const useDemo = options?.isDemo ?? isDemoMode();
+    if (useDemo) return getMockPrice(ticker);
 
     let coinId = ticker.toLowerCase();
     const commonMappings: Record<string, string> = {
@@ -224,7 +232,7 @@ const getMockPrice = (ticker: string) => {
     };
 };
 
-export const fetchAllPrices = async (requests: { ticker: string, type: 'crypto' | 'stock' | 'other' }[]): Promise<Map<string, PriceData>> => {
+export const fetchAllPrices = async (requests: { ticker: string, type: 'crypto' | 'stock' | 'other' }[], options?: FetchOptions): Promise<Map<string, PriceData>> => {
     const results = new Map<string, PriceData>();
 
     // Deduplicate tickers
@@ -240,17 +248,19 @@ export const fetchAllPrices = async (requests: { ticker: string, type: 'crypto' 
 
     // 1. Fetch Crypto (Parallel)
     const cryptoPromises = cryptoTickers.map(async (t) => {
-        const data = await fetchCryptoPrice(t);
+        const data = await fetchCryptoPrice(t, options);
         results.set(t, data);
     });
 
     // 2. Fetch Stocks (Sequential with delay)
     // If we have API key AND are not in demo mode
-    const shouldFetchStocks = !!process.env.NEXT_PUBLIC_ALPHA_VANTAGE_KEY && !isDemoMode();
+    const useDemo = options?.isDemo ?? isDemoMode();
+    const apiKey = process.env.ALPHA_VANTAGE_KEY || process.env.NEXT_PUBLIC_ALPHA_VANTAGE_KEY;
+    const shouldFetchStocks = !!apiKey && !useDemo;
 
     if (shouldFetchStocks) {
         for (const t of stockTickers) {
-            const data = await fetchStockPrice(t);
+            const data = await fetchStockPrice(t, options);
             results.set(t, data);
 
             // Only delay if we actually made a network request (not cached)

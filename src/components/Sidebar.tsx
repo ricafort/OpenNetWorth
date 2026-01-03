@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { LayoutDashboard, Wallet, CreditCard, Users, Shield, Target, Menu, X, DollarSign, Calendar, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 import ThemeToggle from './ThemeToggle';
@@ -24,9 +24,18 @@ const navigation = [
     { name: 'Privacy', href: '/privacy', icon: Shield },
 ];
 
+import { useProfile } from '@/contexts/ProfileContext';
+
 export default function Sidebar() {
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const { isDemoMode, profile } = useProfile();
+
+    // Fallback for "God Mode" badge if URL param is present even if context hasn't loaded yet
+    const simulatedProfileId = searchParams.get('simulatedProfileId');
+    const showGodMode = isDemoMode || !!simulatedProfileId;
+    const templateName = profile?.template_name || profile?.full_name || 'Template';
 
     return (
         <>
@@ -49,16 +58,33 @@ export default function Sidebar() {
                         <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                             ClearWorth
                         </span>
+                        {showGodMode && (
+                            <div className="ml-2 flex flex-col items-start leading-none">
+                                <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] font-bold rounded uppercase border border-red-200">
+                                    GOD
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-medium mt-0.5 max-w-[80px] truncate">
+                                    {templateName}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Navigation */}
                     <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                         {navigation.map((item) => {
                             const isActive = pathname === item.href;
+
+                            // Append query param if in God Mode
+                            let finalHref = item.href;
+                            if (simulatedProfileId) {
+                                finalHref += `?simulatedProfileId=${simulatedProfileId}`;
+                            }
+
                             return (
                                 <Link
                                     key={item.href}
-                                    href={item.href}
+                                    href={finalHref}
                                     onClick={() => setIsMobileOpen(false)}
                                     className={cn(
                                         "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",

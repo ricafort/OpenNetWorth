@@ -4,18 +4,26 @@ import { useState, useEffect } from 'react';
 import { Plus, TrendingUp, TrendingDown, DollarSign, Repeat, History } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { RecurringTransaction, CashFlowEntry } from '@/types';
-import {
-    loadRecurringTransactions,
-    saveRecurringTransactions,
-    applyRecurringToMonth
-} from '@/lib/storage';
+// import {
+//     loadRecurringTransactions,
+//     saveRecurringTransactions,
+//     applyRecurringToMonth
+// } from '@/lib/storage'; // Removed
 import RecurringList from '@/components/RecurringList';
 import RecurringTransactionForm from '@/components/RecurringTransactionForm';
 import { useDashboard } from '@/contexts/DashboardContext';
+import { useProfile } from '@/contexts/ProfileContext'; // Added
 import { formatCurrency, convertAmount } from '@/lib/currencyService';
 
 export default function CashFlowPage() {
     const { baseCurrency } = useDashboard();
+    const {
+        recurring,
+        addRecurring: addRecurringContext,
+        updateRecurring: updateRecurringContext,
+        deleteRecurring: deleteRecurringContext,
+        isDemoMode
+    } = useProfile();
 
     // Shared State
     const [view, setView] = useState<'history' | 'autopilot'>('history');
@@ -26,7 +34,7 @@ export default function CashFlowPage() {
     const [editingId, setEditingId] = useState<string | null>(null);
 
     // Autopilot State
-    const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
+    // recurring is now coming from Context
     const [isAddingRecurring, setIsAddingRecurring] = useState(false);
     const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null);
 
@@ -47,8 +55,7 @@ export default function CashFlowPage() {
             localStorage.setItem('clearworth_cashflow', JSON.stringify(dummy));
         }
 
-        // Load Recurring
-        setRecurring(loadRecurringTransactions());
+        // Removed manual loadRecurringTransactions() since useProfile handles it
     }, []);
 
     // --- History Handlers ---
@@ -95,31 +102,43 @@ export default function CashFlowPage() {
     };
 
     // --- Autopilot Handlers ---
-    const updateRecurring = (newTransactions: RecurringTransaction[]) => {
-        setRecurring(newTransactions);
-        saveRecurringTransactions(newTransactions);
-    };
+    // Note: The form returns a RecurringTransaction object.
+    // We assume the form puts the "amount" in the correct numeric value.
+    // If the currency handling in the app expects USD storage:
+    // With ProfileContext, we should simply store what we get, along with the currency code if possible.
+    // But currently RecurringTransaction doesn't strictly enforce a currency column, 
+    // it usually assumes the User's base currency or USD.
+    // In God Mode, we want to store it exactly as entered (GBP).
 
-    const handleSaveRecurring = (t: RecurringTransaction) => {
+    const handleSaveRecurring = async (t: RecurringTransaction) => {
+        // Ensure ID is valid UUID if new
+        const transactionToSave = {
+            ...t,
+            id: t.id || crypto.randomUUID(), // Use UUID for Supabase
+            // Respect the form's currency selection, fallback to base only if missing
+            currency: t.currency || baseCurrency
+        };
+
         if (editingRecurring) {
-            updateRecurring(recurring.map(item => item.id === t.id ? t : item));
+            await updateRecurringContext(transactionToSave);
             setEditingRecurring(null);
         } else {
-            updateRecurring([...recurring, t]);
+            await addRecurringContext(transactionToSave);
             setIsAddingRecurring(false);
         }
     };
 
-    const handleDeleteRecurring = (id: string) => {
+    const handleDeleteRecurring = async (id: string) => {
         if (confirm('Delete this recurring item?')) {
-            updateRecurring(recurring.filter(t => t.id !== id));
+            await deleteRecurringContext(id);
         }
     };
 
-    const handleToggleRecurring = (id: string) => {
-        updateRecurring(recurring.map(t =>
-            t.id === id ? { ...t, isActive: !t.isActive } : t
-        ));
+    const handleToggleRecurring = async (id: string) => {
+        const item = recurring.find(r => r.id === id);
+        if (item) {
+            await updateRecurringContext({ ...item, isActive: !item.isActive });
+        }
     };
 
     // --- Derived Metrics ---

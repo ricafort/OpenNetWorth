@@ -1,6 +1,23 @@
 export type AssetType = 'cash' | 'investment' | 'crypto' | 'real_estate' | 'retirement' | 'other';
 export type LiabilityType = 'mortgage' | 'student_loan' | 'auto_loan' | 'credit_card' | 'other';
-export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD' | 'CHF' | 'CNY' | 'INR' | 'SGD' | 'PHP';
+export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD' | 'CHF' | 'CNY' | 'INR' | 'SGD' | 'PHP' | 'KRW';
+
+export interface UserProfile {
+    id: string;
+    email: string;
+    full_name?: string;
+    avatar_url?: string;
+    privacy_mode: boolean;
+    // Admin / Demo Fields
+    is_template: boolean;
+    role: 'user' | 'admin';
+    template_name?: string;
+    country_code?: string;
+    currency_code: CurrencyCode;
+    benchmark_bracket?: string;
+    income_range_display?: string;
+    created_at: string;
+}
 
 export interface InvestmentDetails {
     ticker: string;              // e.g., "AAPL", "VTI"
@@ -22,6 +39,7 @@ export interface Asset {
     currency?: CurrencyCode;     // Default to 'USD' if undefined
     investment?: InvestmentDetails; // Optional investment details
     is_liquid: boolean;
+    interest_rate?: number; // Added
     last_updated: string;
 }
 
@@ -58,6 +76,8 @@ export interface Goal {
     startAmount?: number;  // Initial amount when goal was created (crucial for debt payoff progress)
     deadline?: string;     // ISO date
     category: GoalCategory;
+    isCompleted?: boolean; // Added for tracking status
+    lastUpdated?: string;  // Added for sync tracking
     createdAt: string;
 }
 
@@ -108,6 +128,7 @@ export interface RecurringTransaction {
     isActive: boolean;
     lastApplied?: string;
     notes?: string;
+    currency?: CurrencyCode; // Added for God Mode
 }
 
 export interface WealthMomentum {

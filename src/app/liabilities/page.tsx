@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, TrendingDown } from 'lucide-react';
 import { Liability, LiabilityType, CurrencyCode } from '@/types';
-import { loadLiabilities, saveLiabilities } from '@/lib/storage';
+import { useProfile } from '@/contexts/ProfileContext';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { formatCurrency, convertAmount } from '@/lib/currencyService';
 import { useTheme } from '@/contexts/ThemeContext';
 import CurrencySelector from '@/components/CurrencySelector';
 
 export default function LiabilitiesPage() {
-    const [liabilities, setLiabilities] = useState<Liability[]>([]);
+    const { liabilities, addLiability, updateLiability, deleteLiability } = useProfile();
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
@@ -19,21 +19,17 @@ export default function LiabilitiesPage() {
     const blurClass = 'privacy-value';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
-    useEffect(() => {
-        const saved = loadLiabilities();
-        if (saved.length > 0) {
-            setLiabilities(saved);
-        }
-    }, []);
+    // Removed useEffect that loaded from LocalStorage
+    // Removed [liabilities, setLiabilities] state, now managed by Context
 
     const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>(baseCurrency);
 
-    const handleAddLiability = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleAddLiability = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
 
         const newLiability: Liability = {
-            id: `liability-${Date.now()}`,
+            id: crypto.randomUUID(), // Fix: Use real UUID for database compatibility
             user_id: 'local',
             name: formData.get('name') as string,
             type: formData.get('type') as LiabilityType,
@@ -44,43 +40,37 @@ export default function LiabilitiesPage() {
             last_updated: new Date().toISOString()
         };
 
-        const updated = [...liabilities, newLiability];
-        setLiabilities(updated);
-        saveLiabilities(updated);
+        await addLiability(newLiability);
         setIsAdding(false);
     };
 
-    const handleUpdateLiability = (e: React.FormEvent<HTMLFormElement>, id: string) => {
+    const handleUpdateLiability = async (e: React.FormEvent<HTMLFormElement>, id: string) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const currency = formData.get('currency') as CurrencyCode;
 
-        const updatedLiabilities = liabilities.map(liability => {
-            if (liability.id === id) {
-                return {
-                    ...liability,
-                    name: formData.get('name') as string,
-                    type: formData.get('type') as LiabilityType,
-                    balance: parseFloat(formData.get('balance') as string) || 0,
-                    currency,
-                    interest_rate: parseFloat(formData.get('interest_rate') as string) || 0,
-                    is_good_debt: ['mortgage', 'student_loan'].includes(formData.get('type') as string),
-                    last_updated: new Date().toISOString()
-                };
-            }
-            return liability;
-        });
+        // Find existing to preserve ID and other non-form fields if needed
+        const existing = liabilities.find(l => l.id === id);
+        if (!existing) return;
 
-        setLiabilities(updatedLiabilities);
-        saveLiabilities(updatedLiabilities);
+        const updatedItem = {
+            ...existing,
+            name: formData.get('name') as string,
+            type: formData.get('type') as LiabilityType,
+            balance: parseFloat(formData.get('balance') as string) || 0,
+            currency,
+            interest_rate: parseFloat(formData.get('interest_rate') as string) || 0,
+            is_good_debt: ['mortgage', 'student_loan'].includes(formData.get('type') as string),
+            last_updated: new Date().toISOString()
+        };
+
+        await updateLiability(updatedItem);
         setEditingId(null);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('Delete this liability?')) {
-            const updated = liabilities.filter(l => l.id !== id);
-            setLiabilities(updated);
-            saveLiabilities(updated);
+            await deleteLiability(id);
         }
     };
 

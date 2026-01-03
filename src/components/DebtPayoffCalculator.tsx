@@ -11,12 +11,13 @@ import { formatCurrency, convertAmount } from '@/lib/currencyService';
 
 import PayoffScheduleChart from './PayoffScheduleChart';
 
+import { useProfile } from '@/contexts/ProfileContext';
+
 export default function DebtPayoffCalculator() {
     const { baseCurrency } = useDashboard();
+    const { liabilities } = useProfile();
 
-    // Lazy initialization to avoid overwriting storage on mount with defaults
-    // Note: We need to handle the initial extraPayment currency. 
-    // Assuming stored extraPayment is in USD.
+    // Lazy initialization
     const [extraPaymentUSD, setExtraPaymentUSD] = useState(() => {
         if (typeof window !== 'undefined') {
             return loadFreedomSettings().extraMonthlyPayment;
@@ -25,12 +26,9 @@ export default function DebtPayoffCalculator() {
     });
 
     // We control the input in "Base Currency", but store in "USD"
-    // So we need a state for the Input Value which syncs with extraPaymentUSD
     const extraPaymentBase = convertAmount(extraPaymentUSD, 'USD', baseCurrency);
 
     const handleExtraPaymentChange = (val: number) => {
-        // val is in Base Currency
-        // Convert back to USD for storage
         const valUSD = convertAmount(val, baseCurrency, 'USD');
         setExtraPaymentUSD(valUSD);
     };
@@ -42,14 +40,8 @@ export default function DebtPayoffCalculator() {
         return 'avalanche';
     });
 
-    const [liabilities, setLiabilities] = useState<Liability[]>([]);
     const [result, setResult] = useState<DebtPayoffResult | null>(null);
     const [baselineResult, setBaselineResult] = useState<DebtPayoffResult | null>(null);
-
-    useEffect(() => {
-        const loaded = loadLiabilities();
-        setLiabilities(loaded);
-    }, []);
 
     useEffect(() => {
         // Save settings. converting stored USD value to what storage expects (USD) is default.

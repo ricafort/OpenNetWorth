@@ -1,8 +1,9 @@
 import { saveAssets, saveLiabilities, saveGoals, saveNetWorthHistory, clearAllData, saveRecurringTransactions, saveCashFlow } from '@/lib/storage';
 import { GETTING_STARTED_DATA, STABILIZING_DATA, BUILDING_FOUNDATIONS_DATA, FAMILY_DATA, GROWING_WEALTH_DATA, DemoProfile } from '@/lib/demoProfiles';
 import { scaleAmount } from '@/lib/currencyScale';
-import { NetWorthSnapshot, Asset, Liability, RecurringTransaction, CashFlowEntry, Goal } from '@/types';
+import { NetWorthSnapshot, Asset, Liability, RecurringTransaction, CashFlowEntry, Goal, CurrencyCode } from '@/types';
 import { SAMPLE_MENTORS, SAMPLE_QUOTES, SAMPLE_FREEDOM_SETTINGS, SAMPLE_PRICE_CACHE } from '@/lib/sampleData';
+import { FullTemplateData } from '@/lib/templateService';
 
 const DEMO_MODE_KEY = 'clearworth_demo_mode'; // v2
 
@@ -92,6 +93,32 @@ function generateCashFlow(profile: DemoProfile, currency: string): CashFlowEntry
     return entries;
 }
 
+function generateCashFlowFromRecurring(recurring: RecurringTransaction[], currency: string): CashFlowEntry[] {
+    const entries: CashFlowEntry[] = [];
+    const today = new Date();
+
+    const baseIncome = recurring
+        .filter(r => r.type === 'income')
+        .reduce((sum, r) => sum + r.amount, 0);
+
+    const baseExpense = recurring
+        .filter(r => r.type === 'expense')
+        .reduce((sum, r) => sum + r.amount, 0);
+
+    // Generate 12 months
+    for (let i = 0; i < 12; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const monthStr = d.toISOString().slice(0, 7);
+
+        // Less variance for templates as they are specific
+        const income = Math.round(baseIncome);
+        const expenses = Math.round(baseExpense);
+
+        entries.push({ id: `cf-${i}`, month: monthStr, income, expenses });
+    }
+    return entries;
+}
+
 export function enableDemoMode(profileType: ProfileType = 'getting_started', currency: string = 'USD'): void {
     if (typeof window === 'undefined') return;
 
@@ -142,6 +169,66 @@ export function enableDemoMode(profileType: ProfileType = 'getting_started', cur
     const currentSettings = JSON.parse(localStorage.getItem('clearworth_settings') || '{}');
     const newSettings = {
         baseCurrency: 'USD',
+        theme: 'system',
+        checkInFrequency: 'monthly',
+        ...currentSettings,
+        lastCheckIn: new Date().toISOString()
+    };
+    localStorage.setItem('clearworth_settings', JSON.stringify(newSettings));
+
+    // Force reload
+    window.location.reload();
+}
+
+/**
+ * Enables demo mode using data fetched from a Database Template.
+ * Does NOT perform currency scaling (assumes template data is already in correct currency).
+ */
+export function enableDemoModeFromData(data: FullTemplateData): void {
+    if (typeof window === 'undefined') return;
+
+    // Set flag
+    localStorage.setItem(DEMO_MODE_KEY, 'true');
+    localStorage.setItem('clearworth_initialized', 'true');
+
+    localStorage.setItem('clearworth_demo_profile_label', data.profile.full_name || 'Template');
+    localStorage.setItem('clearworth_demo_origin_id', data.profile.id); // Save Origin ID for badges
+
+    const currency = data.profile.currency_code;
+
+    // 1. Data is already correct, just use it
+    const assets = data.assets;
+    const liabilities = data.liabilities;
+    const goals = data.goals;
+    const recurring = data.recurring;
+
+    // 2. Generate History based on these totals
+    const totalAssets = assets.reduce((sum, a) => sum + a.value, 0);
+    const totalLiabs = liabilities.reduce((sum, l) => sum + l.balance, 0);
+    const history = generateHistory(totalAssets, totalLiabs, currency);
+    const cashflow = generateCashFlowFromRecurring(recurring, currency);
+
+    // Save
+    saveAssets(assets);
+    saveLiabilities(liabilities);
+    saveGoals(goals);
+    saveNetWorthHistory(history);
+    saveRecurringTransactions(recurring);
+    saveCashFlow(cashflow);
+
+    // Load Extras
+    localStorage.setItem('custom_mentors', JSON.stringify(SAMPLE_MENTORS));
+    localStorage.setItem('saved_quotes', JSON.stringify(SAMPLE_QUOTES));
+
+    // Freedom Settings default (can be improved later to be smarter)
+    const freedomSettings = { ...SAMPLE_FREEDOM_SETTINGS };
+    localStorage.setItem('clearworth_freedom_settings', JSON.stringify(freedomSettings));
+    localStorage.setItem('clearworth_price_cache', JSON.stringify(SAMPLE_PRICE_CACHE));
+
+    // Settings
+    const currentSettings = JSON.parse(localStorage.getItem('clearworth_settings') || '{}');
+    const newSettings = {
+        baseCurrency: currency,
         theme: 'system',
         checkInFrequency: 'monthly',
         ...currentSettings,

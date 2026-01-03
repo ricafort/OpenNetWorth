@@ -1,6 +1,6 @@
 'use client';
 
-import { WealthMomentum, CurrencyCode } from '@/types';
+import { WealthMomentum } from '@/types';
 import { PieChart, Pie, Cell } from 'recharts';
 import { Info } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
@@ -14,12 +14,10 @@ export default function WealthMomentumGauge({ momentum }: Props) {
     const { baseCurrency } = useDashboard();
     const { score, monthlySavings, annualProjectedSavings, monthlyRecurringIncome, monthlyRecurringExpenses } = momentum;
 
-    // Convert values to base currency (Assuming momentum is calculated in USD)
-    // If momentum inputs (recurring transactions) are mixed, convertAmount logic in storage should handle it, 
-    // but typically we assume the calculated momentum struct is in USD if not otherwise specified.
-    // For this implementation, we assume momentum is in USD.
-    const monthlySavingsBase = convertAmount(monthlySavings, 'USD', baseCurrency);
-    const annualProjectedBase = convertAmount(annualProjectedSavings, 'USD', baseCurrency);
+    // Momentum is ALREADY calculated in the base currency by DashboardContext.
+    // We should NOT convert it again.
+    const monthlySavingsBase = monthlySavings;
+    const annualProjectedBase = annualProjectedSavings;
 
 
     // Determine color based on score

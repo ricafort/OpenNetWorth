@@ -3,27 +3,26 @@
 import { useState, useEffect } from 'react';
 import { Target, Plus, Trophy, Trash2, Edit2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Goal, NetWorthSnapshot } from '@/types';
-import { loadGoals, saveGoals, loadNetWorthHistory } from '@/lib/storage';
+// import { loadGoals, saveGoals, loadNetWorthHistory } from '@/lib/storage'; // Removed
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDashboard } from '@/contexts/DashboardContext';
+import { useProfile } from '@/contexts/ProfileContext'; // Added
 import { formatCurrency, convertAmount } from '@/lib/currencyService';
 
 export default function GoalsPage() {
-    const [goals, setGoals] = useState<Goal[]>([]);
+    // const [goals, setGoals] = useState<Goal[]>([]); // Removed local state
+    const { goals, addGoal, updateGoal, deleteGoal } = useProfile(); // Use ProfileContext
+
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
-    const { netWorth, baseCurrency } = useDashboard(); // Use Context
+    const { netWorth, baseCurrency } = useDashboard();
     const blurClass = 'privacy-value';
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
 
-    useEffect(() => {
-        // Load Goals
-        const savedGoals = loadGoals();
-        setGoals(savedGoals);
-    }, []);
+    // useEffect(() => { ... }, []); // Removed local load effect
 
-    const handleAddGoal = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleAddGoal = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const type = formData.get('category') as string;
@@ -33,7 +32,7 @@ export default function GoalsPage() {
         const current = type === 'net_worth' ? netWorth : parseFloat(formData.get('currentAmount') as string) || 0;
 
         const newGoal: Goal = {
-            id: `goal-${Date.now()}`,
+            id: crypto.randomUUID(),
             name: formData.get('name') as string,
             targetAmount: target,
             currentAmount: current,
@@ -45,61 +44,49 @@ export default function GoalsPage() {
             startAmount: current
         };
 
-        const updated = [...goals, newGoal];
-        setGoals(updated);
-        saveGoals(updated);
+        await addGoal(newGoal);
         setIsAdding(false);
     };
 
-    const handleUpdateGoal = (e: React.FormEvent<HTMLFormElement>, id: string) => {
+    const handleUpdateGoal = async (e: React.FormEvent<HTMLFormElement>, id: string) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         const type = formData.get('category') as string;
         const target = parseFloat(formData.get('targetAmount') as string) || 0;
         const current = type === 'net_worth' ? netWorth : parseFloat(formData.get('currentAmount') as string) || 0;
 
-        const updated = goals.map(g => {
-            if (g.id === id) {
-                return {
-                    ...g,
-                    name: formData.get('name') as string,
-                    category: type as any,
-                    targetAmount: target,
-                    currentAmount: current,
-                    // keep existing currency or update? 
-                    // Ideally we assume user enters values in CURRENT baseCurrency when editing?
-                    // Let's assume editing updates it to current Base Currency for simplicity of input
-                    currency: baseCurrency,
-                    deadline: formData.get('deadline') as string
-                };
-            }
-            return g;
-        });
+        const existing = goals.find(g => g.id === id);
+        if (!existing) return;
 
-        setGoals(updated);
-        saveGoals(updated);
+        const updatedGoal: Goal = {
+            ...existing,
+            name: formData.get('name') as string,
+            category: type as any,
+            targetAmount: target,
+            currentAmount: current,
+            currency: baseCurrency,
+            deadline: formData.get('deadline') as string
+        };
+
+        await updateGoal(updatedGoal);
         setEditingId(null);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('Remove this goal?')) {
-            const updated = goals.filter(g => g.id !== id);
-            setGoals(updated);
-            saveGoals(updated);
+            await deleteGoal(id);
         }
     };
 
-    const updateProgress = (id: string, newAmount: number) => {
-        const updated = goals.map(g => {
-            if (g.id === id) return {
-                ...g,
-                currentAmount: newAmount,
-                currency: baseCurrency // Update currency if modifying value
-            };
-            return g;
+    const updateProgress = async (id: string, newAmount: number) => {
+        const existing = goals.find(g => g.id === id);
+        if (!existing) return;
+
+        await updateGoal({
+            ...existing,
+            currentAmount: newAmount,
+            currency: baseCurrency
         });
-        setGoals(updated);
-        saveGoals(updated);
     };
 
     return (

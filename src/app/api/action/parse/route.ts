@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       
       OUTPUT FORMAT:
       {
-        "action": "add_asset" | "add_liability" | "update_goal" | "log_expense" | null,
+        "action": "add_asset" | "add_liability" | "add_goal" | "log_expense" | null,
         "type": "Cash" | "Investment" | "Property" | "Vehicle" | "Valuable" | "Mortgage" | "Credit Card" | "Loan" | "Other" | null,
         "name": string | null,
         "amount": number | null,
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       RULES:
       - "add_asset": Adding money, accounts, stocks, homes, cars.
       - "add_liability": Adding debt, loans, mortgages.
-      - "update_goal": Mentions a goal.
+      - "add_goal": Creating a new financial target/goal (e.g. "save for a house", "pay off debt").
       - "log_expense": Spending money.
       - If the user is just asking a question or chatting, set "action" to null and "confidence" to 0.
       - Default currency is USD if not specified.

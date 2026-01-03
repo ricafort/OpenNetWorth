@@ -1,10 +1,8 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import { RecurringTransaction } from '@/types';
-import { X, Save, Calendar, Repeat } from 'lucide-react';
+import { X, Save, Calendar, Repeat, Coins } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { getCurrencySymbol } from '@/lib/currencyService';
+import { getCurrencySymbol, SUPPORTED_CURRENCIES } from '@/lib/currencyService';
 
 interface Props {
     onSave: (transaction: RecurringTransaction) => void;
@@ -14,7 +12,7 @@ interface Props {
 
 export default function RecurringTransactionForm({ onSave, onCancel, initialData }: Props) {
     const { baseCurrency } = useDashboard();
-    const currencySymbol = getCurrencySymbol(baseCurrency);
+
     const [formData, setFormData] = useState<Partial<RecurringTransaction>>({
         name: '',
         amount: 0,
@@ -22,22 +20,30 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
         frequency: 'monthly',
         category: 'General',
         startDate: new Date().toISOString().split('T')[0],
-        isActive: true
+        isActive: true,
+        currency: baseCurrency
     });
 
     useEffect(() => {
         if (initialData) {
             setFormData(initialData);
+        } else {
+            // Ensure new items start with the correct dashboard currency
+            setFormData(prev => ({ ...prev, currency: baseCurrency }));
         }
-    }, [initialData]);
+    }, [initialData, baseCurrency]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave({
             ...(formData as RecurringTransaction),
-            id: initialData?.id || `rt-${Date.now()}`
+            id: initialData?.id || crypto.randomUUID(),
+            // Ensure currency is set, falling back to base if somehow missing
+            currency: formData.currency || baseCurrency
         });
     };
+
+    const currencySymbol = getCurrencySymbol(formData.currency || baseCurrency);
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -104,8 +110,23 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
                             </div>
                         </div>
 
-                        {/* Frequency & Category */}
+                        {/* Currency & Frequency */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Currency</label>
+                                <div className="relative">
+                                    <Coins size={16} className="absolute left-4 top-3.5 text-muted-foreground" />
+                                    <select
+                                        value={formData.currency}
+                                        onChange={e => setFormData(prev => ({ ...prev, currency: e.target.value as any }))}
+                                        className="w-full bg-card text-card-foreground border border-border rounded-xl py-3 pl-10 pr-4 outline-none focus:ring-2 focus:ring-primary/20 font-medium appearance-none"
+                                    >
+                                        {SUPPORTED_CURRENCIES.map(c => (
+                                            <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
                             <div>
                                 <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Frequency</label>
                                 <div className="relative">
@@ -123,6 +144,10 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
                                     </select>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Category & Date */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Category</label>
                                 <input
@@ -134,20 +159,18 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
                                     className="w-full bg-card text-card-foreground border border-border rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary/20 font-medium"
                                 />
                             </div>
-                        </div>
-
-                        {/* Date */}
-                        <div>
-                            <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Start Date</label>
-                            <div className="relative">
-                                <Calendar size={16} className="absolute left-4 top-3.5 text-muted-foreground" />
-                                <input
-                                    type="date"
-                                    required
-                                    value={formData.startDate}
-                                    onChange={e => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
-                                    className="w-full bg-card text-card-foreground border border-border rounded-xl py-3 pl-10 pr-4 outline-none focus:ring-2 focus:ring-primary/20 font-medium"
-                                />
+                            <div>
+                                <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Start Date</label>
+                                <div className="relative">
+                                    <Calendar size={16} className="absolute left-4 top-3.5 text-muted-foreground" />
+                                    <input
+                                        type="date"
+                                        required
+                                        value={formData.startDate}
+                                        onChange={e => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                                        className="w-full bg-card text-card-foreground border border-border rounded-xl py-3 pl-10 pr-4 outline-none focus:ring-2 focus:ring-primary/20 font-medium"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
