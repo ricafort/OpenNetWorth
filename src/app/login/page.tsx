@@ -44,7 +44,7 @@ export default function LoginPage() {
                 alert(error.message);
             } else {
                 // Successful login
-                router.push('/admin');
+                router.push('/');
             }
         }
         setLoading(false);
