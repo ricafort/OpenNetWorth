@@ -50,9 +50,9 @@ export default function AssetAllocationChart({ assets }: AssetAllocationChartPro
     }
 
     return (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-[400px]">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Asset Allocation</h3>
-            <div className="w-full h-[300px]">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-full flex flex-col">
+            <h3 className="text-lg font-bold text-slate-900 mb-4 shrink-0">Asset Allocation</h3>
+            <div className="w-full flex-1 min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <Pie
@@ -60,7 +60,7 @@ export default function AssetAllocationChart({ assets }: AssetAllocationChartPro
                             cx="50%"
                             cy="50%"
                             innerRadius={60}
-                            outerRadius={90}
+                            outerRadius="80%"
                             paddingAngle={5}
                             dataKey="value"
                         >
