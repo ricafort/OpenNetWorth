@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Clock, CheckCircle2 } from 'lucide-react';
-import { loadSettings, saveSettings } from '@/lib/storage';
+import { loadSettings, saveSettings } from '@/lib/data/storage';
 import { UserSettings } from '@/types';
 
 interface CheckInModalProps {

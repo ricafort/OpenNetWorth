@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Save, Wand2 } from 'lucide-react';
-import { loadNetWorthHistory, saveNetWorthHistory, generateMockHistory } from '@/lib/storage';
+import { loadNetWorthHistory, saveNetWorthHistory, generateMockHistory } from '@/lib/data/storage';
 import { NetWorthSnapshot } from '@/types';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { convertAmount, formatCurrency } from '@/lib/currencyService';
+import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
 
 interface HistoryEditorProps {
     isOpen: boolean;
@@ -40,6 +40,7 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
         const liabilitiesUSD = convertAmount(liabilitiesBase, baseCurrency, 'USD');
 
         const newEntry: NetWorthSnapshot = {
+            id: crypto.randomUUID(), // Ensure ID exists for compatibility
             date: newDate,
             totalAssets: Math.round(assetsUSD),
             totalLiabilities: Math.round(liabilitiesUSD),

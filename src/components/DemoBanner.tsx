@@ -1,6 +1,6 @@
 'use client';
 
-import { isDemoMode, exitDemoMode } from '@/lib/demoMode';
+import { isDemoMode, exitDemoMode } from '@/lib/data/demo/demoMode';
 import { AlertCircle, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -26,7 +26,7 @@ export default function DemoBanner() {
                     <button
                         onClick={() => {
                             if (confirm('This will keep the current data as your actual starting point. The "Demo" banner will be removed. Continue?')) {
-                                import('@/lib/demoMode').then(m => m.convertDemoToReal());
+                                import('@/lib/data/demo/demoMode').then(m => m.convertDemoToReal());
                             }
                         }}
                         className="text-xs font-bold bg-white text-amber-900 border border-amber-200 hover:bg-amber-100 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm"

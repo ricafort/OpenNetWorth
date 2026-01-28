@@ -1,4 +1,4 @@
-import { getGeminiModel } from './gemini';
+import { getGeminiModel, generateContentWithRetry } from '@/lib/api/gemini';
 
 export interface DebtAdviceContext {
     totalDebt: number;
@@ -47,7 +47,7 @@ export const getMentorDebtAdvice = async (
     `;
 
     try {
-        const result = await model.generateContent(prompt);
+        const result = await generateContentWithRetry(model, prompt);
         const response = await result.response;
         return response.text();
     } catch (error) {
@@ -79,7 +79,7 @@ export const getMentorInvestmentAdvice = async (
     `;
 
     try {
-        const result = await model.generateContent(prompt);
+        const result = await generateContentWithRetry(model, prompt);
         const response = await result.response;
         return response.text();
     } catch (error) {

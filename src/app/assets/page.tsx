@@ -3,21 +3,22 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, PieChart } from 'lucide-react';
 import { Asset, AssetType, CurrencyCode } from '@/types';
-// import { loadAssets, saveAssets } from '@/lib/storage'; // Removed
+// import { loadAssets, saveAssets } from '@/lib/data/storage'; // Removed
 import { useDashboard } from '@/contexts/DashboardContext';
-import { useProfile } from '@/contexts/ProfileContext'; // Added
-import { formatCurrency, convertAmount, getCurrencySymbol } from '@/lib/currencyService';
+import { useAssets } from '@/hooks'; // 👈 NEW: Using domain hook
+import { formatCurrency, convertAmount, getCurrencySymbol } from '@/lib/utils/currencyService';
 import CurrencySelector from '@/components/CurrencySelector';
 
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function AssetsPage() {
+    // 👇 NEW: Using domain hook instead of ProfileContext
     const {
         assets,
         addAsset,
         updateAsset,
         deleteAsset
-    } = useProfile();
+    } = useAssets();
 
     const { baseCurrency } = useDashboard();
 

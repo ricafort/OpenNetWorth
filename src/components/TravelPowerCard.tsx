@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { Plane } from 'lucide-react';
-import { convertAmount, formatCurrency, getExchangeRate } from '@/lib/currencyService';
+import { convertAmount, formatCurrency, getExchangeRate } from '@/lib/utils/currencyService';
 import { UserSettings } from '@/types';
-import { loadSettings } from '@/lib/storage';
+import { loadSettings } from '@/lib/data/storage';
 
 interface CityCost {
     city: string;

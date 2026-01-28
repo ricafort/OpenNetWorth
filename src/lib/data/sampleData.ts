@@ -364,6 +364,7 @@ export const SAMPLE_NET_WORTH_HISTORY: NetWorthSnapshot[] = (() => {
         if (i === 15) baseAssets *= 0.94;
 
         const snapshot: NetWorthSnapshot = {
+            id: crypto.randomUUID(), // ensure ID
             date: dateStr,
             totalAssets: Math.round(baseAssets),
             totalLiabilities: Math.round(baseLiabilities),

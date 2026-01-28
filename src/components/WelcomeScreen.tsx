@@ -2,11 +2,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { enableDemoModeFromData } from '@/lib/demoMode';
-import { getPublishedTemplates, getTemplateFullData } from '@/lib/templateService';
+import { enableDemoModeFromData } from '@/lib/data/demo/demoMode';
+import { getPublishedTemplates, getTemplateFullData } from '@/lib/domain/templateService';
 import { UserProfile } from '@/types';
 import { PlayCircle, PenLine, ChevronLeft, Loader2, Globe } from 'lucide-react';
-import { SUPPORTED_CURRENCIES } from '@/lib/currencyService';
+import { SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
 
 interface WelcomeScreenProps {
     onStartManual: () => void;
@@ -217,6 +217,12 @@ export default function WelcomeScreen({ onStartManual }: WelcomeScreenProps) {
                 <p className="text-xs text-slate-400 pt-4">
                     Data is stored locally on your device. We respect your privacy.
                 </p>
+
+                <div className="pt-2">
+                    <a href="/login" className="text-sm font-medium text-slate-500 hover:text-blue-600 underline">
+                        Existing User? Sign In
+                    </a>
+                </div>
             </div>
         </div>
     );

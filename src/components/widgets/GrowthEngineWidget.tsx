@@ -1,8 +1,8 @@
 import WidgetWrapper from './WidgetWrapper';
 import PortfolioSummary from '@/components/PortfolioSummary';
-import { analyzePortfolio } from '@/lib/portfolioAnalysis';
+import { analyzePortfolio } from '@/lib/domain/portfolioAnalysis';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { convertAmount } from '@/lib/currencyService';
+import { convertAmount } from '@/lib/utils/currencyService';
 import { useMemo } from 'react';
 import Link from 'next/link';
 

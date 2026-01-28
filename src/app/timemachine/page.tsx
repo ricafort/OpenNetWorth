@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, AlertTriangle } from 'lucide-react';
-import { loadNetWorthHistory } from '@/lib/storage';
+import { loadNetWorthHistory } from '@/lib/data/storage';
 import { NetWorthSnapshot, Asset, Liability } from '@/types';
 import TimeMachineControl from '@/components/TimeMachineControl';
-import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 import { useDashboard } from '@/contexts/DashboardContext';
 
 import { useTheme } from '@/contexts/ThemeContext';

@@ -12,6 +12,7 @@ export interface FullTemplateData {
 
 const supabase = createClient();
 
+
 /**
  * Fetches all available public templates from the profiles table.
  */
@@ -35,6 +36,7 @@ export async function getPublishedTemplates(): Promise<UserProfile[]> {
  * Fetches all financial data associated with a specific template user ID.
  */
 export async function getTemplateFullData(templateId: string): Promise<FullTemplateData | null> {
+
 
     // Fetch Profile
     const profileReq = supabase.from('profiles').select('*').eq('id', templateId).single();

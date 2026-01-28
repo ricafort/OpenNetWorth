@@ -1,5 +1,9 @@
 # ClearWorth
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
+
 ClearWorth is a personal net worth tracking application designed to help you visualize your financial health, plan for freedom, and gain insights through AI-powered mentorship. It combines professional-grade dashboards with gamified elements and privacy-focused architecture.
 
 ![ClearWorth Dashboard](public/dashboard-preview.png)
@@ -57,6 +61,10 @@ ClearWorth is a personal net worth tracking application designed to help you vis
 *   **Charts**: Recharts
 *   **Icons**: Lucide React
 *   **Utilities**: `react-grid-layout` (Dashboard), `jspdf` (Export), `react-joyride` (Tour)
+
+## 📚 Documentation
+*   [Migration & Setup Guide](docs/MIGRATION_GUIDE.md): Detailed steps for cloning and setting up secure environments.
+*   [AI Developer Context](docs/AI_CONTEXT.md): Guide for AI agents and developers on project architecture and rules.
 
 ## 🏁 Getting Started
 

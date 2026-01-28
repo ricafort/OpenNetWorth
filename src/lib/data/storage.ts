@@ -325,6 +325,7 @@ export function generateMockData(): void {
         const snapshotLiabilities = 393250 - (i * 400); // Paying down debt slowly
 
         history.push({
+            id: crypto.randomUUID(),
             date: dateStr,
             totalAssets: Math.round(snapshotAssets),
             totalLiabilities: Math.round(snapshotLiabilities),
@@ -365,6 +366,7 @@ export function generateMockHistory(): void {
         const snapshotLiabilities = baseNetWorth * 0.5;
 
         history.push({
+            id: crypto.randomUUID(),
             date: dateStr,
             totalAssets: Math.round(snapshotAssets),
             totalLiabilities: Math.round(snapshotLiabilities),

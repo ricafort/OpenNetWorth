@@ -1,7 +1,7 @@
 'use client';
 
 import { useDashboard } from '@/contexts/DashboardContext';
-import widgetRegistry from '@/lib/widgetRegistry';
+import widgetRegistry from '@/lib/registry/widgetRegistry';
 import { Plus, LayoutTemplate } from 'lucide-react';
 
 export default function WidgetDrawer() {

@@ -3,19 +3,19 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Liability, DebtPayoffResult, PayoffStrategy } from '@/types';
-import { calculatePayoff } from '@/lib/debtCalculator';
-import { loadLiabilities, loadFreedomSettings, saveFreedomSettings, updateDebtRecurringTransaction } from '@/lib/storage';
+import { calculatePayoff } from '@/lib/domain/debtCalculator';
+import { loadLiabilities, loadFreedomSettings, saveFreedomSettings, updateDebtRecurringTransaction } from '@/lib/data/storage';
 import { TrendingDown, Calendar, DollarSign, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 
 import PayoffScheduleChart from './PayoffScheduleChart';
 
-import { useProfile } from '@/contexts/ProfileContext';
+import { useLiabilities } from '@/hooks'; // 👈 NEW: Using domain hook
 
 export default function DebtPayoffCalculator() {
     const { baseCurrency } = useDashboard();
-    const { liabilities } = useProfile();
+    const { liabilities } = useLiabilities(); // 👈 Using hook instead of ProfileContext
 
     // Lazy initialization
     const [extraPaymentUSD, setExtraPaymentUSD] = useState(() => {

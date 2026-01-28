@@ -3,16 +3,16 @@
 
 import { useState, useEffect } from 'react';
 import { Liability, DebtPayoffResult } from '@/types';
-import { calculatePayoff } from '@/lib/debtCalculator';
-import { loadFreedomSettings } from '@/lib/storage';
+import { calculatePayoff } from '@/lib/domain/debtCalculator';
+import { loadFreedomSettings } from '@/lib/data/storage';
 import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useProfile } from '@/contexts/ProfileContext';
+import { useLiabilities } from '@/hooks'; // 👈 NEW: Using domain hook
 
 import { generateDebtAdviceAction } from '@/app/actions';
 
 export default function FreedomDateCard() {
-    const { liabilities } = useProfile();
+    const { liabilities } = useLiabilities(); // 👈 Using hook instead of ProfileContext
     const [freedomDate, setFreedomDate] = useState<string | null>(null);
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
     const [hasDebt, setHasDebt] = useState(false);

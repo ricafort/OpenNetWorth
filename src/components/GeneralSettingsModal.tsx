@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Save, Bell, Globe, TrendingUp } from 'lucide-react';
-import { loadSettings, saveSettings, loadFreedomSettings, saveFreedomSettings } from '@/lib/storage'; // Updated import
+import { loadSettings, saveSettings, loadFreedomSettings, saveFreedomSettings } from '@/lib/data/storage'; // Updated import
 import { UserSettings, FreedomSettings } from '@/types'; // Updated import
 import CurrencySelector from './CurrencySelector';
 
@@ -147,7 +147,7 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
                         <button
                             onClick={() => {
                                 if (confirm('Are you sure? This will delete all local data and reset the app to the Welcome Screen.')) {
-                                    import('@/lib/demoMode').then(m => m.resetApp());
+                                    import('@/lib/data/demo/demoMode').then(m => m.resetApp());
                                 }
                             }}
                             className="w-full py-3 border-2 border-red-100 bg-red-50 text-red-600 rounded-xl text-xs font-bold uppercase hover:bg-red-100 transition-colors"

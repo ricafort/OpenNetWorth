@@ -1,6 +1,6 @@
 // src/lib/priceService.ts
 
-import { isDemoMode } from "./demoMode";
+import { isDemoMode } from "@/lib/data/demo/demoMode";
 
 export interface PriceData {
     ticker: string;

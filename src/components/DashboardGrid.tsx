@@ -1,7 +1,7 @@
 'use client';
 
 import { useDashboard } from '@/contexts/DashboardContext';
-import widgetRegistry from '@/lib/widgetRegistry';
+import widgetRegistry from '@/lib/registry/widgetRegistry';
 import { Responsive, useContainerWidth } from 'react-grid-layout';
 import type { Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';

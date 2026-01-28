@@ -1,7 +1,7 @@
 import { ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
 import { clsx } from 'clsx';
 import { CurrencyCode } from '@/types';
-import { formatCurrency } from '@/lib/currencyService';
+import { formatCurrency } from '@/lib/utils/currencyService';
 
 interface HoldingCardProps {
     holding: {

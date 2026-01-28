@@ -3,7 +3,7 @@
 import { PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import { Asset } from '@/types';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { convertAmount, formatCurrency } from '@/lib/currencyService';
+import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
 
 interface AssetAllocationChartProps {
     assets: Asset[];

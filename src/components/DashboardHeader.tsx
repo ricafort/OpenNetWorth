@@ -4,7 +4,7 @@ import { useDashboard } from '@/contexts/DashboardContext';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import { Globe, Settings, LayoutGrid, RotateCcw, Check, Gamepad2, PlayCircle } from 'lucide-react';
 import CurrencySelector from '@/components/CurrencySelector';
-import { generateMockData } from '@/lib/storage';
+import { generateMockData } from '@/lib/data/storage';
 
 export default function DashboardHeader() {
     const { isEditMode, setIsEditMode, openSettings, resetLayout, baseCurrency } = useDashboard();

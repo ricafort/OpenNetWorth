@@ -1,9 +1,10 @@
-import { saveAssets, saveLiabilities, saveGoals, saveNetWorthHistory, clearAllData, saveRecurringTransactions, saveCashFlow } from '@/lib/storage';
-import { GETTING_STARTED_DATA, STABILIZING_DATA, BUILDING_FOUNDATIONS_DATA, FAMILY_DATA, GROWING_WEALTH_DATA, DemoProfile } from '@/lib/demoProfiles';
-import { scaleAmount } from '@/lib/currencyScale';
+import { saveAssets, saveLiabilities, saveGoals, saveNetWorthHistory, clearAllData, saveRecurringTransactions, saveCashFlow } from '@/lib/data/storage';
+import { GETTING_STARTED_DATA, STABILIZING_DATA, BUILDING_FOUNDATIONS_DATA, FAMILY_DATA, GROWING_WEALTH_DATA, DemoProfile } from './demoProfiles';
+import widgetRegistry from '@/lib/registry/widgetRegistry';
 import { NetWorthSnapshot, Asset, Liability, RecurringTransaction, CashFlowEntry, Goal, CurrencyCode } from '@/types';
-import { SAMPLE_MENTORS, SAMPLE_QUOTES, SAMPLE_FREEDOM_SETTINGS, SAMPLE_PRICE_CACHE } from '@/lib/sampleData';
-import { FullTemplateData } from '@/lib/templateService';
+import { SAMPLE_MENTORS, SAMPLE_QUOTES, SAMPLE_FREEDOM_SETTINGS, SAMPLE_PRICE_CACHE } from '@/lib/data/sampleData';
+import { scaleAmount } from '@/lib/utils/currencyScale';
+import { FullTemplateData } from '@/lib/domain/templateService';
 
 const DEMO_MODE_KEY = 'clearworth_demo_mode'; // v2
 
@@ -57,6 +58,7 @@ function generateHistory(baseAssets: number, baseLiabilities: number, currency: 
         curLiabilities = curLiabilities + (scaleAmount(500, currency) + Math.random() * scaleAmount(200, currency));
 
         history.push({
+            id: crypto.randomUUID(), // Ensure ID exists
             date: dateStr,
             totalAssets: Math.round(curAssets),
             totalLiabilities: Math.round(curLiabilities),

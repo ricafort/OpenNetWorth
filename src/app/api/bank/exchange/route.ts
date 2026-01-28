@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBankConnector } from '@/lib/bank/factory';
+import { getBankConnector } from '@/lib/api/bank/factory';
 import { createClient } from '@/utils/supabase/server';
 
 // CAUTION: This endpoint handles sensitive Access Tokens.

@@ -1,13 +1,12 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
-import { loadAssets } from '@/lib/storage';
+import { useAssets } from '@/hooks';
+import { useProfile } from '@/contexts/ProfileContext'; // Import this
 import { Asset } from '@/types';
 import { getPricesAction } from '@/app/actions/getPrices';
-import { isDemoMode } from '@/lib/demoMode';
-import { analyzePortfolio, PortfolioAnalysis } from '@/lib/portfolioAnalysis';
+import { analyzePortfolio, PortfolioAnalysis } from '@/lib/domain/portfolioAnalysis';
 import PortfolioSummary from '@/components/PortfolioSummary';
 import ConcentrationWarning from '@/components/ConcentrationWarning';
 import HoldingCard from '@/components/HoldingCard';
@@ -17,27 +16,29 @@ import AllocationPieChart from '@/components/AllocationPieChart';
 import { generateInvestmentAdviceAction } from '@/app/actions';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { convertAmount } from '@/lib/currencyService';
+import { convertAmount } from '@/lib/utils/currencyService';
 
 export default function PortfolioPage() {
-    const [assets, setAssets] = useState<Asset[]>([]);
-    const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [advice, setAdvice] = useState<string>('');
+    const { assets, isLoading } = useAssets();
+    const { isDemoMode } = useProfile(); // Use context source of truth
+    const { baseCurrency } = useDashboard();
     const { isPrivacyBlur } = useTheme();
-    const { baseCurrency } = useDashboard(); // Get Base Currency
+
+    const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null);
+    const [advice, setAdvice] = useState<string>('');
+    const [isAnalyzing, setIsAnalyzing] = useState(true);
 
     useEffect(() => {
-        const loadData = async () => {
-            setLoading(true);
-            const loadedAssets = loadAssets();
+        const analyze = async () => {
+            if (isLoading) return;
+            setIsAnalyzing(true);
 
-            // Filter for investments or assets that act as investments
-            const investmentAssets = loadedAssets.filter(a =>
+            // Filter for investments
+            const investmentAssets = assets.filter(a =>
                 a.type === 'investment' || a.type === 'crypto' || (a.investment && a.investment.ticker)
             );
 
-            // Extract tickers and types
+            // Extract tickers
             const requests = investmentAssets
                 .filter(a => a.investment?.ticker)
                 .map(a => {
@@ -47,28 +48,24 @@ export default function PortfolioPage() {
 
                     if (cls === 'crypto') type = 'crypto';
                     else if (cls === 'stock' || cls === 'etf') type = 'stock';
-                    else if (a.type === 'crypto') type = 'crypto'; // Fallback to asset type
+                    else if (a.type === 'crypto') type = 'crypto';
 
                     return { ticker: t, type };
                 });
 
-            // Fetch live prices (SERVER ACTION)
+            // Fetch live prices
             let prices = new Map<string, any>();
             if (requests.length > 0) {
-                // Pass demo mode status explicitely
-                const pricesObj = await getPricesAction(requests, { isDemo: isDemoMode() });
+                const pricesObj = await getPricesAction(requests, { isDemo: isDemoMode });
                 prices = new Map(Object.entries(pricesObj));
             }
 
-            // Normalize Assets to Base Currency
+            // Normalize
             const normalizedAssets = investmentAssets.map(asset => {
-                const newAsset = { ...asset }; // shallow copy
-
-                // 1. Handle Investments with Tickers
+                const newAsset = { ...asset };
                 if (newAsset.investment && newAsset.investment.ticker) {
                     const priceData = prices.get(newAsset.investment.ticker);
                     if (priceData) {
-                        // Price is likely USD. Convert to Base Currency.
                         const priceInBase = convertAmount(priceData.price, 'USD', baseCurrency);
                         const prevCloseInBase = convertAmount(priceData.previousClose, 'USD', baseCurrency);
 
@@ -77,44 +74,25 @@ export default function PortfolioPage() {
                             currentPrice: priceInBase,
                             previousClose: prevCloseInBase,
                             lastPriceUpdate: priceData.lastUpdated,
-                            costBasis: convertAmount(newAsset.investment.costBasis, 'USD', baseCurrency) // Assume costBasis was USD? Or User Input?
-                            // Wait, costBasis is user input. We don't know the currency of costBasis unless we store it.
-                            // AssetsPage stores manual assets with `currency`. But investments?
-                            // In AssetsPage, investment assets ALSO have a top-level `currency` field.
+                            costBasis: convertAmount(newAsset.investment.costBasis, asset.currency || 'USD', baseCurrency)
                         };
-
-                        // IMPORTANT: costBasis is likely entered in the asset.currency.
-                        // So we should convert costBasis from asset.currency to baseCurrency.
-                        newAsset.investment.costBasis = convertAmount(asset.investment!.costBasis, asset.currency || 'USD', baseCurrency);
                     }
                 }
-
-                // 2. Handle Manual Value (Normalize top-level value)
-                // analyzePortfolio uses `value` as fallback if not investment.
-                // But it also sets `value = shares * price` if investment.
-                // So for investments, `currentPrice` matters.
-                // For non-investments (if any leak in), `value` matters.
-
-                // Let's normalize `value` anyway.
                 newAsset.value = convertAmount(asset.value, asset.currency || 'USD', baseCurrency);
-
                 return newAsset;
             });
 
-            // Run analysis on Normalized Assets
+            // Analyze
             const result = analyzePortfolio(normalizedAssets);
             setAnalysis(result);
-            setAssets(normalizedAssets);
-            setLoading(false);
+            setIsAnalyzing(false);
 
-            // Fetch Advice (Use normalized total value)
-            const totalValueUSD = convertAmount(result.totalValue, baseCurrency, 'USD'); // AI expects USD context usually? Or just numbers?
-            // "Warren Buffett" persona probably thinks in USD.
-
+            // Advice
+            const totalValueUSD = convertAmount(result.totalValue, baseCurrency, 'USD');
             if (investmentAssets.length > 0) {
                 generateInvestmentAdviceAction(
                     "Warren Buffett",
-                    "the Oracle of Omaha, focused on value and long-term holding",
+                    "the Oracle of Omaha",
                     {
                         totalValue: totalValueUSD,
                         totalGainPercent: result.totalGainPercent,
@@ -126,10 +104,10 @@ export default function PortfolioPage() {
             }
         };
 
-        loadData();
-    }, [baseCurrency]); // Re-run when baseCurrency changes
+        analyze();
+    }, [assets, isLoading, baseCurrency, isDemoMode]);
 
-    if (loading) {
+    if (isLoading || isAnalyzing) {
         return (
             <div className="flex-1 flex items-center justify-center min-h-[50vh]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

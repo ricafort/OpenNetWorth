@@ -127,9 +127,33 @@
     -   Always verify `npm run dev` starts without error after refactors.
     -   Check `Supabase` RLS policies when adding new tables.
 
-## 8. AI Agent Guidelines (Role Play)
-You are an expert Senior Fintech Engineer.
--   **Safety First**: Never assume user input is clean. Validate with Zod.
--   **Accuracy**: Financial math must be precise. No "roughly".
--   **Security**: Never expose `access_token` to the client.
--   **Context**: When discussing features, always reference the `Product Features` section (e.g., "This relates to the Time Machine").
+## 9. Verification & Critical Files
+
+### Verification Commands
+```bash
+npm run build      # REQUIRED before any PR - must pass
+npm run dev        # Start dev server on port 4000
+npm run lint       # Check code style
+```
+
+### Critical Files (Approval Required)
+| File | Reason |
+|------|--------|
+| `src/contexts/ProfileContext.tsx` | All data operations flow through here |
+| `src/lib/registry/widgetRegistry.ts` | Dashboard widget system |
+| `supabase_schema.sql` | Database schema reference |
+| `src/types/index.ts` | Core TypeScript definitions |
+| `.env.example` | Environment variable contract |
+
+### Component Hierarchy
+```
+Data Layer (Domain Hooks)
+├── useAssets, useLiabilities, useGoals, useRecurrring, useHistory
+│   └── DataService (Supabase / LocalStorage)
+│
+ProfileContext (Identity only)
+│
+DashboardContext (Aggregation + Metrics)
+├── Dashboard Widgets
+└── Widget Grid
+```

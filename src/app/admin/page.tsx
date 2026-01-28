@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { UserProfile } from '@/types';
 import { useRouter } from 'next/navigation';
-import { SUPPORTED_CURRENCIES } from '@/lib/currencyService';
+import { SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
 import { DemoSelector } from '@/components/admin/DemoSelector';
 import { Trash2 } from 'lucide-react';
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { syncAllBankConnections } from '@/lib/bank/syncEngine';
+import { syncAllBankConnections } from '@/lib/api/bank/syncEngine';
 
 // This endpoint is triggered by Vercel Cron
 export async function GET(req: Request) {

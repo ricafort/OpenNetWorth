@@ -8,12 +8,12 @@ import { RecurringTransaction, CashFlowEntry } from '@/types';
 //     loadRecurringTransactions,
 //     saveRecurringTransactions,
 //     applyRecurringToMonth
-// } from '@/lib/storage'; // Removed
+// } from '@/lib/data/storage'; // Removed
 import RecurringList from '@/components/RecurringList';
 import RecurringTransactionForm from '@/components/RecurringTransactionForm';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { useProfile } from '@/contexts/ProfileContext'; // Added
-import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { useRecurring } from '@/hooks';
+import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 
 export default function CashFlowPage() {
     const { baseCurrency } = useDashboard();
@@ -22,8 +22,8 @@ export default function CashFlowPage() {
         addRecurring: addRecurringContext,
         updateRecurring: updateRecurringContext,
         deleteRecurring: deleteRecurringContext,
-        isDemoMode
-    } = useProfile();
+        // isDemoMode - removed as it appeared unused in logic, or can be re-imported from useProfile if needed separately
+    } = useRecurring();
 
     // Shared State
     const [view, setView] = useState<'history' | 'autopilot'>('history');

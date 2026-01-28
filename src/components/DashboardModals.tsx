@@ -5,7 +5,7 @@ import CheckInModal from '@/components/CheckInModal';
 import GeneralSettingsModal from '@/components/GeneralSettingsModal';
 import MentorSettings from '@/components/MentorSettings';
 import { useState, useEffect } from 'react';
-import { loadSettings, saveSettings } from '@/lib/storage';
+import { loadSettings, saveSettings } from '@/lib/data/storage';
 
 export default function DashboardModals() {
     const { isSettingsOpen, closeSettings, refreshAttributes } = useDashboard();

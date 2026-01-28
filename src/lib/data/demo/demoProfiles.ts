@@ -1,7 +1,8 @@
 import { Asset, Liability, Goal, RecurringTransaction, NetWorthSnapshot, CashFlowEntry } from '@/types';
-import { generateDemoProfile } from './demo/demoFactory';
+import widgetRegistry from '@/lib/registry/widgetRegistry';
+import { generateDemoProfile } from './demoFactory';
 // Demo Profiles - Re-exported for usage (Force Update)
-import { GETTING_STARTED_CONFIG, STABILIZING_CONFIG, BUILDING_FOUNDATIONS_CONFIG, FAMILY_CONFIG, GROWING_WEALTH_CONFIG } from './demo/demoConfigs';
+import { GETTING_STARTED_CONFIG, STABILIZING_CONFIG, BUILDING_FOUNDATIONS_CONFIG, FAMILY_CONFIG, GROWING_WEALTH_CONFIG } from './demoConfigs';
 
 export interface DemoProfile {
     assets: Asset[];

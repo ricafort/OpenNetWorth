@@ -107,13 +107,39 @@ export default function Sidebar() {
 
                         <div className="flex items-center gap-3 p-2 rounded-lg bg-muted border border-border">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold text-xs ring-2 ring-white">
-                                JD
+                                {profile?.email?.substring(0, 2).toUpperCase() || 'JD'}
                             </div>
-                            <div className="overflow-hidden">
-                                <p className="text-sm font-bold text-foreground truncate">John Doe</p>
-                                <p className="text-xs text-muted-foreground truncate">Pro Member</p>
+                            <div className="overflow-hidden flex-1">
+                                <p className="text-sm font-bold text-foreground truncate">
+                                    {profile?.full_name || 'Guest User'}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                    {profile?.email}
+                                </p>
                             </div>
                         </div>
+
+                        {/* Auth Buttons */}
+                        {profile?.id && profile.id !== 'local_user' ? (
+                            <button
+                                onClick={async () => {
+                                    const { createClient } = await import('@/utils/supabase/client');
+                                    const supabase = createClient();
+                                    await supabase.auth.signOut();
+                                    window.location.href = '/';
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                            >
+                                <span className="opacity-90">Log Out</span>
+                            </button>
+                        ) : (
+                            <Link
+                                href="/login"
+                                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            >
+                                Sign In / Sync Cloud
+                            </Link>
+                        )}
                     </div>
                 </div>
             </div>

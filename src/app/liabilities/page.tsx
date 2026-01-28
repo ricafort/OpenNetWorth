@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, TrendingDown } from 'lucide-react';
 import { Liability, LiabilityType, CurrencyCode } from '@/types';
-import { useProfile } from '@/contexts/ProfileContext';
+import { useLiabilities } from '@/hooks'; // 👈 NEW: Using domain hook
 import { useDashboard } from '@/contexts/DashboardContext';
-import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 import { useTheme } from '@/contexts/ThemeContext';
 import CurrencySelector from '@/components/CurrencySelector';
 
 export default function LiabilitiesPage() {
-    const { liabilities, addLiability, updateLiability, deleteLiability } = useProfile();
+    const { liabilities, addLiability, updateLiability, deleteLiability } = useLiabilities(); // 👈 Using hook
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();

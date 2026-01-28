@@ -4,7 +4,7 @@ import { WealthMomentum } from '@/types';
 import { PieChart, Pie, Cell } from 'recharts';
 import { Info } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { convertAmount, formatCurrency } from '@/lib/currencyService';
+import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
 
 interface Props {
     momentum: WealthMomentum;

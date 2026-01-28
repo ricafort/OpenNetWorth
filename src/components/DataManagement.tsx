@@ -2,7 +2,7 @@
 
 import { useState, ChangeEvent, useEffect } from 'react';
 import { Download, Upload, Trash2, AlertTriangle, FileJson } from 'lucide-react';
-import { exportAllData, importData, clearAllData } from '@/lib/storage';
+import { exportAllData, importData, clearAllData } from '@/lib/data/storage';
 
 export default function DataManagement() {
     const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -121,7 +121,7 @@ export default function DataManagement() {
                     <button
                         onClick={() => {
                             if (confirm('This will overwrite current data. Proceed?')) {
-                                const { generateMockData } = require('@/lib/storage');
+                                const { generateMockData } = require('@/lib/data/storage');
                                 generateMockData();
                                 window.location.reload();
                             }

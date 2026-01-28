@@ -2,10 +2,11 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { Asset, Liability, Goal, NetWorthSnapshot, WealthMomentum, CurrencyCode, UserSettings, DashboardConfig, RecurringTransaction } from '@/types';
-import { loadSettings, loadDashboardLayout, saveDashboardLayout, toMonthlyAmount } from '@/lib/storage';
-import { convertAmount } from '@/lib/currencyService';
-import { getDefaultLayout } from '@/lib/widgetRegistry';
+import { loadSettings, loadDashboardLayout, saveDashboardLayout, toMonthlyAmount } from '@/lib/data/storage';
+import { convertAmount } from '@/lib/utils/currencyService';
+import { getDefaultLayout } from '@/lib/registry/widgetRegistry';
 import { useProfile } from '@/contexts/ProfileContext';
+import { useAssets, useLiabilities, useGoals, useRecurring, useHistory } from '@/hooks';
 
 interface DashboardContextType {
     // Financial Data
@@ -40,11 +41,13 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
     // --- Financial State (Sourced from ProfileContext) ---
-    const {
-        profile, isDemoMode,
-        assets, liabilities, goals, history, recurring,
-        refreshData: refreshProfileData
-    } = useProfile();
+    // --- Financial State (Sourced from Domain Hooks) ---
+    const { profile, isDemoMode } = useProfile();
+    const { assets, refreshAssets } = useAssets();
+    const { liabilities, refreshLiabilities } = useLiabilities();
+    const { goals, refreshGoals } = useGoals();
+    const { recurring, refreshRecurring } = useRecurring();
+    const { history, refreshHistory } = useHistory();
 
     const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('USD');
     const [momentum, setMomentum] = useState<WealthMomentum | null>(null);
@@ -190,8 +193,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         <DashboardContext.Provider value={{
             assets, liabilities, goals, metrics, metricsUSD, netWorthHistory: history, momentum, baseCurrency,
             netWorth: metrics.netWorth, // Pass top-level
-            refreshAttributes: loadData,
-            refreshHistory: refreshProfileData, // Just reload profile data
+            refreshAttributes: loadData, // Recalculates metrics (hooks handle data refresh automatically)
+            refreshHistory, // Expose specific refresher if needed
             isEditMode, setIsEditMode, layout, updateLayout, hideWidget, showWidget, resetLayout,
             openSettings, closeSettings, isSettingsOpen
         }}>

@@ -1,6 +1,6 @@
 'use server';
 
-import { fetchAllPrices, PriceData } from '@/lib/priceService';
+import { fetchAllPrices, PriceData } from '@/lib/api/priceService';
 
 /**
  * Server Action to fetch stock/crypto prices.

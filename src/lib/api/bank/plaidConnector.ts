@@ -18,14 +18,29 @@ export class PlaidConnector implements UniversalBankConnector {
     }
 
     async createLinkToken(userId: string): Promise<string> {
-        const response = await this.client.linkTokenCreate({
-            user: { client_user_id: userId },
-            client_name: 'ClearWorth',
-            products: [Products.Transactions],
-            country_codes: [CountryCode.Us], // Determine this dynamically ideally
-            language: 'en',
-        });
-        return response.data.link_token;
+        // SAFEGUARD: Check if credentials exist
+        if (!process.env.PLAID_CLIENT_ID || !process.env.PLAID_SECRET) {
+            console.warn("Plaid credentials missing. Using MOCK link token.");
+            return 'link-sandbox-mock-token';
+        }
+
+        try {
+            const response = await this.client.linkTokenCreate({
+                user: { client_user_id: userId },
+                client_name: 'ClearWorth',
+                products: [Products.Transactions],
+                country_codes: [CountryCode.Us],
+                language: 'en',
+            });
+            return response.data.link_token;
+        } catch (error: any) {
+            console.error("Plaid createLinkToken failed:", error.response?.data || error.message);
+            // Fallback to mock to prevent crash in Dev
+            if (process.env.NODE_ENV === 'development') {
+                return 'link-sandbox-mock-token-fallback';
+            }
+            throw new Error("Failed to initialize bank link. Please try again later.");
+        }
     }
 
     async exchangePublicToken(publicToken: string): Promise<BankConnectionResult> {

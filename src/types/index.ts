@@ -1,66 +1,125 @@
+/**
+ * @fileoverview Core TypeScript definitions for ClearWorth.
+ * These types are used throughout the application for assets, liabilities, and financial tracking.
+ */
+
+/** Available asset categories */
 export type AssetType = 'cash' | 'investment' | 'crypto' | 'real_estate' | 'retirement' | 'other';
+
+/** Available liability categories */
 export type LiabilityType = 'mortgage' | 'student_loan' | 'auto_loan' | 'credit_card' | 'other';
+
+/** Supported currencies (ISO 4217 codes) */
 export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD' | 'CHF' | 'CNY' | 'INR' | 'SGD' | 'PHP' | 'KRW';
 
+/**
+ * User profile from Supabase auth.
+ * Links to auth.users table via `id`.
+ */
 export interface UserProfile {
+    /** UUID from Supabase auth.users */
     id: string;
     email: string;
     full_name?: string;
     avatar_url?: string;
+    /** When true, sensitive values may be hidden in UI */
     privacy_mode: boolean;
-    // Admin / Demo Fields
+    /** If true, this is a demo/template profile (not a real user) */
     is_template: boolean;
+    /** 'admin' users can manage templates */
     role: 'user' | 'admin';
+    /** Display name for template profiles (e.g., "UK Starter") */
     template_name?: string;
+    /** ISO 3166-1 alpha-2 (e.g., 'US', 'GB') */
     country_code?: string;
+    /** Base currency for all financial displays */
     currency_code: CurrencyCode;
+    /** Links to economic benchmarks (e.g., 'p50') */
     benchmark_bracket?: string;
+    /** Display string like "$45k - $135k" */
     income_range_display?: string;
     created_at: string;
 }
 
+/**
+ * Details for investment-type assets.
+ * Stores ticker, shares, and live price data.
+ */
 export interface InvestmentDetails {
-    ticker: string;              // e.g., "AAPL", "VTI"
+    /** Stock/ETF ticker symbol (e.g., "AAPL", "VTI") */
+    ticker: string;
+    /** Number of shares owned */
     shares: number;
-    costBasis: number;           // Total cost paid
-    currentPrice?: number;       // Live price (fetched)
-    previousClose?: number;      // For daily change
-    lastPriceUpdate?: string;    // ISO timestamp
-    dividendYield?: number;      // Annual yield %
-    sector?: string;             // e.g., "Technology"
+    /** Total cost paid (for gain/loss calc) */
+    costBasis: number;
+    /** Live price from Alpha Vantage (fetched) */
+    currentPrice?: number;
+    /** Previous day's close for daily change */
+    previousClose?: number;
+    /** ISO timestamp of last price fetch */
+    lastPriceUpdate?: string;
+    /** Annual dividend yield as decimal (e.g., 0.02 = 2%) */
+    dividendYield?: number;
+    /** Sector classification (e.g., "Technology") */
+    sector?: string;
     assetClass: 'stock' | 'etf' | 'crypto' | 'bond' | 'mutual_fund' | 'index_fund' | 'real_estate' | 'other';
 }
 
+/**
+ * A single asset owned by the user.
+ * Value is stored in the specified currency.
+ */
 export interface Asset {
     id: string;
     name: string;
     type: AssetType;
+    /** Current value in `currency` */
     value: number;
-    currency?: CurrencyCode;     // Default to 'USD' if undefined
-    investment?: InvestmentDetails; // Optional investment details
+    /** Defaults to 'USD' if undefined */
+    currency?: CurrencyCode;
+    /** Only present for investment-type assets */
+    investment?: InvestmentDetails;
+    /** true = easily converted to cash (savings, stocks) */
     is_liquid: boolean;
-    interest_rate?: number; // Added
+    /** APY for interest-bearing accounts */
+    interest_rate?: number;
     last_updated: string;
 }
 
+/**
+ * A single liability (debt) owed by the user.
+ * Balance is stored in the specified currency.
+ */
 export interface Liability {
     id: string;
     user_id: string;
     name: string;
     type: LiabilityType;
+    /** Current balance owed */
     balance: number;
-    currency?: CurrencyCode;     // Default to 'USD' if undefined
+    /** Defaults to 'USD' if undefined */
+    currency?: CurrencyCode;
+    /** Annual interest rate as decimal (e.g., 0.05 = 5%) */
     interest_rate: number;
+    /** Minimum monthly payment */
     minimum_payment?: number;
+    /** true = mortgage, student loan (builds equity/skills) */
     is_good_debt: boolean;
     last_updated: string;
 }
 
+/**
+ * Point-in-time snapshot of net worth.
+ * Used for historical charts and Time Machine.
+ */
 export interface NetWorthSnapshot {
+    id: string; // Added for DataService compatibility
+    /** ISO date string */
     date: string;
     netWorth: number;
     totalAssets: number;
     totalLiabilities: number;
+    /** Optional: detailed breakdown at this moment */
     assets?: Asset[];
     liabilities?: Liability[];
 }

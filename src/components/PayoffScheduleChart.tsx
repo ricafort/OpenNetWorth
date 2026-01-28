@@ -3,7 +3,7 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PayoffScheduleEntry } from '@/types';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { formatCurrency } from '@/lib/currencyService';
+import { formatCurrency } from '@/lib/utils/currencyService';
 
 interface PayoffScheduleChartProps {
     schedule: PayoffScheduleEntry[];

@@ -1,7 +1,7 @@
 'use client';
 
 import { CurrencyCode } from '@/types';
-import { SUPPORTED_CURRENCIES } from '@/lib/currencyService';
+import { SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
 
 interface CurrencySelectorProps {
     value: CurrencyCode;

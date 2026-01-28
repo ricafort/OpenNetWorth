@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import React from "react";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import LayoutShell from "@/components/LayoutShell";
@@ -53,15 +54,17 @@ export default function RootLayout({
       <body className={`${inter.variable} antialiased`}>
         <ThemeProvider>
           <OnboardingProvider>
-            <ProfileProvider>
-              <DashboardProvider>
-                <DemoBanner />
-                <LayoutShell>
-                  <OnboardingTour />
-                  {children}
-                </LayoutShell>
-              </DashboardProvider>
-            </ProfileProvider>
+            <React.Suspense fallback={null}>
+              <ProfileProvider>
+                <DashboardProvider>
+                  <DemoBanner />
+                  <LayoutShell>
+                    <OnboardingTour />
+                    {children}
+                  </LayoutShell>
+                </DashboardProvider>
+              </ProfileProvider>
+            </React.Suspense>
           </OnboardingProvider>
         </ThemeProvider>
       </body>

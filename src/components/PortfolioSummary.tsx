@@ -1,6 +1,6 @@
 import { TrendingUp, DollarSign, PieChart } from 'lucide-react';
-import { PortfolioAnalysis } from '@/lib/portfolioAnalysis';
-import { formatCurrency } from '@/lib/currencyService';
+import { PortfolioAnalysis } from '@/lib/domain/portfolioAnalysis';
+import { formatCurrency } from '@/lib/utils/currencyService';
 import { CurrencyCode } from '@/types';
 
 interface PortfolioSummaryProps {

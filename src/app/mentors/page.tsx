@@ -5,10 +5,11 @@ import { MessageSquare, ShieldCheck, Zap, Anchor, Info, Send, Plus, User, X, Spa
 import MentorSettings from '@/components/MentorSettings';
 import ActionConfirmCard from '@/components/ActionConfirmCard';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { saveAssets, saveLiabilities, loadAssets, loadLiabilities } from '@/lib/storage';
+import { saveAssets, saveLiabilities, loadAssets, loadLiabilities } from '@/lib/data/storage';
 import { Asset, Liability, Goal } from '@/types';
-import { formatCurrency, getCurrencySymbol } from '@/lib/currencyService';
+import { formatCurrency, getCurrencySymbol } from '@/lib/utils/currencyService';
 import { useProfile } from '@/contexts/ProfileContext';
+import { useAssets, useLiabilities, useGoals } from '@/hooks';
 
 const mentors = [
     {
@@ -59,7 +60,12 @@ export default function MentorsPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const { refreshAttributes, metrics, baseCurrency } = useDashboard();
-    const { addAsset, addLiability, addGoal, profile } = useProfile(); // Use ProfileContext
+
+    // Domain Hooks for Actions
+    const { addAsset } = useAssets();
+    const { addLiability } = useLiabilities();
+    const { addGoal } = useGoals();
+    const { profile } = useProfile(); // Still need profile identity
     const [isGeneratingProfile, setIsGeneratingProfile] = useState(false);
 
     // Updated Chat State to support actions

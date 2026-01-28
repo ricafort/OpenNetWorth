@@ -1,6 +1,6 @@
 'use server';
 
-import { getMentorDebtAdvice, getMentorInvestmentAdvice, DebtAdviceContext, InvestmentAdviceContext } from "@/lib/mentorAdvice";
+import { getMentorDebtAdvice, getMentorInvestmentAdvice, DebtAdviceContext, InvestmentAdviceContext } from "@/lib/domain/mentorAdvice";
 
 export async function generateDebtAdviceAction(
     mentorName: string,

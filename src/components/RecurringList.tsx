@@ -1,9 +1,9 @@
 'use client';
 
 import { RecurringTransaction, CurrencyCode } from '@/types';
-import { toMonthlyAmount } from '@/lib/storage';
+import { toMonthlyAmount } from '@/lib/data/storage';
 import { Edit2, Trash2, Power } from 'lucide-react';
-import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 
 interface Props {
     transactions: RecurringTransaction[];

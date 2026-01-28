@@ -3,15 +3,15 @@
 import { useState, useEffect } from 'react';
 import { Target, Plus, Trophy, Trash2, Edit2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Goal, NetWorthSnapshot } from '@/types';
-// import { loadGoals, saveGoals, loadNetWorthHistory } from '@/lib/storage'; // Removed
+// import { loadGoals, saveGoals, loadNetWorthHistory } from '@/lib/data/storage'; // Removed
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { useProfile } from '@/contexts/ProfileContext'; // Added
-import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { useGoals } from '@/hooks'; // 👈 NEW: Using domain hook
+import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 
 export default function GoalsPage() {
     // const [goals, setGoals] = useState<Goal[]>([]); // Removed local state
-    const { goals, addGoal, updateGoal, deleteGoal } = useProfile(); // Use ProfileContext
+    const { goals, addGoal, updateGoal, deleteGoal } = useGoals(); // 👈 Using hook
 
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);

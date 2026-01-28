@@ -3,13 +3,13 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Asset, Liability } from '@/types';
-import { loadAssets, loadLiabilities } from '@/lib/storage';
+import { loadAssets, loadLiabilities } from '@/lib/data/storage';
 import WealthSnapshotTemplate from './WealthSnapshotTemplate';
 import { Download, FileText, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
-import { generateVerificationHash } from '@/lib/crypto';
+import { generateVerificationHash } from '@/lib/utils/crypto';
 
 export default function WealthSnapshotGenerator() {
     const templateRef = useRef<HTMLDivElement>(null);

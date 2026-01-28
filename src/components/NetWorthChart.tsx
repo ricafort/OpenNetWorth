@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { NetWorthSnapshot } from '@/types';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { convertAmount, formatCurrency } from '@/lib/currencyService';
+import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
 
 interface NetWorthChartProps {
     data: NetWorthSnapshot[];

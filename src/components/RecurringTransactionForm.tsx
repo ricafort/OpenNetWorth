@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { RecurringTransaction } from '@/types';
 import { X, Save, Calendar, Repeat, Coins } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { getCurrencySymbol, SUPPORTED_CURRENCIES } from '@/lib/currencyService';
+import { getCurrencySymbol, SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
 
 interface Props {
     onSave: (transaction: RecurringTransaction) => void;

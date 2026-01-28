@@ -1,7 +1,7 @@
 import WidgetWrapper from './WidgetWrapper';
 import StatCard from '@/components/StatCard';
 import { Wallet } from 'lucide-react';
-import { formatCurrency } from '@/lib/currencyService';
+import { formatCurrency } from '@/lib/utils/currencyService';
 import { useDashboard } from '@/contexts/DashboardContext';
 
 export default function StatNetWorthWidget() {

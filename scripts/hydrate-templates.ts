@@ -18,7 +18,7 @@ const supabase = createClient(supabaseUrl!, serviceRoleKey);
 
 
 // Import our new Truth Dictionary
-import { getInterestRate } from '../src/lib/economicConstants';
+import { getInterestRate } from '../src/lib/domain/economicConstants';
 
 async function hydrate() {
     console.log("💧 Starting Template Hydration...");

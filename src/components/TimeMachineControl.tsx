@@ -4,7 +4,7 @@ import React from 'react';
 import { NetWorthSnapshot } from '@/types';
 import { History, Calendar } from 'lucide-react';
 import { useDashboard } from '@/contexts/DashboardContext';
-import { formatCurrency, convertAmount } from '@/lib/currencyService';
+import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 
 interface TimeMachineControlProps {
     history: NetWorthSnapshot[];
