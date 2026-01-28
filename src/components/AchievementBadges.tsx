@@ -50,7 +50,38 @@ export default function AchievementBadges() {
 
             if (data) {
                 console.log("AchievementBadges: Found Badges:", data.length);
-                setUnlockedBadges(new Set((data as { badge_id: string }[]).map(b => b.badge_id)));
+                const loadedBadges = new Set((data as { badge_id: string }[]).map(b => b.badge_id));
+                setUnlockedBadges(loadedBadges);
+
+                // --- AUTO GRANT CHECK (Recovery/Sync) ---
+                // If local state qualifies for a badge but it is NOT in DB, grant it now.
+                // This handles cases where triggers missed (e.g. data imported locally but not synced perfectly via individual inserts)
+                const missingBadges: string[] = [];
+
+                if (!loadedBadges.has('first-steps') && assets.length > 0) missingBadges.push('first-steps');
+                if (!loadedBadges.has('goal-setter') && goals.length > 0) missingBadges.push('goal-setter');
+                if (!loadedBadges.has('wealth-tracker') && (metricsUSD?.netWorth || 0) > 0) missingBadges.push('wealth-tracker');
+                if (!loadedBadges.has('millionaire') && (metricsUSD?.netWorth || 0) >= 1000000) missingBadges.push('millionaire');
+
+                if (missingBadges.length > 0) {
+                    console.log("AchievementBadges: Granting missing badges...", missingBadges);
+
+                    // We call the server function 'award_badge' for each. 
+                    // Ideally we could batch, but simple loop is fine for rare event.
+                    // Note: award_badge is a Postgres function we can call via RPC.
+                    missingBadges.forEach(async (badgeId) => {
+                        const { error } = await supabase.rpc('award_badge', {
+                            target_user_id: profile.id,
+                            badge_slug: badgeId
+                        });
+                        if (!error) {
+                            loadedBadges.add(badgeId); // Update local state immediately
+                            setUnlockedBadges(new Set(loadedBadges));
+                        } else {
+                            console.error("Failed to grant badge:", badgeId, error);
+                        }
+                    });
+                }
             }
         }
 
