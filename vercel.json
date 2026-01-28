@@ -1,5 +1,5 @@
 {
-    "cron": [
+    "crons": [
         {
             "path": "/api/cron/sync-banks",
             "schedule": "0 1 * * *"
