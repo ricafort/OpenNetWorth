@@ -53,10 +53,41 @@ export default function AchievementBadges() {
                 setUnlockedBadges(new Set((data as { badge_id: string }[]).map(b => b.badge_id)));
             }
         }
-        fetchBadges();
+
+        if (profile?.id === 'local_user') {
+            // --- LOCAL GUEST MODE CALCULATION ---
+            const localUnlocked = new Set<string>();
+
+            // 1. First Steps (Asset > 0)
+            if (assets.length > 0) localUnlocked.add('first-steps');
+
+            // 2. Goal Setter (Goal > 0)
+            if (goals.length > 0) localUnlocked.add('goal-setter');
+
+            // 3. Wealth Tracker (NW > 0)
+            // metrics can be null initially
+            if ((metricsUSD?.netWorth || 0) > 0) localUnlocked.add('wealth-tracker');
+
+            // 4. Debt Slayer (Liabilities = 0 OR Paid off? checking for 0 liabilities is easiest proxy for "Debt Free" or "Slayer")
+            // The badge says "Pay off a liability completely". Hard to track event locally without history.
+            // Proxy: If liabilities exist but Total is 0?
+            // Let's just check if we have 0 liabilities but we HAVE assets (so not just empty state).
+            // Actually, usually "Slayer" means paying one off.
+            // Let's skip complex logic for guest for now or just check if liabilities.length > 0 and metricsUSD.totalLiabilities === 0?
+            // Let's stick to safe ones.
+
+            // 5. Millionaire
+            if ((metricsUSD?.netWorth || 0) >= 1000000) localUnlocked.add('millionaire');
+
+            setUnlockedBadges(localUnlocked);
+
+        } else {
+            // --- SUPABASE MODE ---
+            fetchBadges();
+        }
 
         // Optional: Realtime subscription could go here
-    }, [assets, liabilities, metrics, supabase, profile?.id]); // Re-fetch if ID matches
+    }, [assets, liabilities, goals, metricsUSD, supabase, profile?.id]); // Re-fetch/Re-calc on any data change
     // Ideally, we re-fetch when 'assets' change because our Trigger might have just fired.
     // For now, dependency on 'assets' length implies a change happened.
 
