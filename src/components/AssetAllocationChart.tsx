@@ -1,36 +1,6 @@
 'use client';
 
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Asset Allocation</h3>
-            <div className="w-full h-[320px] flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={data}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={80}
-                            paddingAngle={5}
-                            dataKey="value"
-                        >
-                            {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[entry.name] || DEFAULT_COLOR} />
-                            ))}
-                        </Pie>
-                        <Tooltip
-                            formatter={(value: any) => [formatCurrency(Number(value), baseCurrency), 'Value']}
-                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        />
-                        <Legend
-                            layout="vertical"
-                            verticalAlign="middle"
-                            align="right"
-                            wrapperStyle={{ fontSize: '12px', fontWeight: 500 }}
-                        />
-                    </PieChart>
-                </ResponsiveContainer>
-            </div>
-        </div >
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Asset } from '@/types';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
