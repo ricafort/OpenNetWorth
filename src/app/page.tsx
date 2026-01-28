@@ -37,12 +37,12 @@ export default function DashboardPage() {
 
       <AchievementBadges />
 
-      <div className="mx-auto max-w-2xl transform transition-all duration-500 ease-in-out">
-        <BankStatusCard />
-      </div>
-
       {/* Main Draggable Grid */}
       <DashboardGrid />
+
+      <div className="mx-auto max-w-2xl transform transition-all duration-500 ease-in-out mt-8">
+        <BankStatusCard />
+      </div>
 
       {/* Components for Edit Mode */}
       <WidgetDrawer />
