@@ -73,7 +73,7 @@ export default function AchievementBadges() {
                         const { error } = await supabase.rpc('award_badge', {
                             target_user_id: profile.id,
                             badge_slug: badgeId
-                        });
+                        } as any);
                         if (!error) {
                             loadedBadges.add(badgeId); // Update local state immediately
                             setUnlockedBadges(new Set(loadedBadges));
