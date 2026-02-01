@@ -1,6 +1,6 @@
 
-import { Liability } from '@/types';
-import { PayoffStrategy, DebtPayoffResult, PayoffScheduleEntry, FreedomDateSummary } from '@/types';
+import { Liability } from '@/features/liabilities/types';
+import { PayoffStrategy, DebtPayoffResult, PayoffScheduleEntry, FreedomDateSummary } from '@/features/liabilities/types';
 
 // Helper to estimate minimum payments if not provided
 const estimateMinPayment = (balance: number, annualRate: number): number => {

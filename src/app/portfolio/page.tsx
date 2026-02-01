@@ -1,27 +1,27 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Sidebar from '@/components/Sidebar';
-import { useAssets } from '@/hooks';
+import Sidebar from '@/components/layout/Sidebar';
+import { useAssetsQuery } from '@/features/assets/hooks/useAssetsQuery';
 import { useProfile } from '@/contexts/ProfileContext'; // Import this
-import { Asset } from '@/types';
-import { getPricesAction } from '@/app/actions/getPrices';
+import { Asset } from '@/features/assets/types';
+import { getPricesAction } from '@/features/assets/actions/getPrices';
 import { analyzePortfolio, PortfolioAnalysis } from '@/lib/domain/portfolioAnalysis';
-import PortfolioSummary from '@/components/PortfolioSummary';
-import ConcentrationWarning from '@/components/ConcentrationWarning';
-import HoldingCard from '@/components/HoldingCard';
+import PortfolioSummary from '@/features/assets/components/PortfolioSummary';
+import ConcentrationWarning from '@/features/assets/components/ConcentrationWarning';
+import HoldingCard from '@/features/assets/components/HoldingCard';
 import Link from 'next/link';
 import { Plus, ArrowRight, TrendingUp } from 'lucide-react';
-import AllocationPieChart from '@/components/AllocationPieChart';
+import AllocationPieChart from '@/features/assets/components/AllocationPieChart';
 import { generateInvestmentAdviceAction } from '@/app/actions';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useDashboard } from '@/contexts/DashboardContext';
+import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { convertAmount } from '@/lib/utils/currencyService';
 
 export default function PortfolioPage() {
-    const { assets, isLoading } = useAssets();
+    const { assets, isLoading } = useAssetsQuery();
     const { isDemoMode } = useProfile(); // Use context source of truth
-    const { baseCurrency } = useDashboard();
+    const { baseCurrency } = useNetWorth();
     const { isPrivacyBlur } = useTheme();
 
     const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null);
@@ -35,15 +35,15 @@ export default function PortfolioPage() {
 
             // Filter for investments
             const investmentAssets = assets.filter(a =>
-                a.type === 'investment' || a.type === 'crypto' || (a.investment && a.investment.ticker)
+                a.type === 'investment' || a.type === 'crypto' || (a.investment_details && a.investment_details.ticker)
             );
 
             // Extract tickers
             const requests = investmentAssets
-                .filter(a => a.investment?.ticker)
+                .filter(a => a.investment_details?.ticker)
                 .map(a => {
-                    const t = a.investment!.ticker;
-                    const cls = a.investment?.assetClass;
+                    const t = a.investment_details!.ticker;
+                    const cls = a.investment_details?.assetClass;
                     let type: 'stock' | 'crypto' | 'other' = 'stock';
 
                     if (cls === 'crypto') type = 'crypto';
@@ -63,18 +63,18 @@ export default function PortfolioPage() {
             // Normalize
             const normalizedAssets = investmentAssets.map(asset => {
                 const newAsset = { ...asset };
-                if (newAsset.investment && newAsset.investment.ticker) {
-                    const priceData = prices.get(newAsset.investment.ticker);
+                if (newAsset.investment_details && newAsset.investment_details.ticker) {
+                    const priceData = prices.get(newAsset.investment_details.ticker);
                     if (priceData) {
                         const priceInBase = convertAmount(priceData.price, 'USD', baseCurrency);
                         const prevCloseInBase = convertAmount(priceData.previousClose, 'USD', baseCurrency);
 
-                        newAsset.investment = {
-                            ...newAsset.investment,
+                        newAsset.investment_details = {
+                            ...newAsset.investment_details,
                             currentPrice: priceInBase,
                             previousClose: prevCloseInBase,
                             lastPriceUpdate: priceData.lastUpdated,
-                            costBasis: convertAmount(newAsset.investment.costBasis, asset.currency || 'USD', baseCurrency)
+                            costBasis: convertAmount(newAsset.investment_details.costBasis, asset.currency || 'USD', baseCurrency)
                         };
                     }
                 }

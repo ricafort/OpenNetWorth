@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { NetWorthSnapshot } from '@/types';
-import { getDataService } from '@/lib/data/services';
+import { getDataService } from '@/infrastructure/dataFactory';
 import { useProfile } from '@/contexts/ProfileContext';
 
 export function useHistory() {

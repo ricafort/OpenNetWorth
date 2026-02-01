@@ -359,6 +359,30 @@ CREATE TRIGGER on_net_worth_change AFTER INSERT OR UPDATE ON public.net_worth_hi
 DROP TRIGGER IF EXISTS on_liability_change ON public.liabilities;
 CREATE TRIGGER on_liability_change AFTER INSERT OR UPDATE ON public.liabilities FOR EACH ROW EXECUTE PROCEDURE public.check_liability_badges();
 
+
+-- ===========================
+-- SECTION 8: UTILITIES
+-- ===========================
+
+CREATE OR REPLACE FUNCTION public.wipe_user_data()
+RETURNS VOID AS $$
+BEGIN
+  -- Securely delete all data for the calling user
+  DELETE FROM public.assets WHERE user_id = auth.uid();
+  DELETE FROM public.liabilities WHERE user_id = auth.uid();
+  DELETE FROM public.goals WHERE user_id = auth.uid();
+  DELETE FROM public.recurring_transactions WHERE user_id = auth.uid();
+  DELETE FROM public.user_badges WHERE user_id = auth.uid();
+  DELETE FROM public.cash_flow_history WHERE user_id = auth.uid();
+  DELETE FROM public.net_worth_history WHERE user_id = auth.uid();
+  DELETE FROM public.mentor_interactions WHERE user_id = auth.uid();
+  DELETE FROM public.custom_mentors WHERE user_id = auth.uid();
+  DELETE FROM public.linked_items WHERE user_id = auth.uid();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION wipe_user_data TO authenticated;
+
 -- =============================================================================
 -- END OF SCHEMA
 -- =============================================================================

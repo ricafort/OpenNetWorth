@@ -9,6 +9,7 @@ import { User, ChevronDown, Check } from 'lucide-react';
 type TemplateProfile = {
     id: string;
     full_name: string;
+    template_name: string; // Added field
     income_range_display: string | null;
     country_code: string;
     benchmark_bracket: string | null;
@@ -42,10 +43,9 @@ export function DemoSelector() {
     }, []);
 
     const handleSelect = async (templateId: string) => {
-        await switchProfile(templateId);
-        setIsOpen(false);
-        // Page refresh is handled by context or we force it if needed
-        window.location.reload();
+        // Redirect to the Home Dashboard (/) with the simulated profile ID
+        // This matches the behavior of the "Manage Data" button on the Admin page
+        window.location.href = `/?simulatedProfileId=${templateId}`;
     };
 
     const currentTemplate = templates.find(t => t.id === profile?.id);
@@ -67,7 +67,7 @@ export function DemoSelector() {
                 <div className="text-left flex-1">
                     <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Viewing As</div>
                     <div className="text-sm font-semibold text-white truncate">
-                        {currentTemplate ? currentTemplate.full_name : 'Select Data Template'}
+                        {currentTemplate ? (currentTemplate.full_name || currentTemplate.template_name) : 'Select Data Template'}
                     </div>
                 </div>
 
@@ -89,19 +89,19 @@ export function DemoSelector() {
                                     key={template.id}
                                     onClick={() => handleSelect(template.id)}
                                     className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all group ${profile?.id === template.id
-                                            ? 'bg-blue-600/10 border border-blue-500/30'
-                                            : 'hover:bg-white/5 border border-transparent'
+                                        ? 'bg-blue-600/10 border border-blue-500/30'
+                                        : 'hover:bg-white/5 border border-transparent'
                                         }`}
                                 >
                                     <img
                                         src={template.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${template.id}`}
-                                        alt={template.full_name}
+                                        alt={template.full_name || template.template_name}
                                         className="w-10 h-10 rounded-full bg-slate-800"
                                     />
 
                                     <div className="text-left flex-1">
                                         <div className={`font-semibold ${profile?.id === template.id ? 'text-blue-400' : 'text-slate-200 group-hover:text-white'}`}>
-                                            {template.full_name}
+                                            {template.full_name || template.template_name}
                                         </div>
                                         <div className="text-xs text-slate-500 flex items-center gap-2">
                                             <span className="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-300">

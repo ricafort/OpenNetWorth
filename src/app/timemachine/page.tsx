@@ -3,16 +3,18 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, AlertTriangle } from 'lucide-react';
-import { loadNetWorthHistory } from '@/lib/data/storage';
-import { NetWorthSnapshot, Asset, Liability } from '@/types';
-import TimeMachineControl from '@/components/TimeMachineControl';
+import { loadNetWorthHistory } from '@/infrastructure/local_driver';
+import { Asset } from '@/features/assets/types';
+import { Liability } from '@/features/liabilities/types';
+import { NetWorthSnapshot } from '@/types';
+import TimeMachineControl from '@/features/timemachine/components/TimeMachineControl';
 import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
-import { useDashboard } from '@/contexts/DashboardContext';
+import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function TimeMachinePage() {
-    const { baseCurrency } = useDashboard();
+    const { baseCurrency } = useNetWorth();
     const [history, setHistory] = useState<NetWorthSnapshot[]>([]);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [snapshot, setSnapshot] = useState<NetWorthSnapshot | null>(null);

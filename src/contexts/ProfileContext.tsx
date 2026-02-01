@@ -3,8 +3,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
-import { UserProfile } from '@/types';
-import * as LocalStorage from '@/lib/data/storage';
+import { UserProfile, CurrencyCode } from '@/types';
+import * as LocalStorage from '@/infrastructure/local_driver';
 
 interface ProfileContextType {
     // Identity
@@ -16,6 +16,7 @@ interface ProfileContextType {
     // Actions
     refreshData: () => Promise<void>;
     switchProfile: (templateId: string | null) => void;
+    updateCurrency: (code: CurrencyCode) => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -61,25 +62,40 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
     };
 
-    const loadFromLocalStorage = () => {
-        // Mock profile for guests
-        // If we are in "Forked Demo Mode", we might have an origin ID to fetch badges (not implemented yet)
-        const originId = typeof window !== 'undefined' ? localStorage.getItem('clearworth_demo_origin_id') : null;
-        const storedSettings = LocalStorage.loadSettings();
+    const handleMigration = async (userId: string) => {
+        if (typeof window === 'undefined') return;
 
-        setProfile({
-            id: 'local_user',
-            email: 'guest@device',
-            full_name: 'Guest User',
-            privacy_mode: true,
-            is_template: false,
-            role: 'user', // Treat guests as standard users for type compatibility
-            currency_code: storedSettings.baseCurrency,
-            created_at: new Date().toISOString()
-        });
+        const migrationRequested = localStorage.getItem('clearworth_migration_requested') === 'true';
+
+        if (migrationRequested) {
+            try {
+                // Dynamically import to avoid server-side issues
+                const { MigrationService } = await import('@/features/migration/migrationService');
+
+                // Double check if profile is empty? 
+                // For now, we assume if the flag is set, we want to overwrite/seed.
+                // Or we can check if the user has < 1 asset to avoid destroying real data?
+                // Let's trust the flag for this version.
+
+                await MigrationService.migrateToCloud(userId);
+                MigrationService.clearLocalData();
+
+                // Refresh to ensure we see the new data
+                window.location.reload();
+            } catch (e) {
+                console.error("ProfileContext: Migration failed", e);
+                // Clear flag to avoid infinite loops
+                localStorage.removeItem('clearworth_migration_requested');
+            }
+        }
     };
 
     const loadFromSupabase = async (id: string) => {
+        // Migration Check BEFORE loading (or concurrent?)
+        // If we migrate, we need to reload anyway.
+        // Let's check first.
+        await handleMigration(id);
+
         // Fetch Profile
         console.log("ProfileContext: Loading profile from Supabase...", id);
         const { data: prof, error } = await supabase.from('profiles').select('*').eq('id', id).single();
@@ -92,15 +108,61 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const loadFromLocalStorage = () => {
+        // Mock profile for guests
+        const originId = typeof window !== 'undefined' ? localStorage.getItem('clearworth_demo_origin_id') : null;
+        const storedSettings = LocalStorage.loadSettings();
+
+        setProfile({
+            id: 'local_user',
+            email: 'guest@device',
+            full_name: 'Guest User',
+            privacy_mode: true,
+            is_template: false,
+            role: 'user',
+            currency_code: storedSettings.baseCurrency,
+            created_at: new Date().toISOString()
+        });
+    };
+
     // Actions
     const switchProfile = (id: string | null) => {
         setTemplateId(id);
     };
 
+    const updateCurrency = async (code: CurrencyCode) => {
+        console.log("Updating currency to:", code);
+
+        // 1. Optimistic Update
+        if (profile) {
+            setProfile({ ...profile, currency_code: code });
+        }
+
+        // 2. Persist
+        if (profile?.id && profile.id !== 'local_user' && !isDemoMode) {
+            // Auth User -> Supabase
+            // Use "as never" to bypass strict "never" expectation in generated types for now.
+            const { error } = await supabase.from('profiles').update({ currency_code: code } as unknown as never).eq('id', profile.id);
+            if (error) {
+                console.error("Failed to update currency in Supabase:", error);
+                // Revert if needed, but for now just log
+                refreshData(); // Re-fetch true state
+            }
+        } else {
+            // Guest or Demo -> LocalStorage
+            const settings = LocalStorage.loadSettings();
+            settings.baseCurrency = code;
+            LocalStorage.saveSettings(settings);
+
+            // If strictly Guest, we are done (optimistic update holds).
+            // If Demo, we probably shouldn't be here (Demo is read-only usually, or local override)
+        }
+    };
+
     return (
         <ProfileContext.Provider value={{
             profile, isLoading, isDemoMode, canEdit: true,
-            refreshData, switchProfile
+            refreshData, switchProfile, updateCurrency
         }}>
             {children}
         </ProfileContext.Provider>

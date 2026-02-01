@@ -4,120 +4,88 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
 
-ClearWorth is a personal net worth tracking application designed to help you visualize your financial health, plan for freedom, and gain insights through AI-powered mentorship. It combines professional-grade dashboards with gamified elements and privacy-focused architecture.
+**Your Financial "Control Room".**
+
+ClearWorth is a personal finance dashboard that doesn't just track your money—it helps you strategize. Imagine a GPS for your wealth: you input where you are (Assets & Debts), and it calculates the fastest route to Financial Freedom.
 
 ![ClearWorth Dashboard](public/dashboard-preview.png)
+
+## 🌟 Why ClearWorth?
+
+Unlike complex spreadsheets or expensive advisors, ClearWorth is:
+1.  **Friendly**: Designed like a game, not a tax form.
+2.  **Private**: Your data stays in your browser (Demo Mode) or your own database.
+3.  **Smart**: Built-in AI Mentors analyze your portfolio and give plain-English advice.
+
+---
 
 ## 🚀 Key Features
 
 ### 📊 **Comprehensive Dashboard**
-*   **Net Worth Tracking**: Real-time calculation of Assets - Liabilities.
-*   **Interactive Widgets**: Drag-and-drop grid layout to customize your view.
-*   **Growth Engine**: Analyze portfolio performance, allocation, and projected dividend income.
-*   **Wealth Momentum**: Gauge your financial velocity and progress.
-
-### 🎭 **Smart Demo System**
-*   **5 Distinct Personas**: Experience the app as a Student, Family, Wealth Builder, and more.
-*   **Realistic Data**: Powered by a factory pattern with realistic asset prices (MSFT, AAPL, etc) and dividend yields.
-*   **Adopt Data**: Seamlessly convert your favorite demo profile into your starting real-world data.
+A modular, grid-based interface for visualizing financial health.
+*   **Net Worth Engine**: Real-time aggregation of Assets minus Liabilities.
+*   **Wealth Momentum**: Calculates the velocity of wealth accumulation based on monthly cash flow.
+*   **Growth Tracking**: Visualizes portfolio performance, asset allocation, and dividend projections.
 
 ### 🧠 **AI Mentorship ("Wisdom")**
-*   **Multi-Persona AI**: Consult with distinct AI personalities like generic "Long-Term Thinker," "Risk Guardian," and more.
-*   **Context-Aware Advice**: Mentors analyze your current financial data to provide tailored insights.
-*   **Chat Interface**: Ask specific questions or get general financial wisdom.
+Integrated LLM support (Google Gemini) for contextual financial advice.
+*   **Multi-Persona Interaction**: Chat with distinct archetypes (e.g., "Risk Guardian" for safety, "Tycoon" for growth).
+*   **RAG-like Context**: The AI automatically receives a summarized snapshot of the user's financial state to provide relevant answers.
+
+### 🎮 **Gamification System**
+Behavioral reinforcement for positive financial habits.
+*   **Badge System**: Database-triggered achievements (e.g., "Debt Destroyer" when liabilities decrease).
+*   **Progression**: leveling system based on data completeness and financial milestones.
 
 ### ⏳ **Time Machine**
-*   **Historical Snapshots**: Travel back in time to view your financial state at any previous date.
-*   **Vintage UI**: A unique visual overlay distinguishes historical views from the present.
-*   **Trend Analysis**: Compare past performance with current standing.
-
-### 🔓 **Financial Freedom Tools**
-*   **Debt Payoff Calculator**: Strategize your debt exit with Snowball vs. Avalanche methods.
-*   **Payoff Visuals**: Interactive charts showing interest savings and payoff dates.
+Historical data visualization and state reconstruction.
+*   **Snapshots**: System automatically archives financial state on significant changes.
+*   **State Travel**: Users can view the dashboard as it appeared on any previous date.
+*   **Visual Cues**: UI applies specific filters (sepia/grayscale) to indicate historical view mode.
 
 ### 🛡️ **Privacy & Security**
-*   **Stealth Mode**: A dedicated "Stealth" theme that forces dark mode and completely hides sensitive financial values (matching them to the background color) for safe usage in public spaces.
-*   **Privacy Blur**: One-click "Blur Values" feature for temporarily obscuring figures when sharing screens.
-*   **Data Ownership**: Full control over your data with export and delete capabilities.
-*   **Row-Level Security**: Built on Supabase RLS to ensure data isolation.
+*   **Stealth Mode**: A CSS-based theme that obscures sensitive values (matching background color) for public usage.
+*   **Row-Level Security (RLS)**: Strict database policies ensure users can only query their own records.
+*   **Blur Toggle**: One-click value obfuscation for screen sharing or demos.
 
-### 🌍 **Global Currency Support**
-*   **Dynamic Conversion**: Set your preferred base currency (e.g., PHP, EUR, GBP).
-*   **Intelligent Forms**: Input fields automatically adapt to your selected currency.
-*   **Unified Display**: All widgets, charts, and historical values automatically converted and normalized.
-
-### 🎮 **Gamification**
-*   **Achievement Badges**: Unlock badges for financial milestones (e.g., "Positive Net Worth," "Debt Free").
-*   **Onboarding Tour**: Interactive guide for new users.
-
-## 🛠️ Technical Specifications
-
-*   **Frontend**: Next.js 16 (App Router), React 19
-*   **Language**: TypeScript
-*   **Styling**: Tailwind CSS, PostCSS
-*   **Database & Auth**: Supabase (PostgreSQL)
-*   **AI Integration**: Google Gemini API (`@google/generative-ai`)
-*   **State Management**: React Hooks & Context API
-*   **Charts**: Recharts
-*   **Icons**: Lucide React
-*   **Utilities**: `react-grid-layout` (Dashboard), `jspdf` (Export), `react-joyride` (Tour)
-
-## 📚 Documentation
-*   [Migration & Setup Guide](docs/MIGRATION_GUIDE.md): Detailed steps for cloning and setting up secure environments.
-*   [AI Developer Context](docs/AI_CONTEXT.md): Guide for AI agents and developers on project architecture and rules.
+---
 
 ## 🏁 Getting Started
 
 ### Prerequisites
-*   Node.js 18+ installed.
-*   A [Supabase](https://supabase.com/) account.
-*   A [Google Gemini API Key](https://ai.google.dev/).
+*   Node.js 18+
+*   Supabase Account (Free Tier is sufficient)
+*   Google Gemini API Key (Free Tier is sufficient)
 
-### Installation
+### 1. Clone & Install
+```bash
+git clone https://github.com/ricafort/ClearWorth.git
+cd ClearWorth
+npm install
+```
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/ricafort/ClearWorth.git
-    cd ClearWorth
-    ```
+### 2. Configure Environment
+Create a `.env.local` file:
+```bash
+NEXT_PUBLIC_SUPABASE_URL="your-url"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-key"
+GEMINI_API_KEY="your-ai-key"
+```
 
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
+### 3. Run Application
+```bash
+npm run dev
+```
+Access at `http://localhost:4000`.
 
-3.  **Configure Environment**:
-    Create a `.env.local` file in the root directory:
-    ```env
-    NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-    GEMINI_API_KEY=your_google_gemini_api_key
-    ```
+*(See [CONTRIBUTING.md](CONTRIBUTING.md) for full database migration steps)*
 
-4.  **Setup Database**:
-    *   Log in to your Supabase dashboard.
-    *   Go to the **SQL Editor**.
-    *   Copy the contents of `supabase_schema.sql` from this repository.
-    *   Run the script to create the necessary tables and policies.
+---
 
-5.  **Run Locally**:
-    ```bash
-    npm run dev
-    ```
-    Open [http://localhost:4000](http://localhost:4000) (or the port shown in your terminal) to view the app.
-
-## 📖 Usage Guide
-
-*   **Adding Data**: Use the (+) buttons in Assets or Liabilities sections to add items.
-*   **Customizing Dashboard**: Click the "Customize" button to drag, resize, or hide widgets.
-*   **Consulting AI**: Click the "Get Insights" button or access the Mentors page to start a chat.
-*   **Stealth Mode**: Switch to the "Stealth" theme in settings (or via the theme toggle) to activate dark mode with hidden values.
-*   **Privacy Blur**: Toggle the "Eye" icon to blur values without changing the theme.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request for any features or bug fixes.
+## 📚 Documentation Links
+*   [📖 Architecture Guide](project_docs/architecture.md): How the pieces fit together.
+*   [📂 Project Structure](project_docs/project_structure.md): Where to find specific files.
+*   [🤝 Contributing Guide](CONTRIBUTING.md): How to help us build this.
 
 ## 📄 License
-
-This project is licensed under the MIT License.
+MIT License. You can use this code for free, modify it, and share it.

@@ -7,12 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest",
     "seed": "npx tsx scripts/seed-benchmarks.ts",
     "hydrate": "npx tsx scripts/hydrate-templates.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@hookform/resolvers": "^5.2.2",
     "@supabase/ssr": "^0.8.0",
+    "@tanstack/react-query": "^5.90.20",
     "@types/react-grid-layout": "^1.3.6",
     "clsx": "^2.1.1",
     "core-js": "^3.47.0",
@@ -24,6 +27,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-grid-layout": "^2.1.1",
+    "react-hook-form": "^7.71.1",
     "react-joyride": "^2.9.3",
     "react-plaid-link": "^4.1.1",
     "recharts": "^3.6.0",
@@ -44,7 +48,9 @@
     "eslint-config-next": "16.1.1",
     "pg": "^8.16.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   },
   "overrides": {
     "react-joyride": {

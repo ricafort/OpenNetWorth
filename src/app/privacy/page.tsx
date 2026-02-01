@@ -1,8 +1,8 @@
 'use client';
 
 import { Shield, Download, Trash2, EyeOff, Lock, FileText } from 'lucide-react';
-import DataManagement from '@/components/DataManagement';
-import WealthSnapshotGenerator from '@/components/WealthSnapshotGenerator';
+import DataManagement from '@/features/dashboard/components/DataManagement';
+import WealthSnapshotGenerator from '@/features/dashboard/components/WealthSnapshotGenerator';
 
 export default function PrivacyPage() {
     return (
@@ -21,7 +21,7 @@ export default function PrivacyPage() {
                     <div>
                         <h4 className="font-bold text-foreground">Privacy-First Design</h4>
                         <p className="text-sm text-muted-foreground mt-1 leading-relaxed font-medium">
-                            We collect only essential data. Your financial details are stored with row-level security.
+                            We collect only essential data. Your financial details are stored with row-level security. <a href="/trust" className="underline hover:text-blue-500">Read our Trust Promise &rarr;</a>
                         </p>
                     </div>
                 </div>

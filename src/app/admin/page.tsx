@@ -3,10 +3,19 @@
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { UserProfile } from '@/types';
+import { Database } from '@/types/supabase';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import { SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
 import { DemoSelector } from '@/components/admin/DemoSelector';
 import { Trash2 } from 'lucide-react';
+
+// Helper Types derived from Database
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+type AssetRow = Database['public']['Tables']['assets']['Row'];
+type LiabilityRow = Database['public']['Tables']['liabilities']['Row'];
+type TransactionRow = Database['public']['Tables']['recurring_transactions']['Row'];
+type BenchmarkRow = Database['public']['Tables']['economic_benchmarks']['Row'];
 
 interface TemplateWithStats extends UserProfile {
     totalAssets: number;
@@ -27,7 +36,7 @@ export default function AdminPage() {
     const [isCreating, setIsCreating] = useState(false);
     const [selectedCurrency, setSelectedCurrency] = useState<string>('ALL');
     const router = useRouter();
-    const supabase = createClient();
+    const supabase = createClient() as SupabaseClient<Database>;
 
     const fetchAndSetTemplates = async () => {
         // 1. Get Template Profiles
@@ -35,7 +44,7 @@ export default function AdminPage() {
             .from('profiles')
             .select('*')
             .eq('is_template', true)
-            .returns<any[]>();
+            .returns<ProfileRow[]>();
 
         if (error) throw error;
         if (!profiles || profiles.length === 0) {
@@ -47,7 +56,12 @@ export default function AdminPage() {
         const templateIds = profiles.map(p => p.id);
 
         const uniqueCountries = Array.from(new Set(profiles.map(p => p.country_code).filter(Boolean))) as string[];
-        let a: any = { data: [] }, l: any = { data: [] }, r: any = { data: [] }, b: any = { data: [] };
+
+        // Define result containers
+        let a: { data: Pick<AssetRow, 'user_id' | 'value' | 'currency' | 'is_liquid'>[] | null } = { data: [] };
+        let l: { data: Pick<LiabilityRow, 'user_id' | 'balance' | 'currency'>[] | null } = { data: [] };
+        let r: { data: Pick<TransactionRow, 'user_id' | 'amount' | 'frequency' | 'type' | 'currency'>[] | null } = { data: [] };
+        let b: { data: BenchmarkRow[] | null } = { data: [] };
 
         if (templateIds.length > 0) {
             [a, l, r, b] = await Promise.all([
@@ -66,7 +80,7 @@ export default function AdminPage() {
         });
 
         // Sum Assets & Liquid
-        a.data?.forEach((row: any) => {
+        a.data?.forEach((row) => {
             const current = statsMap.get(row.user_id);
             if (current) {
                 const val = Number(row.value);
@@ -76,13 +90,13 @@ export default function AdminPage() {
         });
 
         // Sum Liabilities
-        l.data?.forEach((row: any) => {
+        l.data?.forEach((row) => {
             const current = statsMap.get(row.user_id);
             if (current) current.liabilities += Number(row.balance);
         });
 
         // Sum Income & Expenses (Monthly)
-        r.data?.forEach((row: any) => {
+        r.data?.forEach((row) => {
             const current = statsMap.get(row.user_id);
             if (current) {
                 let monthly = Number(row.amount);
@@ -104,7 +118,7 @@ export default function AdminPage() {
             // Find matching benchmark for Tax Info
             let taxInfo = {};
             if (p.benchmark_bracket && p.country_code && b.data) {
-                const match = b.data.find((bm: any) =>
+                const match = b.data.find((bm) =>
                     bm.person_country_code === p.country_code &&
                     bm.percentile_bracket === p.benchmark_bracket
                 );
@@ -153,7 +167,7 @@ export default function AdminPage() {
                     .from('profiles')
                     .select('*')
                     .eq('id', user.id)
-                    .single() as any;
+                    .single() as { data: ProfileRow | null, error: any };
 
                 if (profile?.role !== 'admin') {
                     if (mounted) {
@@ -189,8 +203,8 @@ export default function AdminPage() {
         const country = formData.get('country') as string || undefined;
 
         // Create the profile row directly
-        const { data, error } = await supabase
-            .from('profiles')
+        const { data, error } = await (supabase
+            .from('profiles') as any)
             .insert({
                 id: crypto.randomUUID(),
                 email: `template_${Date.now()}@clearworth.demo`,
@@ -200,7 +214,7 @@ export default function AdminPage() {
                 currency_code: cur,
                 country_code: country,
                 privacy_mode: true
-            } as any)
+            } as Database['public']['Tables']['profiles']['Insert'])
             .select()
             .single();
 
@@ -259,12 +273,24 @@ export default function AdminPage() {
                         <h2 className="text-xl font-semibold text-gray-800">Manage Templates</h2>
                         <p className="text-sm text-gray-500 mt-1">Create and manage public demo profiles.</p>
                     </div>
-                    <button
-                        onClick={() => setIsCreating(true)}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-sm transition-colors"
-                    >
-                        + Create New Template
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => {
+                                if (confirm('Re-seed all templates? This will overwrite existing template data.')) {
+                                    import('@/lib/utils/seedTemplates').then(m => m.seedTemplates());
+                                }
+                            }}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium shadow-sm transition-colors"
+                        >
+                            Refresh/Seed Templates
+                        </button>
+                        <button
+                            onClick={() => setIsCreating(true)}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-sm transition-colors"
+                        >
+                            + Create New Template
+                        </button>
+                    </div>
                 </div>
 
                 {/* Currency Filter Tabs */}
@@ -324,6 +350,7 @@ export default function AdminPage() {
                         <div key={t.id} className="flex justify-between items-center p-4 bg-white rounded border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                             <div>
                                 <div className="font-bold text-lg text-gray-900">{t.full_name || t.template_name}</div>
+                                <div className="text-sm text-gray-600 italic mb-1">{t.income_range_display}</div>
                                 <div className="text-sm text-gray-500 mb-2">{t.currency_code} • {t.country_code || 'No Country'}</div>
                                 <div className="flex gap-4 text-xs font-mono">
                                     <div className="flex flex-col">

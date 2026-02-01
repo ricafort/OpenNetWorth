@@ -1,7 +1,7 @@
 
 // src/lib/portfolioAnalysis.ts
 
-import { Asset, InvestmentDetails } from "@/types";
+import { Asset, InvestmentDetails } from "@/features/assets/types";
 
 export interface PortfolioAnalysis {
     totalValue: number;
@@ -38,15 +38,20 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
             return sum + inv.value;
         }
 
-        if (inv.investment) {
-            const price = inv.investment.currentPrice || 0;
-            return sum + (inv.investment.shares * price);
+        if (inv.investment_details) {
+            const price = inv.investment_details.currentPrice || 0;
+            return sum + (inv.investment_details.shares * price);
         }
         return sum + inv.value; // Fallback
     }, 0);
 
-    const totalCostBasis = investments.reduce((sum, inv) =>
-        sum + (inv.investment?.costBasis || 0), 0);
+    const totalCostBasis = investments.reduce((sum, inv) => {
+        if (inv.investment_details) {
+            return sum + (inv.investment_details.costBasis || 0);
+        }
+        // For manual assets, Cost Basis = Value (0 gain)
+        return sum + (inv.value || 0);
+    }, 0);
 
     const holdings = investments.map(inv => {
         let value = inv.value;
@@ -57,9 +62,9 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
         let dayChangePercent = 0;
         let ticker = 'Manual';
 
-        if (inv.investment) {
-            ticker = inv.investment.ticker;
-            shares = inv.investment.shares;
+        if (inv.investment_details) {
+            ticker = inv.investment_details.ticker;
+            shares = inv.investment_details.shares;
 
             // FIX: Respect the Asset's manual value as the source of truth if it exists
             // This ensures parity with the Assets page.
@@ -67,18 +72,18 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
                 value = inv.value;
                 price = shares > 0 ? value / shares : 0;
             } else {
-                price = inv.investment.currentPrice || 0;
+                price = inv.investment_details.currentPrice || 0;
                 value = shares * price;
             }
 
-            costBasis = inv.investment.costBasis;
+            costBasis = inv.investment_details.costBasis;
 
             // Calculate Day Change
             // If we have previousClose, use it. Otherwise 0.
-            if (inv.investment.previousClose) {
-                const changePerShare = price - inv.investment.previousClose;
+            if (inv.investment_details.previousClose) {
+                const changePerShare = price - inv.investment_details.previousClose;
                 dayChange = changePerShare * shares;
-                dayChangePercent = (changePerShare / inv.investment.previousClose) * 100;
+                dayChangePercent = (changePerShare / inv.investment_details.previousClose) * 100;
             }
         } else {
             // For manual asssets, assume costBasis = value for now to avoid showing 100% gain
@@ -113,9 +118,9 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
         .map(h => `${h.ticker} makes up ${h.weight.toFixed(1)}% of your portfolio.`);
 
     const estimatedAnnualDividends = investments.reduce((sum, inv) => {
-        if (inv.investment?.dividendYield && inv.investment.currentPrice) {
-            const value = inv.investment.shares * inv.investment.currentPrice;
-            return sum + (value * (inv.investment.dividendYield / 100));
+        if (inv.investment_details?.dividendYield && inv.investment_details.currentPrice) {
+            const value = inv.investment_details.shares * inv.investment_details.currentPrice;
+            return sum + (value * (inv.investment_details.dividendYield / 100));
         }
         return sum;
     }, 0);
@@ -123,10 +128,10 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
     // Aggregate by asset class
     const assetClassMap = new Map<string, number>();
     investments.forEach(inv => {
-        const type = inv.investment?.assetClass || 'other';
+        const type = inv.investment_details?.assetClass || 'other';
         let value = inv.value;
-        if (!value && inv.investment) {
-            value = inv.investment.shares * (inv.investment.currentPrice || 0);
+        if (!value && inv.investment_details) {
+            value = inv.investment_details.shares * (inv.investment_details.currentPrice || 0);
         }
         assetClassMap.set(type, (assetClassMap.get(type) || 0) + value);
     });
@@ -142,10 +147,10 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
     // Aggregate by sector (if available)
     const sectorMap = new Map<string, number>();
     investments.forEach(inv => {
-        const sector = inv.investment?.sector || 'Unknown';
+        const sector = inv.investment_details?.sector || 'Unknown';
         let value = inv.value;
-        if (!value && inv.investment) {
-            value = inv.investment.shares * (inv.investment.currentPrice || 0);
+        if (!value && inv.investment_details) {
+            value = inv.investment_details.shares * (inv.investment_details.currentPrice || 0);
         }
         sectorMap.set(sector, (sectorMap.get(sector) || 0) + value);
     });

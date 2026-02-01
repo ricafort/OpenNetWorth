@@ -34,3 +34,12 @@ export interface DashboardConfig {
     hiddenWidgets: string[];
     version: number;
 }
+
+export interface DashboardMetrics {
+    total_assets: number;
+    total_liabilities: number;
+    net_worth: number;
+    debt_to_asset_ratio: number;
+    liquidity_ratio: number;
+    savings_rate: number;
+}

@@ -1,6 +1,10 @@
 
 import { createClient } from '@/utils/supabase/client';
-import { UserProfile, Asset, Liability, RecurringTransaction, Goal } from '@/types';
+import { Asset } from '@/features/assets/types';
+import { Liability } from '@/features/liabilities/types';
+import { Goal } from '@/features/goals/types';
+import { RecurringTransaction } from '@/features/cashflow/types';
+import { UserProfile } from '@/types';
 
 export interface FullTemplateData {
     profile: UserProfile;
@@ -16,10 +20,14 @@ const supabase = createClient();
 /**
  * Fetches all available public templates from the profiles table.
  */
-export async function getPublishedTemplates(): Promise<UserProfile[]> {
+export async function getPublishedTemplates(): Promise<(UserProfile & { assets: { value: number }[], liabilities: { balance: number }[] })[]> {
     const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(`
+            *,
+            assets (value),
+            liabilities (balance)
+        `)
         .eq('is_template', true)
         .order('currency_code', { ascending: true }) // Group by currency
         .order('full_name', { ascending: true });
@@ -29,7 +37,7 @@ export async function getPublishedTemplates(): Promise<UserProfile[]> {
         return [];
     }
 
-    return data as UserProfile[];
+    return data as any;
 }
 
 /**
@@ -69,30 +77,7 @@ export async function getTemplateFullData(templateId: string): Promise<FullTempl
             investment: a.investment_details // Map JSONB to interface key
         })) as Asset[],
         liabilities: (liabsRes.data || []) as Liability[],
-        recurring: (recurringRes.data || []).map((r: any) => ({
-            id: r.id,
-            name: r.name,
-            amount: r.amount,
-            type: r.type,
-            frequency: r.frequency,
-            category: r.category,
-            startDate: r.start_date, // Map snake to camel
-            endDate: r.end_date,
-            isActive: r.is_active,   // Map snake to camel
-            notes: r.notes,
-            currency: r.currency
-        })) as RecurringTransaction[],
-        goals: (goalsRes.data || []).map((g: any) => ({
-            id: g.id,
-            name: g.name,
-            targetAmount: g.target_amount, // Map snake to camel
-            currentAmount: g.current_amount,
-            startAmount: g.start_amount,
-            currency: g.currency,
-            category: g.category,
-            deadline: g.deadline,
-            createdAt: g.created_at,
-            isCompleted: g.is_completed
-        })) as Goal[],
+        recurring: (recurringRes.data || []) as RecurringTransaction[],
+        goals: (goalsRes.data || []) as Goal[],
     };
 }

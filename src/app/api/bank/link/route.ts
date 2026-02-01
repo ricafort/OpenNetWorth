@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBankConnector } from '@/lib/api/bank/factory';
+import { getBankConnector } from '@/features/bank/factory';
 import { createClient } from '@/utils/supabase/server';
 
 export async function POST(req: Request) {
