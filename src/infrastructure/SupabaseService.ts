@@ -27,19 +27,29 @@ const ENTITY_MAPPINGS: Record<string, FieldMapping[]> = {
  * @template T - The frontend entity type
  */
 export class SupabaseService<T extends { id: string }> implements DataService<T> {
+    // TUTORIAL: We use a generic class <T> here so this single service can handle ANY entity type
+    // (Assets, Liabilities, Goals) as long as it has an 'id'.
+    // This implements the DataService interface, ensuring consistent API across the app.
     private supabase: SupabaseClient<Database>;
     private tableName: string;
     private userId: string;
     private extraMappings: FieldMapping[];
 
     constructor(tableName: string, userId: string) {
+        // TUTORIAL: The Supabase client is initialized once per service instance.
+        // We use the 'createClient' utility which handles the environment variables and singleton pattern.
         this.supabase = createClient();
         this.tableName = tableName;
         this.userId = userId;
+        // TUTORIAL: We look up entity-specific field mappings (like 'investment_details' -> 'investment')
+        // to handle database-to-frontend variable naming differences automatically.
         this.extraMappings = ENTITY_MAPPINGS[tableName] || [];
     }
 
     async getAll(): Promise<T[]> {
+        // TUTORIAL: RLS (Row Level Security) on the database side ensures this query
+        // only returns rows belonging to 'this.userId', providing a second layer of security
+        // even if we forgot the .eq('user_id', ...) clause (though we include it for clarity).
         const { data, error } = await (this.supabase
             .from(this.tableName) as any)
             .select('*')
@@ -50,12 +60,16 @@ export class SupabaseService<T extends { id: string }> implements DataService<T>
             return [];
         }
 
+        // TUTORIAL: We transform snake_case database columns (e.g., 'created_at') to
+        // camelCase frontend properties (e.g., 'createdAt') before returning data to the UI.
         return (data || []).map((row: unknown) =>
             toCamelCase(row as Record<string, unknown>, this.extraMappings) as T
         );
     }
 
     async create(item: T): Promise<T> {
+        // TUTORIAL: Reverse transformation! We convert frontend camelCase back to snake_case
+        // before sending to the database.
         const dbItem = {
             ...toSnakeCase(item as unknown as Record<string, unknown>, this.extraMappings),
             user_id: this.userId,
@@ -81,7 +95,9 @@ export class SupabaseService<T extends { id: string }> implements DataService<T>
             last_updated: new Date().toISOString(),
         };
 
-        // Remove user_id from update payload (shouldn't change)
+        // TUTORIAL: Security best practice - never trust the client to send the correct user_id
+        // for an update. We strip it out to prevent accidental (or malicious) ownership changes.
+        // RLS will block updates if the record doesn't belong to the user anyway.
         delete dbItem.user_id;
 
         const { error } = await (this.supabase

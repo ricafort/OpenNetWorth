@@ -12,6 +12,9 @@ import { useHistory } from '@/hooks/useHistory';
 import { useAssetsQuery } from '@/features/assets/hooks/useAssetsQuery';
 
 export default function NetWorthChartWidget() {
+    // TUTORIAL: Separation of Concerns (SoC).
+    // The widget doesn't know *how* to fetch data. It just asks the 'useHistory' hook.
+    // This allows us to swap the data source (Supabase vs LocalStorage) without changing the UI.
     const { history: netWorthHistory, refreshHistory } = useHistory();
     const { assets } = useAssetsQuery();
     const { isEditMode, hideWidget } = useDashboard();
@@ -49,6 +52,9 @@ export default function NetWorthChartWidget() {
     );
 
     return (
+        // TUTORIAL: Composition Pattern.
+        // We wrap the chart in a generic 'WidgetWrapper' that handles common widget behaviors
+        // like drag-and-drop handles, edit mode styling, and error boundaries.
         <WidgetWrapper
             id="chart-networth"
             title="Net Worth History"
@@ -62,6 +68,8 @@ export default function NetWorthChartWidget() {
             </div>
 
             <div className="h-full pt-8"> {/* pt-8 to clear header controls */}
+                {/* TUTORIAL: Conditional Rendering (Empty State) */}
+                {/* Always provide a clear "Call to Action" (CTA) when there is no data. */}
                 {(netWorthHistory.length === 0 && assets.length === 0) ? (
                     <div className="flex flex-col items-center justify-center h-full text-center p-6">
                         <div className="bg-blue-50 p-4 rounded-full mb-4">

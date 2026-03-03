@@ -7,6 +7,9 @@ import { formatCurrency } from '@/lib/utils/currencyService';
 import { CurrencyCode } from '@/types';
 
 interface ChatInterfaceProps {
+    // TUTORIAL: This is a "Presentational Component".
+    // It receives all data (chat, activeMentors) and callbacks (onSend, onSetInput) via props.
+    // It has NO dependency on the API layer or complex logic. This makes it easy to test and preview (Storybook).
     chat: any[];
     isLoading: boolean;
     input: string;
