@@ -62,26 +62,16 @@ export class BasiqConnector implements UniversalBankConnector {
 
     /**
      * Creates or retrieves a Basiq User ID for the given ClearWorth user.
-     * Tricky logic: Basiq's POST /users API silently ignores the 'mobile' field in sandbox.
-     * A PATCH must be sent AFTER user creation to set the mobile number.
-     * Mobile is mandatory for auth_link creation — this is an undocumented Basiq quirk.
-     * In Sandbox: Basiq sends a REAL SMS to the mobile number — use your actual phone number.
-     * Set BASIQ_SANDBOX_MOBILE in .env.local to your real mobile number (E.164 format, e.g. +61412345678)
+     * Tricky: Basiq's POST /users ignores 'mobile' in the body; use PATCH after creation.
+     * Mobile is REQUIRED for auth_link creation — passed in from the client UI modal.
+     * In Sandbox: Basiq sends a real SMS OTP to the provided mobile number.
      */
-    private async getOrCreateBasiqUser(userId: string): Promise<string> {
+    private async getOrCreateBasiqUser(userId: string, mobile: string): Promise<string> {
         const token = await this.getServerToken();
         if (token.startsWith('mock-')) return `user-mock-${userId}`;
 
-        // Tricky: Basiq sandbox sends real SMS. Use BASIQ_SANDBOX_MOBILE from .env.local.
-        // Format must be E.164 (international): +61412345678 for Australian numbers.
-        const mobileNumber = process.env.BASIQ_SANDBOX_MOBILE;
-        if (!mobileNumber) {
-            console.error('BASIQ_SANDBOX_MOBILE is not set in .env.local. Cannot generate a real OTP. Set it to your mobile number in E.164 format (e.g. +61412345678).');
-            return `user-mock-${userId}`;
-        }
-
         try {
-            // Step 1: Create user
+            // Step 1: Create Basiq user
             const createRes = await fetch(`${this.baseUrl}/users`, {
                 method: 'POST',
                 headers: {
@@ -91,7 +81,7 @@ export class BasiqConnector implements UniversalBankConnector {
                 },
                 body: JSON.stringify({
                     email: `user_${userId.slice(0, 8)}@clearworth.app`,
-                    mobile: mobileNumber
+                    mobile
                 })
             });
 
@@ -99,7 +89,7 @@ export class BasiqConnector implements UniversalBankConnector {
                 const userData = await createRes.json();
                 const basiqUserId = userData.id;
 
-                // Step 2: PATCH mobile separately — Basiq silently ignores mobile in POST body
+                // Step 2: PATCH mobile — Basiq silently ignores mobile in POST body
                 if (!userData.mobile) {
                     await fetch(`${this.baseUrl}/users/${basiqUserId}`, {
                         method: 'PATCH',
@@ -108,7 +98,7 @@ export class BasiqConnector implements UniversalBankConnector {
                             'Content-Type': 'application/json',
                             'basiq-version': '3.0'
                         },
-                        body: JSON.stringify({ mobile: mobileNumber })
+                        body: JSON.stringify({ mobile })
                     });
                 }
 
@@ -129,19 +119,26 @@ export class BasiqConnector implements UniversalBankConnector {
     }
 
     /**
-     * Generates a Basiq Auth Link URL for Australian bank consent flow.
+     * Generates a Basiq Auth Link URL for the Australian bank consent flow.
      * Unlike Plaid's iframe link_token, Basiq returns a redirect URL to connect.basiq.io.
+     * Mobile is passed from the client UI modal — Basiq uses it to send an SMS OTP.
      */
-    async createLinkToken(userId: string): Promise<string> {
+    async createLinkToken(userId: string, mobile?: string): Promise<string> {
         const apiKey = process.env.BASIQ_API_KEY;
         if (!apiKey) {
             console.warn('BASIQ_API_KEY missing. Returning mock Auth link.');
             return 'https://connect.basiq.io/sandbox?mock=true';
         }
 
+        // Mobile is required for Basiq auth_link. Provided by the client UI modal.
+        if (!mobile) {
+            console.error('Mobile number is required for Basiq AU banking flow but was not provided.');
+            return 'https://connect.basiq.io/sandbox?mock=true';
+        }
+
         try {
             const token = await this.getServerToken();
-            const basiqUserId = await this.getOrCreateBasiqUser(userId);
+            const basiqUserId = await this.getOrCreateBasiqUser(userId, mobile);
 
             const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
             const redirectUrl = `${appUrl}/api/bank/callback?provider=basiq&userId=${userId}`;

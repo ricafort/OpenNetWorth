@@ -57,7 +57,8 @@ export interface UnifiedTransaction {
 
 export interface UniversalBankConnector {
     // 1. Auth Flow
-    createLinkToken(userId: string): Promise<string>;
+    // Why mobile is optional: Plaid doesn't need it. Basiq requires it for SMS OTP — collected via UI modal.
+    createLinkToken(userId: string, mobile?: string): Promise<string>;
     exchangePublicToken(publicToken: string): Promise<BankConnectionResult>;
 
     // 2. Data Fetching
