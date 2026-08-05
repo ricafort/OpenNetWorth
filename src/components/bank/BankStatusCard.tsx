@@ -1,10 +1,15 @@
+// Why this file exists:
+// Dashboard card component displaying linked bank accounts and status.
+// Includes country/region selection (Australia Basiq CDR vs US/Global Plaid) allowing users to switch between local bank providers.
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '../ui/badge';
 import ConnectBankButton from './ConnectBankButton';
-import { CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { CheckCircle, AlertTriangle, ShieldCheck, Globe } from 'lucide-react';
+import { useProfile } from '@/contexts/ProfileContext';
 
 interface BankConnection {
     id: string;
@@ -14,11 +19,14 @@ interface BankConnection {
 }
 
 export default function BankStatusCard() {
-    // In a real app, you'd fetch this from a Server Action or /api/bank/status
-    // For now, let's mock the "Check" state or leave it waiting for real API.
-    // We'll create a simple API endpoint for "GET /api/bank/status" next.
+    const { profile } = useProfile();
     const [connections, setConnections] = useState<BankConnection[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Tricky logic: Auto-detect default country based on user's active profile currency or region.
+    // If currency is AUD or country is AU, default to Australia (Basiq CDR).
+    const initialCountry = (profile?.currency_code === 'AUD' || profile?.country_code === 'AU') ? 'AU' : 'AU';
+    const [selectedCountry, setSelectedCountry] = useState<string>(initialCountry);
 
     const fetchStatus = async () => {
         setLoading(true);
@@ -26,7 +34,7 @@ export default function BankStatusCard() {
             const res = await fetch('/api/bank/status');
             if (res.ok) {
                 const data = await res.json();
-                setConnections(data.items);
+                setConnections(data.items || []);
             }
         } catch (e) {
             console.error('Failed to fetch bank status', e);
@@ -40,18 +48,35 @@ export default function BankStatusCard() {
     }, []);
 
     const handleSuccess = () => {
-        fetchStatus(); // Refresh list after linking
+        fetchStatus(); // Refresh connection status list after linking
     };
 
     return (
         <Card className="w-full">
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <CardTitle className="flex items-center gap-2">
                     <ShieldCheck className="h-5 w-5 text-emerald-500" />
                     Bank Connections
                 </CardTitle>
-                <ConnectBankButton onSuccess={handleSuccess} countryCode="US" />
+
+                {/* Country Region Selector & Connect Button */}
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground border rounded-md px-2.5 py-1.5 bg-card shadow-sm">
+                        <Globe className="h-3.5 w-3.5" />
+                        <select
+                            value={selectedCountry}
+                            onChange={(e) => setSelectedCountry(e.target.value)}
+                            className="bg-transparent font-medium text-foreground outline-none cursor-pointer"
+                        >
+                            <option value="AU">🇦🇺 Australia (Basiq CDR)</option>
+                            <option value="US">🇺🇸 US & Global (Plaid)</option>
+                        </select>
+                    </div>
+
+                    <ConnectBankButton onSuccess={handleSuccess} countryCode={selectedCountry} />
+                </div>
             </CardHeader>
+
             <CardContent>
                 {loading ? (
                     <div className="space-y-2">
@@ -59,15 +84,17 @@ export default function BankStatusCard() {
                     </div>
                 ) : connections.length === 0 ? (
                     <div className="text-center py-6 text-muted-foreground">
-                        <p>No banks connected yet.</p>
-                        <p className="text-xs mt-1">Link your account to automate Net Worth tracking.</p>
+                        <p className="font-medium text-foreground text-sm">No banks connected yet.</p>
+                        <p className="text-xs mt-1">
+                            Link your {selectedCountry === 'AU' ? 'Australian bank via Basiq (CBA, NAB, Westpac, ANZ)' : 'US/Global bank via Plaid'} to automate Net Worth tracking.
+                        </p>
                     </div>
                 ) : (
                     <div className="space-y-3">
                         {connections.map((item) => (
                             <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg bg-card/50">
                                 <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
+                                    <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-700 dark:text-blue-300 font-bold">
                                         {item.provider.charAt(0).toUpperCase()}
                                     </div>
                                     <div>
@@ -79,7 +106,7 @@ export default function BankStatusCard() {
                                 </div>
                                 <div>
                                     {item.status === 'active' ? (
-                                        <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">
+                                        <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/50">
                                             <CheckCircle className="w-3 h-3 mr-1" /> Active
                                         </Badge>
                                     ) : (

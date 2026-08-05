@@ -1,6 +1,10 @@
-// src/lib/priceService.ts
+// Why this file exists:
+// Core Market Data Service for ClearWorth.
+// Fetches, normalizes, and caches real-time and daily financial asset prices (Stocks, ETFs, Crypto).
+// Implements multi-provider fallbacks: Finnhub (US/Global), Yahoo Finance (Australian ASX .AX), and CoinGecko (Crypto).
 
 import { isDemoMode } from "@/features/demo/demoMode";
+import { fetchViaFinnhub, fetchViaYahooFinance } from './providers';
 
 export interface PriceData {
     ticker: string;
@@ -16,17 +20,12 @@ export interface FetchOptions {
     isDemo?: boolean;
 }
 
-// In-memory cache to avoid hitting rate limits too often during a session
+// In-memory cache to avoid hitting external API limits too often during a user session
 const PRICE_CACHE = new Map<string, { data: PriceData, timestamp: number }>();
 const CACHE_KEY = 'clearworth_price_cache';
-const CACHE_DURATION = 1000 * 60 * 15; // 15 minutes (increased for better rate limit management)
+const CACHE_DURATION = 1000 * 60 * 15; // 15 minutes TTL for price quotes
 
-// Rate Limiter for Alpha Vantage (5 calls per minute for free tier)
-const ALPHA_VANTAGE_RATE_LIMIT_DELAY = 15000; // 15 seconds (safer margin)
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Persist cache to localStorage
+// Persist cache to browser localStorage (if on client)
 const loadCache = () => {
     if (typeof window === 'undefined') return;
     try {
@@ -38,7 +37,7 @@ const loadCache = () => {
             });
         }
     } catch (e) {
-        console.error('Failed to load price cache', e);
+        console.error('Failed to load price cache from localStorage', e);
     }
 };
 
@@ -48,87 +47,91 @@ const saveCache = () => {
         const obj = Object.fromEntries(PRICE_CACHE);
         localStorage.setItem(CACHE_KEY, JSON.stringify(obj));
     } catch (e) {
-        console.error('Failed to save price cache', e);
+        console.error('Failed to save price cache to localStorage', e);
     }
 };
 
-// Initial load
+// Initial load on module evaluation
 loadCache();
 
+/**
+ * Helper to identify Australian Securities Exchange (ASX) tickers.
+ * Tickers listed on the ASX traditionally end with the '.AX' suffix (e.g. 'CBA.AX', 'BHP.AX').
+ */
+export const isAustralianTicker = (ticker: string): boolean => {
+    return ticker.toUpperCase().trim().endsWith('.AX');
+};
+
+/**
+ * Fetches stock/ETF price using a smart routing strategy:
+ * 1. Checks Demo Mode -> returns persona mock data.
+ * 2. Checks 15-min cache -> returns cached price.
+ * 3. Australian tickers (.AX) -> Yahoo Finance API.
+ * 4. US / Global tickers -> Finnhub API (primary) with Yahoo Finance fallback.
+ * 5. Complete failure -> returns consistent mock price.
+ */
 export const fetchStockPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData> => {
+    const symbol = ticker.toUpperCase().trim();
+
     // 0. Check Demo Mode
     const useDemo = options?.isDemo ?? isDemoMode();
     if (useDemo) {
-        return getMockPrice(ticker);
+        return getMockPrice(symbol);
     }
 
     // 1. Check Cache
-    const cached = PRICE_CACHE.get(ticker);
+    const cached = PRICE_CACHE.get(symbol);
     if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
         return cached.data;
     }
 
-    // Check strict environment variable first (server-side), then public one
-    const apiKey = process.env.ALPHA_VANTAGE_KEY || process.env.NEXT_PUBLIC_ALPHA_VANTAGE_KEY;
-
-    if (!apiKey) {
-        // Graceful degradation if no API key
-        console.warn('Missing Alpha Vantage API Key - using mock data');
-        return getMockPrice(ticker);
-    }
-
     try {
-        const res = await fetch(
-            `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${apiKey}`
-        );
-        const data = await res.json();
+        let fetchedData: PriceData | null = null;
 
-        // Handle API Rate Limits / Info messages gracefully
-        if (data['Note'] || data['Information']) {
-            console.warn(`Alpha Vantage Rate Limit for ${ticker}:`, data);
-            // Return cached data if available (even if expired), else mock
-            if (cached) return { ...cached.data, isMock: true };
-            return getMockPrice(ticker);
-        }
-
-        const quote = data['Global Quote'];
-
-        if (!quote || Object.keys(quote).length === 0) {
-            console.warn(`No quote data for ${ticker}`, data);
-            if (data['Error Message']) {
-                // Invalid ticker?
-                return getMockPrice(ticker);
+        // 2. Route based on ticker format
+        if (isAustralianTicker(symbol)) {
+            // Australian stocks (.AX) -> Yahoo Finance is primary
+            fetchedData = await fetchViaYahooFinance(symbol);
+            if (!fetchedData) {
+                // Fallback to Finnhub if Yahoo Finance fails
+                fetchedData = await fetchViaFinnhub(symbol);
             }
-            if (cached) return cached.data;
-            return getMockPrice(ticker);
+        } else {
+            // US & Global stocks -> Finnhub is primary (60 req/min limit)
+            fetchedData = await fetchViaFinnhub(symbol);
+            if (!fetchedData) {
+                // Fallback to Yahoo Finance
+                fetchedData = await fetchViaYahooFinance(symbol);
+            }
         }
 
-        const priceData: PriceData = {
-            ticker,
-            price: parseFloat(quote['05. price']) || 0,
-            previousClose: parseFloat(quote['08. previous close']) || 0,
-            change: parseFloat(quote['09. change']) || 0,
-            changePercent: parseFloat(quote['10. change percent']?.replace('%', '') || '0'),
-            lastUpdated: new Date().toISOString(),
-            isMock: false
-        };
+        if (fetchedData) {
+            PRICE_CACHE.set(symbol, { data: fetchedData, timestamp: Date.now() });
+            saveCache();
+            return fetchedData;
+        }
 
-        PRICE_CACHE.set(ticker, { data: priceData, timestamp: Date.now() });
-        saveCache();
-        return priceData;
+        // If both providers return null, fallback to mock with warning
+        console.warn(`All market data providers failed for ${symbol}. Falling back to mock price.`);
+        if (cached) return { ...cached.data, isMock: true };
+        return getMockPrice(symbol);
 
     } catch (error) {
-        console.error(`Error fetching stock price for ${ticker}:`, error);
+        console.error(`Error fetching stock price for ${symbol}:`, error);
         if (cached) return cached.data;
-        return getMockPrice(ticker);
+        return getMockPrice(symbol);
     }
 };
 
+/**
+ * Fetches cryptocurrency prices via CoinGecko free API (USDT / USD pairs).
+ */
 export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData> => {
+    const symbol = ticker.toUpperCase().trim();
     const useDemo = options?.isDemo ?? isDemoMode();
-    if (useDemo) return getMockPrice(ticker);
+    if (useDemo) return getMockPrice(symbol);
 
-    let coinId = ticker.toLowerCase();
+    let coinId = symbol.toLowerCase();
     const commonMappings: Record<string, string> = {
         'BTC': 'bitcoin',
         'ETH': 'ethereum',
@@ -139,11 +142,11 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
         'DOT': 'polkadot',
         'LINK': 'chainlink'
     };
-    if (commonMappings[ticker.toUpperCase()]) {
-        coinId = commonMappings[ticker.toUpperCase()];
+    if (commonMappings[symbol]) {
+        coinId = commonMappings[symbol];
     }
 
-    const cached = PRICE_CACHE.get(ticker);
+    const cached = PRICE_CACHE.get(symbol);
     if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
         return cached.data;
     }
@@ -155,8 +158,7 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
         const data = await res.json();
 
         if (!data[coinId]) {
-            // Not found, return mock
-            return getMockPrice(ticker);
+            return getMockPrice(symbol);
         }
 
         const price = data[coinId].usd;
@@ -165,23 +167,23 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
         const previousClose = price - change;
 
         const priceData: PriceData = {
-            ticker: ticker.toUpperCase(),
+            ticker: symbol,
             price,
-            previousClose, // Calculated approximation
-            change,
-            changePercent,
+            previousClose: parseFloat(previousClose.toFixed(2)),
+            change: parseFloat(change.toFixed(2)),
+            changePercent: parseFloat(changePercent.toFixed(2)),
             lastUpdated: new Date().toISOString(),
             isMock: false
         };
 
-        PRICE_CACHE.set(ticker, { data: priceData, timestamp: Date.now() });
+        PRICE_CACHE.set(symbol, { data: priceData, timestamp: Date.now() });
         saveCache();
         return priceData;
 
     } catch (error) {
-        console.error(`Error fetching crypto price for ${ticker}:`, error);
+        console.error(`Error fetching crypto price for ${symbol}:`, error);
         if (cached) return cached.data;
-        return getMockPrice(ticker);
+        return getMockPrice(symbol);
     }
 };
 
@@ -199,30 +201,32 @@ const DEMO_PRICES: Record<string, number> = {
     'VT': 105,
     'MSFT': 420,
     'NVDA': 950,
-    'AMZN': 185
+    'AMZN': 185,
+    'CBA.AX': 125,
+    'BHP.AX': 43
 };
 
 // Fallback Mock Generator
-const getMockPrice = (ticker: string) => {
-    // Check if we have a defined demo price
-    if (DEMO_PRICES[ticker]) {
+export const getMockPrice = (ticker: string): PriceData => {
+    const symbol = ticker.toUpperCase().trim();
+    if (DEMO_PRICES[symbol]) {
         return {
-            ticker: ticker.toUpperCase(),
-            price: DEMO_PRICES[ticker],
-            previousClose: parseFloat((DEMO_PRICES[ticker] * 0.995).toFixed(2)), // Slight random movement
-            change: parseFloat((DEMO_PRICES[ticker] * 0.005).toFixed(2)),
+            ticker: symbol,
+            price: DEMO_PRICES[symbol],
+            previousClose: parseFloat((DEMO_PRICES[symbol] * 0.995).toFixed(2)),
+            change: parseFloat((DEMO_PRICES[symbol] * 0.005).toFixed(2)),
             changePercent: 0.5,
             lastUpdated: new Date().toISOString(),
             isMock: true
         };
     }
 
-    const seed = ticker.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    const seed = symbol.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
     const basePrice = (seed % 500) + 50;
     const change = (Math.random() * 10) - 5;
     const price = basePrice + change;
     return {
-        ticker: ticker.toUpperCase(),
+        ticker: symbol,
         price: parseFloat(price.toFixed(2)),
         previousClose: basePrice,
         change: parseFloat(change.toFixed(2)),
@@ -232,50 +236,31 @@ const getMockPrice = (ticker: string) => {
     };
 };
 
-export const fetchAllPrices = async (requests: { ticker: string, type: 'crypto' | 'stock' | 'other' }[], options?: FetchOptions): Promise<Map<string, PriceData>> => {
+/**
+ * Batch price fetcher for a list of requested assets.
+ * Executes stock and crypto requests concurrently since Finnhub (60 req/min) and Yahoo Finance do not require sequential 15s delays.
+ */
+export const fetchAllPrices = async (
+    requests: { ticker: string, type: 'crypto' | 'stock' | 'other' }[],
+    options?: FetchOptions
+): Promise<Map<string, PriceData>> => {
     const results = new Map<string, PriceData>();
 
     // Deduplicate tickers
     const uniqueRequests = Array.from(new Set(requests.map(r => JSON.stringify(r)))).map(s => JSON.parse(s));
 
-    const stockTickers = uniqueRequests
-        .filter(r => r.type === 'stock' || r.type === 'other')
-        .map(r => r.ticker);
-
-    const cryptoTickers = uniqueRequests
-        .filter(r => r.type === 'crypto')
-        .map(r => r.ticker);
-
-    // 1. Fetch Crypto (Parallel)
-    const cryptoPromises = cryptoTickers.map(async (t) => {
-        const data = await fetchCryptoPrice(t, options);
-        results.set(t, data);
+    // Parallel execution across all requested tickers
+    const promises = uniqueRequests.map(async (r) => {
+        let data: PriceData;
+        if (r.type === 'crypto') {
+            data = await fetchCryptoPrice(r.ticker, options);
+        } else {
+            data = await fetchStockPrice(r.ticker, options);
+        }
+        results.set(r.ticker.toUpperCase().trim(), data);
     });
 
-    // 2. Fetch Stocks (Sequential with delay)
-    // If we have API key AND are not in demo mode
-    const useDemo = options?.isDemo ?? isDemoMode();
-    const apiKey = process.env.ALPHA_VANTAGE_KEY || process.env.NEXT_PUBLIC_ALPHA_VANTAGE_KEY;
-    const shouldFetchStocks = !!apiKey && !useDemo;
-
-    if (shouldFetchStocks) {
-        for (const t of stockTickers) {
-            const data = await fetchStockPrice(t, options);
-            results.set(t, data);
-
-            // Only delay if we actually made a network request (not cached)
-            // But checking cache hit inside fetchStockPrice is hard from here.
-            // Safer to just delay if we have more than one and it wasn't a mock.
-            // Simplified: always delay if multiple to be safe.
-            if (stockTickers.indexOf(t) < stockTickers.length - 1 && !data.isMock) {
-                await delay(ALPHA_VANTAGE_RATE_LIMIT_DELAY);
-            }
-        }
-    } else {
-        stockTickers.forEach(t => results.set(t, getMockPrice(t)));
-    }
-
-    await Promise.all(cryptoPromises);
+    await Promise.all(promises);
 
     return results;
 };

@@ -14,7 +14,7 @@ export interface InvestmentDetails {
     shares: number;
     /** Total cost paid (for gain/loss calc) */
     costBasis: number;
-    /** Live price from Alpha Vantage (fetched) */
+    /** Live price from Finnhub (US/Global) or Yahoo Finance (ASX) */
     currentPrice?: number;
     /** Previous day's close for daily change */
     previousClose?: number;

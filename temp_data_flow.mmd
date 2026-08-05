@@ -1,0 +1,19 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffcc00', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#fff0f0'}}}%%
+sequenceDiagram
+    participant User
+    participant Page as Dashboard Page (Server)
+    participant Hook as useNetWorth (Client)
+    participant Service as SupabaseService
+    participant DB as Supabase DB
+
+    User->>Page: Visits /dashboard
+    Page->>Page: Renders Shell (Skeleton)
+    Page-->>User: Returns HTML
+    
+    User->>Hook: Component Mounts
+    Hook->>Service: getAll()
+    Service->>DB: SELECT * FROM net_worth WHERE user_id = X
+    DB-->>Service: Returns Rows (snake_case)
+    Service->>Service: Convert to camelCase
+    Service-->>Hook: Returns Typed Objects
+    Hook-->>User: Renders Chart Data

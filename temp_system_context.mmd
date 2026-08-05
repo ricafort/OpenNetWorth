@@ -1,0 +1,20 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#2563eb', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#1d4ed8', 'lineColor': '#e5e7eb', 'textColor': '#ffffff', 'mainBkg': '#1f2937', 'edgeLabelBackground': '#374151', 'tertiaryColor': '#374151'}}}%%
+graph TD
+    User((User))
+    subgraph "ClearWorth App"
+        UI[Next.js Frontend]
+        API[Server Actions / API]
+        Store[Zustand / Context]
+    end
+    
+    subgraph "External Services"
+        Supabase[(Supabase DB & Auth)]
+        Gemini[Google Gemini AI]
+    end
+
+    User -->|Interacts| UI
+    UI -->|Reads Data| Supabase
+    UI -->|Mutates Data| API
+    API -->|Writes Data| Supabase
+    API -->|Queries| Gemini
+    Gemini -->|Returns Insight| API

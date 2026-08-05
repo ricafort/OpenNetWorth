@@ -2,12 +2,20 @@
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
-# Plaid (Bank Integration)
-# Sign up at https://dashboard.plaid.com/ to get these (Free for Sandbox)
+# Plaid (Bank Integration - US/EU/UK/CA)
+# Sign up at https://dashboard.plaid.com/ to get these (Free for Sandbox & Dev tier up to 100 links)
 PLAID_CLIENT_ID=your_plaid_client_id
 PLAID_SECRET=your_plaid_sandbox_secret
 PLAID_ENV=sandbox
 
-# Alpha Vantage (Stock Prices)
-ALPHA_VANTAGE_KEY=your_stock_api_key
-NEXT_PUBLIC_ALPHA_VANTAGE_KEY=your_stock_api_key
+# Basiq (Australian Bank Integration — CDR/Open Banking)
+# Sign up free at https://dashboard.basiq.io — Sandbox is free with mock AU bank data
+BASIQ_API_KEY=your_basiq_api_key
+BASIQ_ENV=sandbox
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Finnhub (Stock Prices — US/Global tickers)
+# Sign up free at https://finnhub.io — 60 API calls/minute
+FINNHUB_API_KEY=your_finnhub_api_key
+
+# Yahoo Finance (ASX .AX tickers) — No API key needed. Uses yahoo-finance2 npm package.
