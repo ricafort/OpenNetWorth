@@ -23,9 +23,9 @@ export default function BankStatusCard() {
     const [connections, setConnections] = useState<BankConnection[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Tricky logic: Auto-detect default country based on user's active profile currency or region.
-    // If currency is AUD or country is AU, default to Australia (Basiq CDR).
-    const initialCountry = (profile?.currency_code === 'AUD' || profile?.country_code === 'AU') ? 'AU' : 'AU';
+    // Auto-detect default country from user profile currency/country code.
+    // Why: AU users should default to Basiq CDR; everyone else to Plaid (US/Global).
+    const initialCountry = (profile?.currency_code === 'AUD' || profile?.country_code === 'AU') ? 'AU' : 'US';
     const [selectedCountry, setSelectedCountry] = useState<string>(initialCountry);
 
     const fetchStatus = async () => {
