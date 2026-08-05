@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const getGeminiModel = (modelName: string = "gemini-2.0-flash") => {
+// Why: gemini-2.0-flash was deprecated by Google in mid-2025.
+// gemini-2.5-flash is the current recommended replacement — same speed tier, better quality.
+export const getGeminiModel = (modelName: string = "gemini-2.5-flash") => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
         throw new Error("GEMINI_API_KEY is not defined in environment variables.");
