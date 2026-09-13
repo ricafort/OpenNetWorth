@@ -41,7 +41,7 @@ import {
     ensureIncomeAccount,
     postTransaction
 } from '../accounting/transactionService';
-import { AccountSubType, CurrencyCode } from '../accounting/types';
+import { AccountSubType, CurrencyCode, CURRENCY_DECIMALS } from '../accounting/types';
 
 /**
  * Computes a SHA-256 hexadecimal content hash for raw file text or binary data.
@@ -555,14 +555,22 @@ export function approveProposals(
                 throw new Error(`Cannot approve proposal "${item.proposal_id}" because it contains unresolved error findings.`);
             }
 
-            // Requirement 3: Approval must match the reviewed account and currency
+            // Requirement 3 (Slice 1F Fix 1): Approval must match the reviewed account and currency
             if (rawProp.account_id && rawProp.account_id !== targetAccount.id) {
                 throw new Error(
                     `Cannot approve proposal "${item.proposal_id}": reviewed account "${rawProp.account_id}" does not match approval target account "${targetAccount.id}".`
                 );
             }
 
-            if (rawProp.original_currency && rawProp.original_currency.toUpperCase() !== targetAccount.currency.toUpperCase()) {
+            // Missing currency must remain unresolved until reviewed; approval is blocked
+            if (!rawProp.original_currency || rawProp.original_currency.trim() === '') {
+                throw new Error(
+                    `Cannot approve proposal "${item.proposal_id}": missing currency must remain unresolved until reviewed.`
+                );
+            }
+
+            // Payment account must use the same currency
+            if (rawProp.original_currency.toUpperCase() !== targetAccount.currency.toUpperCase()) {
                 throw new Error(
                     `Cannot approve proposal "${item.proposal_id}": reviewed currency "${rawProp.original_currency}" does not match approval target account currency "${targetAccount.currency}".`
                 );
@@ -785,17 +793,28 @@ export function getProposalById(
 }
 
 /**
- * Updates reviewed fields on a provisional proposal before approval.
+ * Updates reviewed fields on a provisional proposal before approval (Slice 1F Fix 2 & 3).
  * 
  * Why this exists:
- * Allows the user to correct uncertain fields (e.g. supplier, date, amount, category, account)
- * before approving the proposal into the ledger (Slice 1F Requirement 3).
+ * Allows users to correct extracted fields (supplier, date, amount, currency, category, payment account)
+ * through the review UI before approving the proposal into the ledger. Ensures that untrusted
+ * extracted data can be reviewed and validated prior to double-entry posting.
  * 
  * Tricky logic:
- * - Rejects updates on proposals with review_status === 'approved' to preserve audit integrity.
- * - Updates review_status to 'modified' unless an explicit review_status is provided.
+ * - Fix 3: Strict approval guard: Rejects attempts to set review_status to 'approved'.
+ *   Proposals can ONLY transition to 'approved' through successful ledger posting in `approveProposals`.
+ * - Fix 2: Field validation:
+ *   - Date: verifies strict YYYY-MM-DD pattern and validates that it corresponds to a real calendar date.
+ *   - Amount: verifies it is a safe integer minor unit.
+ *   - Currency: verifies it exists in CURRENCY_DECIMALS.
+ *   - Account: verifies target account exists and that its currency matches the proposal currency.
+ *   - Category: verifies non-empty category string.
+ * - Dynamic resolution of validation findings:
+ *   - When the user provides a valid currency, any unresolved `MISSING_CURRENCY` error finding is cleared.
+ *   - When the payment account and currency match, any `CURRENCY_MISMATCH` finding is cleared.
  * 
- * TODO: Add field-level audit history tracking who changed which field and when.
+ * TODO:
+ * - Add field-level audit trail logging previous and updated values in Slice 1G.
  */
 export function updateProposalReview(
     db: Database.Database,
@@ -819,15 +838,77 @@ export function updateProposalReview(
         throw new Error(`Cannot modify proposal "${input.proposal_id}" because it has already been approved into the ledger.`);
     }
 
+    // Fix 3: Prevent review/PATCH from setting approved status
+    if (input.review_status === 'approved') {
+        throw new Error("Proposals cannot be marked approved via review updates. Only successful ledger posting may set approved status.");
+    }
+
+    // Fix 2: Validate corrections
+    // 1. Date validation
+    if (input.event_date !== undefined) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(input.event_date)) {
+            throw new Error(`Invalid event_date format: "${input.event_date}". Expected YYYY-MM-DD.`);
+        }
+        const parsedDate = new Date(input.event_date);
+        if (isNaN(parsedDate.getTime()) || parsedDate.toISOString().substring(0, 10) !== input.event_date) {
+            throw new Error(`Invalid calendar date: "${input.event_date}".`);
+        }
+    }
+
+    // 2. Amount validation
+    if (input.amount_cents !== undefined) {
+        if (!Number.isInteger(input.amount_cents)) {
+            throw new Error(`Invalid amount_cents: "${input.amount_cents}". Amount must be a safe integer.`);
+        }
+    }
+
+    // 3. Currency validation
+    if (input.original_currency !== undefined) {
+        const currCode = input.original_currency.toUpperCase() as CurrencyCode;
+        if (CURRENCY_DECIMALS[currCode] === undefined) {
+            throw new Error(`Unsupported or invalid currency code: "${input.original_currency}".`);
+        }
+    }
+
+    // 4. Payment account validation
+    if (input.account_id !== undefined && input.account_id !== null && input.account_id !== '') {
+        const acc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.account_id) as any;
+        if (!acc) {
+            throw new Error(`Target account not found: "${input.account_id}".`);
+        }
+        const effectiveCurrency = (input.original_currency || existing.original_currency || '').toUpperCase();
+        if (effectiveCurrency && acc.currency.toUpperCase() !== effectiveCurrency) {
+            throw new Error(`Account currency "${acc.currency}" does not match proposal currency "${effectiveCurrency}".`);
+        }
+    }
+
+    // 5. Category validation
+    if (input.suggested_category !== undefined && input.suggested_category.trim() === '') {
+        throw new Error('Suggested category cannot be empty.');
+    }
+
     const now = new Date().toISOString();
     const eventDate = input.event_date !== undefined ? input.event_date : existing.event_date;
-    const counterparty = input.counterparty !== undefined ? input.counterparty : existing.counterparty;
-    const description = input.description !== undefined ? input.description : existing.description;
+    const counterparty = input.counterparty !== undefined ? input.counterparty.trim() : existing.counterparty;
+    const description = input.description !== undefined ? input.description.trim() : existing.description;
     const amountCents = input.amount_cents !== undefined ? input.amount_cents : existing.amount_cents;
-    const currency = input.original_currency !== undefined ? input.original_currency : existing.original_currency;
-    const accountId = input.account_id !== undefined ? input.account_id : existing.account_id;
-    const category = input.suggested_category !== undefined ? input.suggested_category : existing.suggested_category;
+    const finalCurrency = input.original_currency !== undefined ? (input.original_currency.toUpperCase() as CurrencyCode) : existing.original_currency;
+    const finalAccountId = input.account_id !== undefined ? input.account_id : existing.account_id;
+    const category = input.suggested_category !== undefined ? input.suggested_category.trim() : existing.suggested_category;
     const status = input.review_status !== undefined ? input.review_status : 'modified';
+
+    // Update validation findings: if user provided a valid currency, clear MISSING_CURRENCY
+    let findings: ValidationFinding[] = existing.validation_findings ? JSON.parse(existing.validation_findings) : [];
+    if (finalCurrency && CURRENCY_DECIMALS[finalCurrency] !== undefined) {
+        findings = findings.filter(f => f.code !== 'MISSING_CURRENCY');
+    }
+    // Also clear CURRENCY_MISMATCH if account and currency now match
+    if (finalAccountId && finalCurrency) {
+        const acc = db.prepare('SELECT currency FROM m1_accounts WHERE id = ?').get(finalAccountId) as any;
+        if (acc && acc.currency.toUpperCase() === finalCurrency.toUpperCase()) {
+            findings = findings.filter(f => f.code !== 'CURRENCY_MISMATCH');
+        }
+    }
 
     db.prepare(`
         UPDATE m1_proposals
@@ -839,6 +920,7 @@ export function updateProposalReview(
             account_id = ?,
             suggested_category = ?,
             review_status = ?,
+            validation_findings = ?,
             updated_at = ?
         WHERE id = ?
     `).run(
@@ -846,10 +928,11 @@ export function updateProposalReview(
         counterparty,
         description,
         amountCents,
-        currency,
-        accountId,
+        finalCurrency,
+        finalAccountId,
         category,
         status,
+        JSON.stringify(findings),
         now,
         input.proposal_id
     );
@@ -944,12 +1027,13 @@ export async function ingestPdfDocument(
     // 2. Extract using OpenTax-AU adapter
     const extractionResult = await extractInvoiceFromPdf(buffer);
 
-    // 3. Resolve target account & currency
+    // 3. Resolve target account & currency (Slice 1F Fix 1)
     let targetAccount: any = null;
     if (input.target_account_id) {
         targetAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.target_account_id);
     }
-    const currency: CurrencyCode = targetAccount ? (targetAccount.currency as CurrencyCode) : extractionResult.currency;
+    // Fix 1: Preserve extracted currency from PDF directly, never overwrite with target account's currency
+    const originalCurrency = extractionResult.currency ? (extractionResult.currency.toUpperCase() as CurrencyCode) : '';
     const entityId = input.entity_id || (targetAccount ? targetAccount.entity_id : null);
 
     // Remove any previously generated unapproved proposals for this document
@@ -974,6 +1058,24 @@ export async function ingestPdfDocument(
         };
 
         const findings = [...extractionResult.validation_findings];
+
+        // Missing currency must remain unresolved with a blocking error until reviewed (Fix 1)
+        if (!originalCurrency && !findings.some(f => f.code === 'MISSING_CURRENCY')) {
+            findings.push({
+                severity: 'error',
+                code: 'MISSING_CURRENCY',
+                message: 'Document currency could not be identified with confidence. Retained as unresolved until reviewed.'
+            });
+        }
+
+        // If target account is specified and its currency differs from the extracted document currency, add warning
+        if (targetAccount && originalCurrency && targetAccount.currency.toUpperCase() !== originalCurrency.toUpperCase()) {
+            findings.push({
+                severity: 'warning',
+                code: 'CURRENCY_MISMATCH',
+                message: `Document currency (${originalCurrency}) does not match payment account currency (${targetAccount.currency}). Approval will be blocked until payment account matches.`
+            });
+        }
 
         // Check external duplicate in ledger
         if (input.target_account_id && extractionResult.date) {
@@ -1010,7 +1112,7 @@ export async function ingestPdfDocument(
             input.target_account_id || null,
             extractionResult.date || now.substring(0, 10),
             null,
-            currency,
+            originalCurrency,
             amountCents,
             extractionResult.supplier_name || null,
             description,
@@ -1030,7 +1132,7 @@ export async function ingestPdfDocument(
             entity_id: entityId,
             account_id: input.target_account_id || null,
             event_date: extractionResult.date || now.substring(0, 10),
-            original_currency: currency,
+            original_currency: originalCurrency,
             amount_cents: amountCents,
             counterparty: extractionResult.supplier_name || null,
             description,
@@ -1062,6 +1164,14 @@ export async function ingestPdfDocument(
             ...extractionResult.validation_findings
         ];
 
+        if (!originalCurrency && !findings.some(f => f.code === 'MISSING_CURRENCY')) {
+            findings.push({
+                severity: 'error',
+                code: 'MISSING_CURRENCY',
+                message: 'Document currency could not be identified with confidence. Retained as unresolved until reviewed.'
+            });
+        }
+
         db.prepare(`
             INSERT INTO m1_proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
@@ -1076,7 +1186,7 @@ export async function ingestPdfDocument(
             input.target_account_id || null,
             now.substring(0, 10),
             null,
-            currency,
+            originalCurrency,
             0,
             null,
             `${input.filename} (unresolved layout)`,
@@ -1096,7 +1206,7 @@ export async function ingestPdfDocument(
             entity_id: entityId,
             account_id: input.target_account_id || null,
             event_date: now.substring(0, 10),
-            original_currency: currency,
+            original_currency: originalCurrency,
             amount_cents: 0,
             counterparty: null,
             description: `${input.filename} (unresolved layout)`,

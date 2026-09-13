@@ -215,13 +215,16 @@ def extract_document(pdf_path: str) -> dict:
             "source_line": 1
         })
 
+    if not currency:
+        warnings.append("Document currency could not be identified with confidence. Retained as unresolved until reviewed.")
+
     return {
         "supported": True,
         "layout": "simple_supplies_invoice",
         "supplier_name": supplier_name,
         "invoice_number": invoice_number,
         "date": iso_date,
-        "currency": currency or "AUD",
+        "currency": currency,
         "total_amount": float(total_amount),
         "gst_amount": float(gst_amount or 0.0),
         "subtotal": float(subtotal or (total_amount - (gst_amount or 0.0))),

@@ -84,6 +84,14 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ error: 'Missing required field: proposal_id' }, { status: 400 });
         }
 
+        // Fix 3: Prevent the review/PATCH endpoint from marking proposals approved.
+        // Only successful ledger posting (via POST /api/documents/proposals) may set approved status.
+        if (review_status === 'approved') {
+            return NextResponse.json({
+                error: 'Proposals cannot be marked approved via review updates. Only successful ledger posting may set approved status.'
+            }, { status: 400 });
+        }
+
         const updated = updateProposalReview(db, {
             proposal_id,
             event_date,
@@ -99,7 +107,7 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ success: true, proposal: updated });
     } catch (err: any) {
         console.error('Failed to update proposal:', err);
-        return NextResponse.json({ error: err.message || 'Failed to update proposal.' }, { status: 500 });
+        return NextResponse.json({ error: err.message || 'Failed to update proposal.' }, { status: 400 });
     }
 }
 

@@ -45,7 +45,7 @@ export interface ExtractedPdfDocument {
     supplier_name?: string | null;
     invoice_number?: string | null;
     date?: string | null; // ISO YYYY-MM-DD
-    currency: CurrencyCode;
+    currency: CurrencyCode | null;
     total_cents: number;
     tax_cents: number;
     net_cents: number;
@@ -92,15 +92,26 @@ function getBridgeScriptPath(): string {
 
 /**
  * Converts a float amount to exact integer minor units (cents) for a currency.
+ * 
+ * Why this exists:
+ * Ensures money amounts extracted from PDFs are accurately converted to safe integer
+ * minor units before entering domain models and double-entry postings.
+ * 
+ * Tricky logic:
+ * - Nullable currency: when currency is unresolved/null, defaults to scale 2 (standard cents).
+ * - Multiplies by 10^scale and rounds to avoid floating point representation issues.
+ * - Asserts safe integer bounds to prevent overflows.
+ * 
+ * TODO: Support 3-decimal currencies if introduced in later slices.
  */
-function toMinorUnits(amount: number | null | undefined, currency: CurrencyCode): number {
+function toMinorUnits(amount: number | null | undefined, currency: CurrencyCode | null): number {
     if (amount === null || amount === undefined || isNaN(amount)) {
         return 0;
     }
-    const scale = CURRENCY_DECIMALS[currency] ?? 2;
+    const scale = currency ? (CURRENCY_DECIMALS[currency] ?? 2) : 2;
     const factor = Math.pow(10, scale);
     const cents = Math.round(amount * factor);
-    assertValidMoneyCents(cents, `Extracted ${currency} amount`);
+    assertValidMoneyCents(cents, `Extracted ${currency || 'unspecified'} amount`);
     return cents;
 }
 
@@ -156,7 +167,7 @@ export async function extractInvoiceFromPdf(source: string | Buffer): Promise<Ex
         if (!stdout || !stdout.trim()) {
             return {
                 supported: false,
-                currency: 'AUD',
+                currency: null,
                 total_cents: 0,
                 tax_cents: 0,
                 net_cents: 0,
@@ -172,12 +183,22 @@ export async function extractInvoiceFromPdf(source: string | Buffer): Promise<Ex
 
         const rawResult = JSON.parse(stdout);
 
-        const currency: CurrencyCode = rawResult.currency || 'AUD';
+        // Preserve extracted currency without fallback (Fix 1)
+        const currency: CurrencyCode | null = rawResult.currency ? (rawResult.currency.toUpperCase() as CurrencyCode) : null;
         const totalCents = toMinorUnits(rawResult.total_amount, currency);
         const taxCents = toMinorUnits(rawResult.gst_amount, currency);
         const netCents = toMinorUnits(rawResult.subtotal, currency);
 
         const findings: ValidationFinding[] = [];
+
+        // Missing currency must remain unresolved with a blocking error until reviewed (Fix 1)
+        if (!currency) {
+            findings.push({
+                severity: 'error',
+                code: 'MISSING_CURRENCY',
+                message: 'Document currency could not be identified with confidence. Retained as unresolved until reviewed.'
+            });
+        }
 
         // Map python warnings to validation findings
         if (Array.isArray(rawResult.warnings)) {
@@ -224,7 +245,7 @@ export async function extractInvoiceFromPdf(source: string | Buffer): Promise<Ex
     } catch (err: any) {
         return {
             supported: false,
-            currency: 'AUD',
+            currency: null,
             total_cents: 0,
             tax_cents: 0,
             net_cents: 0,

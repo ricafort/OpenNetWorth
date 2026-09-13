@@ -30,14 +30,16 @@ import {
     ExternalLink,
     Filter,
     Layers,
-    DollarSign
+    DollarSign,
+    Edit3,
+    X
 } from 'lucide-react';
 import {
     DocumentMetadata,
     ExtractedFinancialProposal,
     ValidationFinding
 } from '@/lib/domain/document/types';
-import { Account, formatMoney } from '@/lib/domain/accounting/types';
+import { Account, CurrencyCode, CURRENCY_DECIMALS, formatMoney } from '@/lib/domain/accounting/types';
 
 interface ProposalReviewTableProps {
     documentId: string;
@@ -73,6 +75,108 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
 
     // Target liquid account for this document
     const [targetAccountId, setTargetAccountId] = useState<string>('');
+
+    // Edit Modal State (Slice 1F Fix 2)
+    // Why this exists: Enables users to correct extracted supplier, date, amount, currency,
+    // category, and payment account before committing to the double-entry ledger.
+    const [editingProposal, setEditingProposal] = useState<ExtractedFinancialProposal | null>(null);
+    const [editSupplier, setEditSupplier] = useState<string>('');
+    const [editDate, setEditDate] = useState<string>('');
+    const [editAmount, setEditAmount] = useState<string>('');
+    const [editCurrency, setEditCurrency] = useState<CurrencyCode>('AUD');
+    const [editCategory, setEditCategory] = useState<string>('office_supplies');
+    const [editAccountId, setEditAccountId] = useState<string>('');
+    const [editError, setEditError] = useState<string | null>(null);
+    const [editSubmitting, setEditSubmitting] = useState<boolean>(false);
+
+    /**
+     * Initializes the edit modal with current proposal values.
+     */
+    const startEditing = (proposal: ExtractedFinancialProposal) => {
+        setEditingProposal(proposal);
+        setEditSupplier(proposal.counterparty || proposal.description || '');
+        setEditDate(proposal.event_date);
+        const scale = CURRENCY_DECIMALS[proposal.original_currency] ?? 2;
+        const absMajor = (Math.abs(proposal.amount_cents) / Math.pow(10, scale)).toFixed(scale);
+        setEditAmount(absMajor);
+        setEditCurrency(proposal.original_currency || 'AUD');
+        setEditCategory(proposal.suggested_category || 'office_supplies');
+        setEditAccountId(proposal.account_id || targetAccountId || accounts[0]?.id || '');
+        setEditError(null);
+    };
+
+    /**
+     * Validates and submits edited proposal fields via PATCH /api/documents/proposals.
+     * Tricky logic:
+     * - Multiplies amount by 10^scale based on the selected currency so minor units are exact integers.
+     * - Preserves sign (expense vs income).
+     * - Ensures account currency matches proposal currency before sending to backend.
+     * - Backend rejects review_status === 'approved' to protect double-entry invariants.
+     * 
+     * TODO: Support partial field updates with history logging in Slice 1G.
+     */
+    const handleSaveEdit = async () => {
+        if (!editingProposal) return;
+        setEditError(null);
+        setEditSubmitting(true);
+
+        try {
+            // Validate date format and validity
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(editDate)) {
+                throw new Error('Date must be in YYYY-MM-DD format.');
+            }
+            const parsedDate = new Date(editDate);
+            if (isNaN(parsedDate.getTime()) || parsedDate.toISOString().substring(0, 10) !== editDate) {
+                throw new Error('Please enter a valid calendar date.');
+            }
+
+            // Validate amount
+            const parsedAmount = parseFloat(editAmount);
+            if (isNaN(parsedAmount) || parsedAmount < 0) {
+                throw new Error('Amount must be a positive number.');
+            }
+            const scale = CURRENCY_DECIMALS[editCurrency] ?? 2;
+            const amountCents = Math.round(parsedAmount * Math.pow(10, scale));
+            const finalSignedCents = editingProposal.event_type === 'income' ? amountCents : -amountCents;
+
+            // Validate account currency match
+            if (editAccountId) {
+                const acc = accounts.find(a => a.id === editAccountId);
+                if (acc && acc.currency.toUpperCase() !== editCurrency.toUpperCase()) {
+                    throw new Error(`Selected payment account currency (${acc.currency}) does not match proposal currency (${editCurrency}).`);
+                }
+            }
+
+            const res = await fetch('/api/documents/proposals', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    proposal_id: editingProposal.id,
+                    event_date: editDate,
+                    counterparty: editSupplier,
+                    description: `${editSupplier} purchase`,
+                    amount_cents: finalSignedCents,
+                    original_currency: editCurrency,
+                    account_id: editAccountId || undefined,
+                    suggested_category: editCategory
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to update proposal.');
+            }
+
+            // Update proposals in state
+            setProposals(prev => prev.map(p => p.id === data.proposal.id ? data.proposal : p));
+            setSuccessMessage(`Updated proposal successfully.`);
+            setEditingProposal(null);
+        } catch (err: any) {
+            setEditError(err.message || 'An error occurred while saving corrections.');
+        } finally {
+            setEditSubmitting(false);
+        }
+    };
 
     // Fetch document metadata and proposals
     const loadProposals = async () => {
@@ -428,6 +532,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                     )}
                                     <th className="py-3 px-3">Flags & Status</th>
                                     <th className="py-3 px-3">Evidence Source</th>
+                                    <th className="py-3 px-3 text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -588,6 +693,23 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                     {proposal.evidence.cell_reference}
                                                 </span>
                                             </td>
+
+                                            {/* Actions / Edit (Slice 1F Fix 2) */}
+                                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                {!isApproved ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startEditing(proposal)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 rounded-lg transition"
+                                                        title="Edit proposal fields"
+                                                    >
+                                                        <Edit3 className="w-3.5 h-3.5" />
+                                                        <span>Edit</span>
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-slate-400 dark:text-slate-600 text-[11px] italic">Locked</span>
+                                                )}
+                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -596,6 +718,165 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* Edit Proposal Modal (Slice 1F Fix 2) */}
+            {editingProposal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <Edit3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                                    Edit Proposal Details
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => setEditingProposal(null)}
+                                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit(); }} className="p-5 space-y-4 text-xs">
+                            {editError && (
+                                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-xl text-rose-700 dark:text-rose-300 flex items-start gap-2">
+                                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                    <span>{editError}</span>
+                                </div>
+                            )}
+
+                            {/* Supplier / Counterparty */}
+                            <div>
+                                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                    Supplier / Counterparty
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editSupplier}
+                                    onChange={e => setEditSupplier(e.target.value)}
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
+                                    placeholder="e.g. Holloway Office Equipment"
+                                    required
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                {/* Date */}
+                                <div>
+                                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                        Date (YYYY-MM-DD)
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={editDate}
+                                        onChange={e => setEditDate(e.target.value)}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
+                                        required
+                                    />
+                                </div>
+
+                                {/* Amount */}
+                                <div>
+                                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                        Amount
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editAmount}
+                                        onChange={e => setEditAmount(e.target.value)}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
+                                        placeholder="0.00"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                {/* Currency */}
+                                <div>
+                                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                        Currency
+                                    </label>
+                                    <select
+                                        value={editCurrency}
+                                        onChange={e => setEditCurrency(e.target.value as CurrencyCode)}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
+                                    >
+                                        {Object.keys(CURRENCY_DECIMALS).map(curr => (
+                                            <option key={curr} value={curr}>{curr}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Category */}
+                                <div>
+                                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                        Category
+                                    </label>
+                                    <select
+                                        value={editCategory}
+                                        onChange={e => setEditCategory(e.target.value)}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl capitalize text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="office_supplies">Office Supplies</option>
+                                        <option value="living_expense">Living Expense</option>
+                                        <option value="groceries">Groceries</option>
+                                        <option value="utilities">Utilities</option>
+                                        <option value="rent_expense">Rent</option>
+                                        <option value="transportation">Transportation</option>
+                                        <option value="entertainment">Entertainment</option>
+                                        <option value="healthcare">Healthcare</option>
+                                        <option value="interest_expense">Interest / Finance</option>
+                                        <option value="insurance">Insurance</option>
+                                        <option value="salary">Salary / Wage</option>
+                                        <option value="business_income">Business Income</option>
+                                        <option value="investment_income">Investment / Dividend</option>
+                                        <option value="other_income">Other Income</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Payment Account */}
+                            <div>
+                                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                    Payment Account
+                                </label>
+                                <select
+                                    value={editAccountId}
+                                    onChange={e => setEditAccountId(e.target.value)}
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
+                                >
+                                    <option value="">(None / Keep Current)</option>
+                                    {accounts.map(acc => (
+                                        <option key={acc.id} value={acc.id}>
+                                            {acc.name} ({acc.currency})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingProposal(null)}
+                                    className="px-4 py-2 text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={editSubmitting}
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl disabled:opacity-50 transition shadow-sm"
+                                >
+                                    {editSubmitting ? 'Saving Corrections...' : 'Save Corrections'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
