@@ -52,6 +52,8 @@ import {
     assertValidCalendarDate
 } from './transactionService';
 import { validateTransactionBalance, parseToCents } from './types';
+import { POST as accountingPost } from '@/app/api/accounting/route';
+import { setTestDb } from '@/infrastructure/sqlite/db';
 
 describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regression Tests', () => {
     let db: Database.Database;
@@ -61,9 +63,12 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
         initAccountingSchema(db);
+        // Inject in-memory database into db.ts so API routes use this isolated instance
+        setTestDb(db);
     });
 
     afterEach(() => {
+        setTestDb(null);
         try {
             db.close();
         } catch {
@@ -841,4 +846,582 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             expect(txList[0].postings.length).toBeGreaterThanOrEqual(2);
         });
     });
+
+    describe('Assessor Blocker 1: Sovereign Entity Boundaries in postTransaction & correctTransaction', () => {
+        /**
+         * Why this test exists:
+         * Proves raw cross-entity postings in postTransaction are rejected.
+         * Verifies that the attempt fails atomically, leaving records, revisions, and accounts 100% unchanged.
+         * 
+         * Tricky logic:
+         * Counts all rows in m1_transactions and m1_journal_entries before and after the rejected post.
+         * Confirms that no draft or orphan records leaked into the database.
+         * 
+         * TODO: Support inter-entity clearing accounts when intercompany modules are added.
+         */
+        it('rejects raw cross-entity postings in postTransaction and leaves database completely unchanged', () => {
+            const entityA = createEntity(db, { name: 'Person A Entity', type: 'person', currency: 'USD' });
+            const entityB = createEntity(db, { name: 'Person B Entity', type: 'person', currency: 'USD' });
+
+            const bankA = createAccount(db, {
+                entity_id: entityA.id,
+                name: 'Bank A',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+
+            const bankB = createAccount(db, {
+                entity_id: entityB.id,
+                name: 'Bank B',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+
+            const initialTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const initialEntryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+
+            expect(() => {
+                postTransaction(db, {
+                    date: '2026-09-10',
+                    description: 'Illegal Cross-Entity Transfer',
+                    postings: [
+                        { account_id: bankA.account.id, amount_cents: -5000, currency: 'USD' },
+                        { account_id: bankB.account.id, amount_cents: 5000, currency: 'USD' }
+                    ]
+                });
+            }).toThrow(/Cross-entity transaction rejected/);
+
+            const finalTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const finalEntryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+
+            expect(finalTxCount).toBe(initialTxCount);
+            expect(finalEntryCount).toBe(initialEntryCount);
+            expect(getAccountBalance(db, bankA.account.id).balance_cents).toBe(0);
+            expect(getAccountBalance(db, bankB.account.id).balance_cents).toBe(0);
+        });
+
+        /**
+         * Why this test exists:
+         * Proves that corrections introducing cross-entity postings are rejected in correctTransaction.
+         * Verifies that rejected operations leave original transactions, revisions, postings, and audit trails intact.
+         * 
+         * Tricky logic:
+         * Verifies both:
+         * 1) A correction mixing accounts from Entity A and Entity B.
+         * 2) A correction trying to reassign all postings to Entity B from an Entity A transaction.
+         * Checks that m1_transactions.revision is unchanged and m1_transaction_corrections has 0 new records.
+         * 
+         * TODO: Add multi-party dispute resolution workflows in future milestones.
+         */
+        it('rejects corrections introducing cross-entity postings and leaves records, revisions, and audit history unchanged', () => {
+            const entityA = createEntity(db, { name: 'Entity Alpha', type: 'person', currency: 'USD' });
+            const entityB = createEntity(db, { name: 'Entity Beta', type: 'person', currency: 'USD' });
+
+            const accA1 = createAccount(db, {
+                entity_id: entityA.id,
+                name: 'Alpha Bank',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+            const accA2 = createAccount(db, {
+                entity_id: entityA.id,
+                name: 'Alpha Savings',
+                type: 'asset',
+                sub_type: 'savings',
+                currency: 'USD'
+            });
+            const accB1 = createAccount(db, {
+                entity_id: entityB.id,
+                name: 'Beta Bank',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+            const accB2 = createAccount(db, {
+                entity_id: entityB.id,
+                name: 'Beta Expense',
+                type: 'expense',
+                sub_type: 'living_expense',
+                currency: 'USD'
+            });
+
+            // Post a valid internal transaction in Entity A
+            const origTx = postTransaction(db, {
+                date: '2026-09-10',
+                description: 'Alpha Internal Transfer',
+                postings: [
+                    { account_id: accA1.account.id, amount_cents: -5000, currency: 'USD' },
+                    { account_id: accA2.account.id, amount_cents: 5000, currency: 'USD' }
+                ]
+            });
+
+            expect(origTx.revision).toBe(1);
+
+            const initialTxRow = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(origTx.id) as any;
+            const initialEntries = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
+            const initialCorrectionsCount = (db.prepare('SELECT count(*) as count FROM m1_transaction_corrections').get() as any).count;
+
+            // 1. Attempt correction mixing Entity A and Entity B accounts
+            expect(() => {
+                correctTransaction(db, {
+                    transaction_id: origTx.id,
+                    expected_revision: 1,
+                    operation: 'edit',
+                    reason: 'Attempt cross-entity edit',
+                    performed_by: 'Test Actor',
+                    new_data: {
+                        postings: [
+                            { account_id: accA1.account.id, amount_cents: -5000, currency: 'USD' },
+                            { account_id: accB1.account.id, amount_cents: 5000, currency: 'USD' } // Foreign entity!
+                        ]
+                    }
+                });
+            }).toThrow(/Cross-entity correction rejected/);
+
+            // Verify unchanged state
+            let txRowAfter = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(origTx.id) as any;
+            expect(txRowAfter.revision).toBe(1);
+            expect(txRowAfter.updated_at).toBe(initialTxRow.updated_at);
+            let entriesAfter = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
+            expect(entriesAfter).toEqual(initialEntries);
+            let correctionsCountAfter = (db.prepare('SELECT count(*) as count FROM m1_transaction_corrections').get() as any).count;
+            expect(correctionsCountAfter).toBe(initialCorrectionsCount);
+
+            // 2. Attempt correction moving transaction entirely into Entity B
+            expect(() => {
+                correctTransaction(db, {
+                    transaction_id: origTx.id,
+                    expected_revision: 1,
+                    operation: 'edit',
+                    reason: 'Attempt entity transplant',
+                    performed_by: 'Test Actor',
+                    new_data: {
+                        postings: [
+                            { account_id: accB1.account.id, amount_cents: -5000, currency: 'USD' },
+                            { account_id: accB2.account.id, amount_cents: 5000, currency: 'USD' }
+                        ]
+                    }
+                });
+            }).toThrow(/Cross-entity correction rejected/);
+
+            // Verify state is still 100% unchanged
+            txRowAfter = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(origTx.id) as any;
+            expect(txRowAfter.revision).toBe(1);
+            entriesAfter = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
+            expect(entriesAfter).toEqual(initialEntries);
+            correctionsCountAfter = (db.prepare('SELECT count(*) as count FROM m1_transaction_corrections').get() as any).count;
+            expect(correctionsCountAfter).toBe(initialCorrectionsCount);
+        });
+
+        /**
+         * Why this test exists:
+         * Proves both exposed API actions (post_transaction and correct_transaction) return HTTP 400
+         * with clear validation error payloads when cross-entity postings are attempted.
+         * 
+         * Tricky logic:
+         * Uses Next.js request/response testing against accountingPost.
+         * Asserts HTTP status 400 and checks response JSON structure.
+         * 
+         * TODO: Add OpenAPI specification validation tests.
+         */
+        it('exposed API actions return HTTP 400 validation responses for cross-entity attempts', async () => {
+            const entityA = createEntity(db, { name: 'API Entity A', type: 'person', currency: 'USD' });
+            const entityB = createEntity(db, { name: 'API Entity B', type: 'person', currency: 'USD' });
+
+            const accA = createAccount(db, {
+                entity_id: entityA.id,
+                name: 'API Account A',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+            const accA2 = createAccount(db, {
+                entity_id: entityA.id,
+                name: 'API Account A2',
+                type: 'asset',
+                sub_type: 'savings',
+                currency: 'USD'
+            });
+            const accB = createAccount(db, {
+                entity_id: entityB.id,
+                name: 'API Account B',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+
+            // 1. API post_transaction with cross-entity postings
+            const postReq = new Request('http://localhost/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'post_transaction',
+                    transaction: {
+                        date: '2026-09-10',
+                        description: 'API Cross Entity Post',
+                        postings: [
+                            { account_id: accA.account.id, amount_cents: -3000, currency: 'USD' },
+                            { account_id: accB.account.id, amount_cents: 3000, currency: 'USD' }
+                        ]
+                    }
+                })
+            });
+
+            const postRes = await accountingPost(postReq);
+            expect(postRes.status).toBe(400);
+            const postBody = await postRes.json();
+            expect(postBody.error).toMatch(/Cross-entity transaction rejected/);
+
+            // 2. Post a valid transaction in Entity A to test correction API
+            const validTx = postTransaction(db, {
+                date: '2026-09-10',
+                description: 'Valid Entity A Transaction',
+                postings: [
+                    { account_id: accA.account.id, amount_cents: -2000, currency: 'USD' },
+                    { account_id: accA2.account.id, amount_cents: 2000, currency: 'USD' }
+                ]
+            });
+
+            // 3. API correct_transaction introducing cross-entity postings
+            const correctReq = new Request('http://localhost/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'correct_transaction',
+                    correction: {
+                        transaction_id: validTx.id,
+                        expected_revision: 1,
+                        operation: 'edit',
+                        reason: 'API cross entity edit attempt',
+                        performed_by: 'Tester',
+                        new_data: {
+                            postings: [
+                                { account_id: accA.account.id, amount_cents: -2000, currency: 'USD' },
+                                { account_id: accB.account.id, amount_cents: 2000, currency: 'USD' }
+                            ]
+                        }
+                    }
+                })
+            });
+
+            const correctRes = await accountingPost(correctReq);
+            expect(correctRes.status).toBe(400);
+            const correctBody = await correctRes.json();
+            expect(correctBody.error).toMatch(/Cross-entity correction rejected/);
+
+            // Verify validTx is untouched
+            const storedTx = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(validTx.id) as any;
+            expect(storedTx.revision).toBe(1);
+        });
+    });
+
+    describe('Assessor Blocker 2: Complete Idempotency Request Comparison with Material Fields', () => {
+        /**
+         * Why this test exists:
+         * Proves that identical retries return the existing transaction without inserting duplicate records.
+         * Verifies that normalization (whitespace trimming, array sorting, and deduplication) prevents false conflicts.
+         * 
+         * Tricky logic:
+         * Submits with extra whitespace in description, payee, and reordered evidence_refs array.
+         * Asserts the returned transaction matches the original ID, and table record counts are completely unchanged.
+         * 
+         * TODO: Add client-side fingerprint generation for offline reconciliation.
+         */
+        it('identical retries return the existing transaction under defined normalization', () => {
+            const entity = createEntity(db, { name: 'Idem Owner', type: 'person', currency: 'USD' });
+            const bank = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Main Checking',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+            const exp = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Office Supplies Expense',
+                type: 'expense',
+                sub_type: 'living_expense',
+                currency: 'USD'
+            });
+
+            const idempotencyKey = 'idem-full-compare-001';
+
+            // Initial post with material details
+            const initialTx = postTransaction(db, {
+                date: '2026-09-10',
+                description: 'Printer Paper and Ink',
+                payee_or_payer: 'OfficeMax',
+                idempotency_key: idempotencyKey,
+                evidence_refs: ['invoice_1001.pdf', 'receipt_1001.pdf'],
+                postings: [
+                    { account_id: bank.account.id, amount_cents: -7500, currency: 'USD' },
+                    { account_id: exp.account.id, amount_cents: 7500, currency: 'USD' }
+                ]
+            });
+
+            expect(initialTx.id).toBeDefined();
+
+            const txCountBefore = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const entriesCountBefore = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+
+            // Retry 1: Exact byte match
+            const retry1 = postTransaction(db, {
+                date: '2026-09-10',
+                description: 'Printer Paper and Ink',
+                payee_or_payer: 'OfficeMax',
+                idempotency_key: idempotencyKey,
+                evidence_refs: ['invoice_1001.pdf', 'receipt_1001.pdf'],
+                postings: [
+                    { account_id: bank.account.id, amount_cents: -7500, currency: 'USD' },
+                    { account_id: exp.account.id, amount_cents: 7500, currency: 'USD' }
+                ]
+            });
+            expect(retry1.id).toBe(initialTx.id);
+
+            // Retry 2: Normalized match (extra whitespace in text, re-ordered evidence references)
+            const retry2 = postTransaction(db, {
+                date: '2026-09-10',
+                description: '  Printer Paper and Ink  ',
+                payee_or_payer: '  OfficeMax  ',
+                idempotency_key: idempotencyKey,
+                evidence_refs: ['receipt_1001.pdf', 'invoice_1001.pdf'], // Inverted order
+                postings: [
+                    { account_id: bank.account.id, amount_cents: -7500, currency: 'USD' },
+                    { account_id: exp.account.id, amount_cents: 7500, currency: 'USD' }
+                ]
+            });
+            expect(retry2.id).toBe(initialTx.id);
+
+            // Verify zero duplicate records created
+            const txCountAfter = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const entriesCountAfter = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            expect(txCountAfter).toBe(txCountBefore);
+            expect(entriesCountAfter).toBe(entriesCountBefore);
+        });
+
+        /**
+         * Why this test exists:
+         * Proves that changing payee, description, or evidence references with an existing idempotency key
+         * triggers ConflictError (HTTP 409) and leaves all database tables 100% untouched.
+         * 
+         * Tricky logic:
+         * Tests all three material attributes individually:
+         * 1) Changed payee
+         * 2) Changed description
+         * 3) Changed evidence refs
+         * Verifies counts before and after each conflict to ensure absolute immutability.
+         * 
+         * TODO: Add telemetry logging for detected replay attacks.
+         */
+        it('changed payee, description, or evidence produces ConflictError and leaves database unchanged', () => {
+            const entity = createEntity(db, { name: 'Audit Owner', type: 'person', currency: 'USD' });
+            const bank = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Vault Bank',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+            const exp = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Tech Expense',
+                type: 'expense',
+                sub_type: 'utilities',
+                currency: 'USD'
+            });
+
+            const key = 'idem-material-conflict-key';
+
+            // Seed initial transaction
+            const seedTx = postTransaction(db, {
+                date: '2026-09-10',
+                description: 'Hosting Subscription',
+                payee_or_payer: 'AWS Cloud',
+                idempotency_key: key,
+                evidence_refs: ['receipt_sep2026.pdf'],
+                postings: [
+                    { account_id: bank.account.id, amount_cents: -12000, currency: 'USD' },
+                    { account_id: exp.account.id, amount_cents: 12000, currency: 'USD' }
+                ]
+            });
+
+            const baselineTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const baselineEntryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+
+            // 1. Conflict on changed payee
+            expect(() => {
+                postTransaction(db, {
+                    date: '2026-09-10',
+                    description: 'Hosting Subscription',
+                    payee_or_payer: 'Google Cloud Platform', // Changed payee!
+                    idempotency_key: key,
+                    evidence_refs: ['receipt_sep2026.pdf'],
+                    postings: [
+                        { account_id: bank.account.id, amount_cents: -12000, currency: 'USD' },
+                        { account_id: exp.account.id, amount_cents: 12000, currency: 'USD' }
+                    ]
+                });
+            }).toThrow(ConflictError);
+
+            expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
+            expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
+
+            // 2. Conflict on changed description
+            expect(() => {
+                postTransaction(db, {
+                    date: '2026-09-10',
+                    description: 'Database Hosting', // Changed description!
+                    payee_or_payer: 'AWS Cloud',
+                    idempotency_key: key,
+                    evidence_refs: ['receipt_sep2026.pdf'],
+                    postings: [
+                        { account_id: bank.account.id, amount_cents: -12000, currency: 'USD' },
+                        { account_id: exp.account.id, amount_cents: 12000, currency: 'USD' }
+                    ]
+                });
+            }).toThrow(ConflictError);
+
+            expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
+            expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
+
+            // 3. Conflict on changed evidence references
+            expect(() => {
+                postTransaction(db, {
+                    date: '2026-09-10',
+                    description: 'Hosting Subscription',
+                    payee_or_payer: 'AWS Cloud',
+                    idempotency_key: key,
+                    evidence_refs: ['different_invoice.pdf'], // Changed evidence!
+                    postings: [
+                        { account_id: bank.account.id, amount_cents: -12000, currency: 'USD' },
+                        { account_id: exp.account.id, amount_cents: 12000, currency: 'USD' }
+                    ]
+                });
+            }).toThrow(ConflictError);
+
+            expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
+            expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
+
+            // 4. Verify existing transaction retained its exact initial values
+            const stored = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(seedTx.id) as any;
+            expect(stored.payee_or_payer).toBe('AWS Cloud');
+            expect(stored.description).toBe('Hosting Subscription');
+            expect(JSON.parse(stored.evidence_refs)).toEqual(['receipt_sep2026.pdf']);
+        });
+
+        /**
+         * Why this test exists:
+         * Proves that the API route handles idempotency retries (HTTP 201/200) and conflicts (HTTP 409)
+         * with zero orphan records or corruptions.
+         * 
+         * Tricky logic:
+         * Tests API route directly with JSON payloads and validates HTTP status codes 201, 201 (replay), and 409.
+         * 
+         * TODO: Support idempotency window expiration headers.
+         */
+        it('API route handles idempotency retries and conflicts with HTTP 201 and HTTP 409', async () => {
+            const entity = createEntity(db, { name: 'API Idem Entity', type: 'person', currency: 'USD' });
+            const bank = createAccount(db, {
+                entity_id: entity.id,
+                name: 'API Bank',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+            const exp = createAccount(db, {
+                entity_id: entity.id,
+                name: 'API Expense',
+                type: 'expense',
+                sub_type: 'groceries',
+                currency: 'USD'
+            });
+
+            const apiKey = 'idem-api-test-key-409';
+
+            // 1. First POST: success 201
+            const req1 = new Request('http://localhost/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'post_transaction',
+                    transaction: {
+                        date: '2026-09-10',
+                        description: 'Team Lunch',
+                        payee_or_payer: 'Bistro',
+                        idempotency_key: apiKey,
+                        evidence_refs: ['bistro_receipt.pdf'],
+                        postings: [
+                            { account_id: bank.account.id, amount_cents: -4500, currency: 'USD' },
+                            { account_id: exp.account.id, amount_cents: 4500, currency: 'USD' }
+                        ]
+                    }
+                })
+            });
+
+            const res1 = await accountingPost(req1);
+            expect(res1.status).toBe(201);
+            const body1 = await res1.json();
+            const txId = body1.transaction.id;
+
+            // 2. Identical retry POST: success 201 (returns existing)
+            const req2 = new Request('http://localhost/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'post_transaction',
+                    transaction: {
+                        date: '2026-09-10',
+                        description: 'Team Lunch',
+                        payee_or_payer: 'Bistro',
+                        idempotency_key: apiKey,
+                        evidence_refs: ['bistro_receipt.pdf'],
+                        postings: [
+                            { account_id: bank.account.id, amount_cents: -4500, currency: 'USD' },
+                            { account_id: exp.account.id, amount_cents: 4500, currency: 'USD' }
+                        ]
+                    }
+                })
+            });
+
+            const res2 = await accountingPost(req2);
+            expect(res2.status).toBe(201);
+            const body2 = await res2.json();
+            expect(body2.transaction.id).toBe(txId);
+
+            // 3. Conflicting retry POST: HTTP 409
+            const req3 = new Request('http://localhost/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'post_transaction',
+                    transaction: {
+                        date: '2026-09-10',
+                        description: 'Executive Lunch', // Changed description!
+                        payee_or_payer: 'Bistro',
+                        idempotency_key: apiKey,
+                        evidence_refs: ['bistro_receipt.pdf'],
+                        postings: [
+                            { account_id: bank.account.id, amount_cents: -4500, currency: 'USD' },
+                            { account_id: exp.account.id, amount_cents: 4500, currency: 'USD' }
+                        ]
+                    }
+                })
+            });
+
+            const res3 = await accountingPost(req3);
+            expect(res3.status).toBe(409);
+            const body3 = await res3.json();
+            expect(body3.error).toMatch(/Idempotency conflict/);
+
+            // Verify database counts remain exactly 1 transaction and 2 journal entries
+            const txCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const entryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            expect(txCount).toBe(1);
+            expect(entryCount).toBe(2);
+        });
+    });
 });
+

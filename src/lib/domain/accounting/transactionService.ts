@@ -285,12 +285,28 @@ export function ensureIncomeAccount(
 }
 
 /**
+ * String normalization for robust comparison (trims whitespace, treats null/undefined as empty).
+ */
+function normalizeString(val?: string | null): string {
+    return (val ?? '').trim();
+}
+
+/**
+ * Normalizes evidence references by trimming, filtering empty, deduplicating, sorting, and JSON stringifying.
+ */
+function normalizeEvidenceRefs(refs?: string[] | null): string {
+    if (!refs || !Array.isArray(refs)) return '[]';
+    const cleaned = Array.from(new Set(refs.map(r => String(r).trim()).filter(Boolean))).sort();
+    return JSON.stringify(cleaned);
+}
+
+/**
  * Posts an authoritative double-entry transaction atomically.
  * 
  * Why this exists:
  * The single core transaction committer in OpenNetWorth. Validates that postings
- * sum exactly to zero cents, validates account existence and currency consistency,
- * and handles idempotency keys with conflict detection (M1-SAFE-05).
+ * sum exactly to zero cents, validates account existence, currency consistency,
+ * sovereign entity boundaries, and handles idempotency keys with material conflict detection (M1-SAFE-05).
  */
 export function postTransaction(db: Database.Database, input: PostTransactionInput): TransactionWithPostings {
     if (!input.description || input.description.trim().length === 0) {
@@ -323,8 +339,9 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
         throw new ValidationError(`Transaction out of balance by ${validation.delta_cents} cents. Sum of postings must equal zero.`);
     }
 
-    // Verify all referenced accounts exist and that posting currency matches account currency
+    // Verify all referenced accounts exist, currencies match, and all accounts belong to the same sovereign entity
     const accountLookup = db.prepare('SELECT id, name, currency, type, entity_id FROM m1_accounts WHERE id = ?');
+    let transactionEntityId: string | null = null;
     for (const p of preparedPostings) {
         const account = accountLookup.get(p.account_id) as any;
         if (!account) {
@@ -335,18 +352,31 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
                 `Posting currency "${p.currency}" does not match account currency "${account.currency}" for account "${account.name}".`
             );
         }
+        if (transactionEntityId === null) {
+            transactionEntityId = account.entity_id;
+        } else if (transactionEntityId !== account.entity_id) {
+            throw new ValidationError(
+                `Cross-entity transaction rejected: Account "${account.name}" belongs to entity "${account.entity_id}", while other postings in this transaction belong to entity "${transactionEntityId}". In Slice 1C, all postings in a transaction must belong to the same sovereign entity.`
+            );
+        }
     }
 
-    // Idempotency check with financial conflict detection (M1-SAFE-05, T11)
+    // Idempotency check with material & financial conflict detection (M1-SAFE-05, T11)
     if (input.idempotency_key) {
         const existingTx = db.prepare('SELECT * FROM m1_transactions WHERE idempotency_key = ?').get(input.idempotency_key) as any;
         if (existingTx) {
             const existingPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingTx.id) as any[];
 
-            // Compare financial details: date and postings (accounts, amounts, currencies)
+            // Compare material metadata: date, description, payee/payer, and evidence references
             const isDateMatch = existingTx.date === input.date;
-            const isPostingCountMatch = existingPostings.length === preparedPostings.length;
+            const isDescriptionMatch = normalizeString(existingTx.description) === normalizeString(input.description);
+            const isPayeeMatch = normalizeString(existingTx.payee_or_payer) === normalizeString(input.payee_or_payer);
 
+            const existingEvidenceParsed = existingTx.evidence_refs ? JSON.parse(existingTx.evidence_refs) : [];
+            const isEvidenceMatch = normalizeEvidenceRefs(existingEvidenceParsed) === normalizeEvidenceRefs(input.evidence_refs);
+
+            // Compare financial postings: posting count, accounts, amounts, currencies
+            const isPostingCountMatch = existingPostings.length === preparedPostings.length;
             let arePostingsIdentical = isPostingCountMatch;
             if (arePostingsIdentical) {
                 const matchedIds = new Set<string>();
@@ -365,8 +395,8 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
                 }
             }
 
-            if (isDateMatch && arePostingsIdentical) {
-                // Same key + same financial request -> return existing result
+            if (isDateMatch && isDescriptionMatch && isPayeeMatch && isEvidenceMatch && arePostingsIdentical) {
+                // Same key + same financial & material request -> return existing result
                 return {
                     id: existingTx.id,
                     date: existingTx.date,
@@ -389,9 +419,9 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
                     }))
                 };
             } else {
-                // Same key + different financial request -> throw ConflictError (HTTP 409)
+                // Same key + changed details (date, description, payee, evidence, or postings) -> throw ConflictError (HTTP 409)
                 throw new ConflictError(
-                    `Idempotency conflict: A transaction with idempotency key "${input.idempotency_key}" already exists with different financial details.`
+                    `Idempotency conflict: A transaction with idempotency key "${input.idempotency_key}" already exists with different financial or material details.`
                 );
             }
         }
@@ -995,8 +1025,9 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                     throw new ValidationError(`Edited postings out of balance by ${balanceCheck.delta_cents} cents.`);
                 }
 
-                // Verify accounts exist and currencies match
-                const accountLookup = db.prepare('SELECT id, name, currency FROM m1_accounts WHERE id = ?');
+                // Verify accounts exist, currencies match, and all replacement accounts belong to the same sovereign entity
+                const accountLookup = db.prepare('SELECT id, name, currency, entity_id FROM m1_accounts WHERE id = ?');
+                let correctionEntityId: string | null = null;
                 for (const p of preparedNew) {
                     const acc = accountLookup.get(p.account_id) as any;
                     if (!acc) throw new ValidationError(`Account does not exist: ${p.account_id}`);
@@ -1005,6 +1036,24 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                             `Posting currency "${p.currency}" does not match account currency "${acc.currency}" for account "${acc.name}".`
                         );
                     }
+                    if (correctionEntityId === null) {
+                        correctionEntityId = acc.entity_id;
+                    } else if (correctionEntityId !== acc.entity_id) {
+                        throw new ValidationError(
+                            `Cross-entity correction rejected: Replacement account "${acc.name}" belongs to entity "${acc.entity_id}", while other replacement postings belong to entity "${correctionEntityId}". In Slice 1C, all postings in a transaction must belong to the same sovereign entity.`
+                        );
+                    }
+                }
+
+                // Invariant: replacement postings must belong to the same sovereign entity as the original transaction
+                const origFirstAcc = previousPostings.length > 0
+                    ? (accountLookup.get(previousPostings[0].account_id) as any)
+                    : null;
+                const originalEntityId = origFirstAcc?.entity_id;
+                if (originalEntityId && correctionEntityId !== originalEntityId) {
+                    throw new ValidationError(
+                        `Cross-entity correction rejected: Replacement postings belong to entity "${correctionEntityId}", but this transaction belongs to entity "${originalEntityId}". In Slice 1C, a transaction cannot be moved across sovereign entities.`
+                    );
                 }
 
                 // Delete old postings and insert new
