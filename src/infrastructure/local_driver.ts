@@ -34,6 +34,46 @@ function get<T>(key: string, parse = true): T | null {
     }
 }
 
+// Background synchronization with local SQLite engine
+let syncDebounceTimer: any = null;
+const pendingSyncData: Record<string, any> = {};
+
+function syncToSqlite(key: string, value: any) {
+    if (typeof window === 'undefined') return;
+
+    // Map storage keys to SQLite vault entity names
+    const entityMap: Record<string, string> = {
+        [STORAGE_KEYS.ASSETS]: 'assets',
+        [STORAGE_KEYS.LIABILITIES]: 'liabilities',
+        [STORAGE_KEYS.NET_WORTH_HISTORY]: 'history',
+        [STORAGE_KEYS.GOALS]: 'goals',
+        [STORAGE_KEYS.CASH_FLOW]: 'cashFlow',
+        [STORAGE_KEYS.SETTINGS]: 'settings',
+        'opennetworth_recurring': 'recurring',
+        'opennetworth_recurring_txs': 'recurring'
+    };
+
+    const entityName = entityMap[key];
+    if (!entityName) return;
+
+    pendingSyncData[entityName] = value;
+
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(async () => {
+        try {
+            const payload = { ...pendingSyncData };
+            await fetch('/api/vault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (e) {
+            // Silently swallow in offline or serverless contexts
+            console.debug('SQLite auto-sync notification:', e);
+        }
+    }, 500);
+}
+
 function set<T>(key: string, value: T) {
     if (typeof window === 'undefined') return;
     const str = JSON.stringify(value);
@@ -44,6 +84,9 @@ function set<T>(key: string, value: T) {
         const legacyKey = key.replace('opennetworth_', 'clearworth_');
         localStorage.setItem(legacyKey, str);
     }
+
+    // Persist to local SQLite embedded database
+    syncToSqlite(key, value);
 
     // Dispatch custom event for reactive UI updates
     window.dispatchEvent(new Event('opennetworth_data_updated'));
@@ -404,6 +447,66 @@ export function loadDashboardLayout(): DashboardConfig | null {
 export function saveDashboardLayout(config: DashboardConfig): void {
     set(STORAGE_KEYS_DASHBOARD, config);
 }
+
+/**
+ * Synchronizes client state with local SQLite database on boot.
+ * - If local SQLite has existing records, ensures client reflects them.
+ * - If client has existing localStorage records and SQLite is empty, seeds SQLite.
+ */
+export async function initVaultSync(): Promise<void> {
+    if (typeof window === 'undefined') return;
+
+    try {
+        const res = await fetch('/api/vault');
+        if (!res.ok) return;
+        const json = await res.json();
+        const vault = json.vault;
+
+        if (!vault) return;
+
+        const localAssets = loadAssets();
+        const localLiabs = loadLiabilities();
+
+        const sqliteHasData = (vault.assets && vault.assets.length > 0) || (vault.liabilities && vault.liabilities.length > 0);
+        const clientHasData = (localAssets && localAssets.length > 0) || (localLiabs && localLiabs.length > 0);
+
+        if (sqliteHasData && !clientHasData) {
+            // Restore from SQLite into localStorage
+            if (vault.assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(vault.assets));
+            if (vault.liabilities) localStorage.setItem(STORAGE_KEYS.LIABILITIES, JSON.stringify(vault.liabilities));
+            if (vault.goals) localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(vault.goals));
+            if (vault.recurring) localStorage.setItem('opennetworth_recurring', JSON.stringify(vault.recurring));
+            if (vault.history) localStorage.setItem(STORAGE_KEYS.NET_WORTH_HISTORY, JSON.stringify(vault.history));
+            if (vault.cashFlow) localStorage.setItem(STORAGE_KEYS.CASH_FLOW, JSON.stringify(vault.cashFlow));
+            window.dispatchEvent(new Event('opennetworth_data_updated'));
+        } else if (!sqliteHasData && clientHasData) {
+            // Initial seed of existing client data to SQLite
+            await fetch('/api/vault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    assets: localAssets,
+                    liabilities: localLiabs,
+                    goals: loadGoals(),
+                    recurring: get('opennetworth_recurring') || [],
+                    history: loadNetWorthHistory(),
+                    cashFlow: loadCashFlow(),
+                    settings: loadSettings()
+                })
+            });
+        }
+    } catch (e) {
+        console.debug('Vault boot sync notice:', e);
+    }
+}
+
+// Auto-trigger sync on browser boot
+if (typeof window !== 'undefined') {
+    setTimeout(() => {
+        initVaultSync();
+    }, 100);
+}
+
 
 export function resetDashboardLayout(): void {
     if (typeof window === 'undefined') return;

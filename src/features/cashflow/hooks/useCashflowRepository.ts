@@ -12,13 +12,14 @@ export function useCashflowRepository(): ICashflowRepository {
     const templateId = isDemoMode ? profile?.id : null;
 
     const repository = useMemo(() => {
-        if (isDemoMode) {
-            return new SupabaseCashflowRepository(templateId);
-        } else if (profile?.id && profile.id !== 'local_user') {
-            return new SupabaseCashflowRepository(profile.id);
-        } else {
-            return new LocalCashflowRepository(templateId);
+        if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+            if (isDemoMode) {
+                return new SupabaseCashflowRepository(templateId);
+            } else if (profile?.id && profile.id !== 'local_user') {
+                return new SupabaseCashflowRepository(profile.id);
+            }
         }
+        return new LocalCashflowRepository(templateId);
     }, [isDemoMode, templateId, profile?.id]);
 
     return repository;

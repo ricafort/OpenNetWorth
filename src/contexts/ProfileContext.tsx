@@ -45,21 +45,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         setIsLoading(true);
 
         try {
-            if (templateId) {
-                // --- SUPABASE MODE (Template/Demo View) ---
+            if (templateId && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+                // Remote template view if explicitly configured
                 await loadFromSupabase(templateId);
             } else {
-                // --- Check for Real User Session if Supabase configured ---
-                const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
-                const user = data?.user;
-
-                if (user) {
-                    // --- AUTHENTICATED USER MODE ---
-                    await loadFromSupabase(user.id);
-                } else {
-                    // --- LOCAL STORAGE MODE (Default Private On-Device) ---
-                    loadFromLocalStorage();
-                }
+                // Direct Instant Local Vault Mode (100% Private, On-Device)
+                loadFromLocalStorage();
             }
         } catch {
             // Safe fallback to local storage mode
@@ -118,11 +109,23 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     const loadFromLocalStorage = () => {
         // Private on-device profile for OpenNetWorth
         const storedSettings = LocalStorage.loadSettings();
+        let customName = 'Local Vault Owner';
+        if (typeof window !== 'undefined') {
+            const raw = localStorage.getItem('opennetworth_profile');
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (parsed.full_name) customName = parsed.full_name;
+                } catch {
+                    // ignore parse error
+                }
+            }
+        }
 
         setProfile({
             id: 'local_user',
             email: 'local@device',
-            full_name: 'Local Vault Owner',
+            full_name: customName,
             privacy_mode: true,
             is_template: false,
             role: 'user',

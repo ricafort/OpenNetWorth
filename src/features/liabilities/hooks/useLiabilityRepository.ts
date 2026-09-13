@@ -12,13 +12,14 @@ export function useLiabilityRepository(): ILiabilityRepository {
     const templateId = isDemoMode ? profile?.id : null;
 
     const repository = useMemo(() => {
-        if (isDemoMode) {
-            return new SupabaseLiabilityRepository(templateId);
-        } else if (profile?.id && profile.id !== 'local_user') {
-            return new SupabaseLiabilityRepository(profile.id);
-        } else {
-            return new LocalLiabilityRepository(templateId);
+        if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+            if (isDemoMode) {
+                return new SupabaseLiabilityRepository(templateId);
+            } else if (profile?.id && profile.id !== 'local_user') {
+                return new SupabaseLiabilityRepository(profile.id);
+            }
         }
+        return new LocalLiabilityRepository(templateId);
     }, [isDemoMode, templateId, profile?.id]);
 
     return repository;

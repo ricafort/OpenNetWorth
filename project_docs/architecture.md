@@ -2,7 +2,7 @@
 
 ## 1. High-Level Architecture
 
-OpenNetWorth is built on a **Sovereign, Local-First Architecture**. By default, all financial data resides in the user's browser-backed **Local Vault** (`LocalStorageService`), and all AI features execute on-device against a **Local LLM** (LM Studio on port 1234 or Ollama on port 11434). Zero sensitive financial metrics leave the local network.
+OpenNetWorth is built on a **Sovereign, Local-First Architecture**. All financial data is persisted locally in an **Embedded SQLite Database** (`data/opennetworth.sqlite`) and cached in the client **Local Vault**, and all AI features execute on-device against a **Local LLM** (LM Studio on port 1234 or Ollama on port 11434). Zero sensitive financial metrics leave the local machine.
 
 ### Architecture Diagram
 
@@ -18,6 +18,7 @@ OpenNetWorth is built on a **Sovereign, Local-First Architecture**. By default, 
 │  │  • Assets & Liabilities Payoff  │           │  • Natural Language Action Parser   │  │
 │  │  • Cash Flow & Autopilot        │           │  • Reasoning & Thinking Models      │  │
 │  │  • Stealth & Privacy Modes      │           │  • Offline Heuristic Fallback       │  │
+│  │  • Instant Local Vault Access   │           │                                     │  │
 │  └────────────────┬────────────────┘           └──────────────────▲──────────────────┘  │
 │                   │                                               │                     │
 │                   ▼                                               │                     │
@@ -28,18 +29,19 @@ OpenNetWorth is built on a **Sovereign, Local-First Architecture**. By default, 
 │                   │                                                                     │
 │                   ▼                                                                     │
 │  ┌──────────────────────────────────────────────────────────┐                           │
-│  │            Local Vault Driver (Default)                  │                           │
-│  │  • LocalStorageService (100% On-Device Persistence)      │                           │
-│  │  • 1-Click JSON Backup Export / Restore                  │                           │
+│  │            Local Vault Engine & Data Layer               │                           │
+│  │  • Bidirectional LocalStorage & SQLite synchronization   │                           │
+│  │  • 1-Click JSON & SQLite Backup / Restore                │                           │
 │  └────────────────┬─────────────────────────────────────────┘                           │
-└───────────────────┼─────────────────────────────────────────────────────────────────────┘
-                    │ (Optional for Self-Hosters)
-                    ▼
-┌─────────────────────────────────────────────────────────────┐
-│             OPTIONAL: Self-Hosted Cloud Sync                │
-│  • Supabase (PostgreSQL with Row-Level Security RLS)        │
-│  • OAuth (Google) / PKCE Auth Session Refresh via proxy.ts  │
-└─────────────────────────────────────────────────────────────┘
+│                   │                                                                     │
+│                   ▼ (On-Disk Storage)                                                   │
+│  ┌──────────────────────────────────────────────────────────┐                           │
+│  │       Embedded SQLite Database (better-sqlite3)          │                           │
+│  │  • File: data/opennetworth.sqlite                        │                           │
+│  │  • ACID Transactions, WAL Mode, Schema Migrations        │                           │
+│  │  • Tables: assets, liabilities, goals, history, cashflow │                           │
+│  └──────────────────────────────────────────────────────────┘                           │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Local AI Subsystem Flow

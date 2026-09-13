@@ -15,13 +15,13 @@ Financial data—your bank balances, debts, investments, real estate, and net wo
 
 ## 🌟 Key Pillars
 
-- 🛡️ **100% Local-First Storage**: Zero cloud database required to get started. All assets, liabilities, snapshots, and cash flow records reside in your browser's private Local Vault.
+- 🛡️ **Embedded SQLite Storage (`data/opennetworth.sqlite`)**: Zero SaaS cloud database required. All assets, liabilities, goals, snapshots, and cash flow records are persisted to a fast, reliable, ACID-compliant SQLite file on your physical hard drive.
+- 🔓 **Zero Cloud Logins & No Google Auth**: Instant, friction-free local access. No Google OAuth tracking, no third-party session tokens, and no passwords sent over the internet.
 - 🧠 **Local LLM AI Mentorship**: AI mentors (The Strategist, The Stoic, Risk Guardian, etc.) run entirely on your local machine via **LM Studio** (`localhost:1234`) or **Ollama** (`localhost:11434`). Your net worth summary and prompts are never sent to external cloud APIs like OpenAI or Google Gemini.
 - ⚡ **Offline Deterministic Fallbacks**: If your local LLM is paused, OpenNetWorth falls back to deterministic rule-based heuristic parsing and classical financial wisdom so you are never locked out of quick actions.
 - 💬 **Natural Language Command Bar**: Type or speak naturally: *"Add $5,000 to Emergency Savings"*, *"Bought 10 AAPL shares for $2,200"*, *"Paid off $800 credit card debt"*. The Local LLM parses intent and updates your ledger.
 - 🔒 **Zero Telemetry & Zero Trackers**: No analytics tracking, no advertising beacons, and no behavioral profiling.
-- 📦 **Sovereign Vault Backups**: Export your complete financial state into a portable JSON backup file with one click, and restore it anywhere offline.
-- 🌐 **Optional Self-Hosted Sync**: For homelab enthusiasts who want multi-device synchronization, OpenNetWorth includes optional support for self-hosted Supabase instances.
+- 📦 **Sovereign Vault Backups**: Export your complete financial state into a portable SQLite copy or JSON backup file with one click, and restore it anywhere offline.
 
 ---
 

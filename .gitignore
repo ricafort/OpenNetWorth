@@ -51,5 +51,7 @@ next-env.d.ts
 Thumbs.db
 
 # Local databases
-*.sqlite
-*.db
+*.sqlite*
+*.db*
+/data
+

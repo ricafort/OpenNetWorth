@@ -15,18 +15,15 @@ export function useAssetRepository(): IAssetRepository {
     const templateId = isDemoMode ? profile?.id : null;
 
     const repository = useMemo(() => {
-        // If we are simulating a profile (Demo Mode) OR authenticated (but NOT guest), we use Supabase.
-        // We only use LocalStorage for unauthenticated Guest users who are NOT simulating.
-        if (isDemoMode) {
-            // Simulating a Supabase Template -> Use Supabase Repo pointing to Template ID
-            return new SupabaseAssetRepository(templateId);
-        } else if (profile?.id && profile.id !== 'local_user') {
-            // Authenticated User -> Use Supabase Repo (User ID handled internally or passed)
-            return new SupabaseAssetRepository(profile.id);
-        } else {
-            // Guest User (id='local_user') -> Use Local Storage
-            return new LocalAssetRepository();
+        if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+            if (isDemoMode) {
+                return new SupabaseAssetRepository(templateId);
+            } else if (profile?.id && profile.id !== 'local_user') {
+                return new SupabaseAssetRepository(profile.id);
+            }
         }
+        // Local Vault Mode (100% private SQLite-backed)
+        return new LocalAssetRepository();
     }, [isDemoMode, templateId, profile?.id]);
 
     return repository;

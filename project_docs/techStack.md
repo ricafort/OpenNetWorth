@@ -14,8 +14,8 @@
 | **Styling** | [Tailwind CSS](https://tailwindcss.com/) | `v4` | Modern utility CSS with PostCSS integration. Automatically patched via `scripts/patch-tailwind.cjs` for robust Turbopack base-directory resolution on refresh. |
 | **Local AI Engine** | [LM Studio](https://lmstudio.ai/) / [Ollama](https://ollama.ai/) | Native | 100% local, private LLM execution via OpenAI-compatible (`http://localhost:1234/v1`) or Ollama native (`http://localhost:11434`) REST protocols. Supports reasoning models (Qwen 2.5/3.8, DeepSeek R1, Llama 3.2). |
 | **Local State** | React Hooks & Context | Built-in | Manages on-device reactive state (`ProfileContext`, `useNetWorth`, `useAssetsQuery`). |
-| **Data Layer** | On-Device Local Vault | Native / LocalStorage | Default zero-config storage driver (`LocalStorageService`). Stores assets, liabilities, goals, and history in the browser. Supports 1-click JSON backup & restore. |
-| **Optional Sync** | [Supabase](https://supabase.com/) | `^2.89.0` | Optional backend for users wanting self-hosted multi-device synchronization with Row-Level Security (RLS). |
+| **Data Layer** | [SQLite](https://sqlite.org/) (`better-sqlite3`) | `^13.0.3` | Embedded, ACID-compliant relational SQL database persisted directly to disk at `data/opennetworth.sqlite`. WAL mode enabled for concurrent reads and writes. Bidirectionally synchronized with client Local Vault. |
+| **Authentication** | Local-First Sovereign Vault | Built-in | Zero-cloud authentication. Direct instant local access (`id: 'local_user'`) with optional local PIN and profile switcher. Zero Google OAuth or SaaS session dependencies. |
 | **Charts** | [Recharts](https://recharts.org/) | `^3.6.0` | Responsive SVG financial trajectory, asset allocation, and momentum visualizations. |
 | **Icons** | [Lucide React](https://lucide.dev/) | `^0.562.0` | Crisp, modern, accessible iconography. |
 | **Testing** | [Vitest](https://vitest.dev/) | `^4.0.18` | Ultra-fast unit & integration testing for portfolio math, debt calculation, and local LLM intent parsing. |

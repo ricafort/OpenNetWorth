@@ -295,6 +295,7 @@ export function convertDemoToReal(keepHistory: boolean = false): void {
         saveCashFlow([]);
     }
 
-    // 4. Redirect to login to complete the process
-    window.location.href = '/login?reason=save_demo';
+    // 4. Reload to local vault dashboard with saved demo data
+    window.location.href = '/';
 }
+

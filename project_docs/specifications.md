@@ -7,22 +7,26 @@ This document consolidates the functional and technical specifications for OpenN
 
 ---
 
-## 🏗️ 1. Architecture & Local Vault
+## 🏗️ 1. Architecture & Local Database
 
-### Sovereign Local Vault (Default Driver)
-**Goal**: Provide full personal net worth management with zero server sign-up or mandatory cloud databases.
-- **Engine**: `LocalStorageService` operates on the user's browser device.
-- **Portability**: 1-click sovereign JSON export & import.
-- **Demo/Template Profiles**: Provides localized demo personas (e.g. UK Investor, AU Professional, Student) without external API dependencies.
+### Embedded SQLite Engine (`data/opennetworth.sqlite`)
+**Goal**: Provide a 100% free, private, relational on-disk database with zero SaaS subscriptions or cloud databases.
+- **Engine**: Embedded `better-sqlite3` operating directly on the user's filesystem in `data/opennetworth.sqlite`.
+- **Durability**: ACID transactions with WAL (Write-Ahead Logging) for concurrent reads and resilient writes.
+- **Tables**: `profiles`, `assets`, `liabilities`, `goals`, `recurring_transactions`, `net_worth_history`, `cash_flow_history`, `settings`.
+- **Bidirectional Sync**: Seamlessly syncs between client-side state and on-disk SQLite via `/api/vault`.
+- **Portability**: 1-click sovereign JSON export/import and direct SQLite file copying.
 
 ---
 
-## 🔐 2. Authentication & Self-Hosted Sync
+## 🔐 2. Authentication & Privacy Posture
 
-### Local Vault Owner vs Optional Cloud Sync
-- **Default Mode**: Operates as "Local Vault Owner" (100% private, zero auth required).
-- **Optional Cloud Sync**: For users running a self-hosted Supabase instance, Google OAuth (PKCE) is supported via `src/app/auth/callback/route.ts`.
-- **Session Resilience**: `src/proxy.ts` wraps auth session checks in safe handlers to prevent stale token crashes.
+### Zero-Cloud Sovereign Access
+- **Default Mode**: Operates as "Local Vault Owner" (`id: 'local_user'`) with 100% offline access.
+- **No Google OAuth / Third-Party Auth**: All external OAuth redirects and third-party session tokens are completely removed.
+- **Instant Access**: Launching the app opens the local vault immediately with zero login prompts.
+- **Local Profile Management**: Users can customize their local vault owner name and currency on-device.
+- **Zero Telemetry**: No telemetry, tracking pixels, or external analytical scripts.
 
 ---
 

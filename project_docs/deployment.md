@@ -24,7 +24,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:4000](http://localhost:4000). Your data is preserved entirely in your browser's private Local Vault, with 1-click JSON backup export/restore.
+Open [http://localhost:4000](http://localhost:4000). Your data is preserved entirely on your disk in `data/opennetworth.sqlite` and cached in the browser's Local Vault, with 1-click JSON backup export/restore and direct SQLite file portability.
 
 ---
 
