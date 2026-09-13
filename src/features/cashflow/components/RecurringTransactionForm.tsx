@@ -1,14 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { RecurringTransaction } from '@/features/cashflow/types';
 import { RecurringTransactionFormData, RecurringTransactionSchema } from '@/features/cashflow/data/schemas';
-import { X, Save, Calendar, Repeat, Coins } from 'lucide-react';
+import { X, Save, Calendar, Repeat, Coins, AlertTriangle } from 'lucide-react';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { getCurrencySymbol, SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 interface Props {
-    onSave: (transaction: RecurringTransaction) => void;
+    onSave: (transaction: RecurringTransaction) => Promise<void> | void;
     onCancel: () => void;
     initialData?: RecurringTransaction | null;
 }
@@ -38,6 +38,8 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
         }
     });
 
+    const [saveError, setSaveError] = useState<string | null>(null);
+
     // Sync initial data or base currency
     useEffect(() => {
         if (initialData) {
@@ -50,14 +52,21 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
         }
     }, [initialData, baseCurrency, reset, setValue]);
 
-    const onSubmit = (data: RecurringTransactionFormData) => {
-        onSave({
-            ...data,
-            id: initialData?.id || crypto.randomUUID(),
-            // Ensure strict types for the domain model
-            currency: data.currency || baseCurrency,
-            is_active: data.is_active ?? true
-        } as RecurringTransaction);
+    const onSubmit = async (data: RecurringTransactionFormData) => {
+        setSaveError(null);
+        try {
+            await onSave({
+                ...data,
+                id: initialData?.id || crypto.randomUUID(),
+                // Ensure strict types for the domain model
+                currency: data.currency || baseCurrency,
+                is_active: data.is_active ?? true
+            } as RecurringTransaction);
+        } catch (err: any) {
+            // Retain user input and display error message (DATA-03)
+            console.error('Failed to save recurring transaction:', err);
+            setSaveError(err?.message || 'Failed to save recurring item to database.');
+        }
     };
 
     const currentCurrency = watch('currency') || baseCurrency;
@@ -72,12 +81,23 @@ export default function RecurringTransactionForm({ onSave, onCancel, initialData
                         <h3 className="text-xl font-bold text-foreground">
                             {initialData ? 'Edit Recurring Item' : 'Add Recurring Item'}
                         </h3>
-                        <button type="button" onClick={onCancel} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground">
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            aria-label="Close recurring transaction form"
+                            className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground cursor-pointer"
+                        >
                             <X size={20} />
                         </button>
                     </div>
 
                     <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                        {saveError && (
+                            <div role="alert" className="p-3 mb-2 rounded-xl bg-destructive/15 border border-destructive/30 text-destructive text-sm font-medium flex items-center gap-2">
+                                <AlertTriangle size={16} className="shrink-0" />
+                                <span>{saveError}</span>
+                            </div>
+                        )}
                         {/* Type Selection */}
                         <div className="flex bg-muted p-1 rounded-xl">
                             <button

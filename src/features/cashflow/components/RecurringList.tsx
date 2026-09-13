@@ -82,10 +82,20 @@ export default function RecurringList({ transactions, onEdit, onDelete, onToggle
 
                                 {/* Actions */}
                                 <div className="flex items-center gap-1 border-l border-border pl-2">
-                                    <button onClick={() => onEdit(t)} className="p-1.5 hover:bg-muted text-slate-400 hover:text-blue-500 rounded-lg transition-colors">
+                                    <button
+                                        onClick={() => onEdit(t)}
+                                        aria-label={`Edit recurring transaction ${t.name}`}
+                                        title={`Edit ${t.name}`}
+                                        className="p-1.5 hover:bg-muted text-slate-400 hover:text-blue-500 rounded-lg transition-colors cursor-pointer"
+                                    >
                                         <Edit2 size={14} />
                                     </button>
-                                    <button onClick={() => onDelete(t.id)} className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
+                                    <button
+                                        onClick={() => onDelete(t.id)}
+                                        aria-label={`Delete recurring transaction ${t.name}`}
+                                        title={`Delete ${t.name}`}
+                                        className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 text-slate-400 hover:text-red-500 rounded-lg transition-colors cursor-pointer"
+                                    >
                                         <Trash2 size={14} />
                                     </button>
                                 </div>

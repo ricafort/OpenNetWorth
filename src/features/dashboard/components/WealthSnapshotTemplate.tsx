@@ -35,7 +35,7 @@ const WealthSnapshotTemplate = forwardRef<HTMLDivElement, WealthSnapshotTemplate
                             </span>
                         </div>
                         <h1 className="text-4xl font-black tracking-tight text-[#0f172a] mt-4">Wealth Snapshot™</h1>
-                        <p className="text-[#64748b] font-medium mt-1">Official Net Worth Statement</p>
+                        <p className="text-[#64748b] font-medium mt-1">Net Worth Summary Statement</p>
                     </div>
                     <div className="text-right">
                         <p className="text-sm font-bold text-[#94a3b8] uppercase tracking-wider">Date</p>
@@ -114,7 +114,7 @@ const WealthSnapshotTemplate = forwardRef<HTMLDivElement, WealthSnapshotTemplate
                     <div>
                         <div className="flex items-center gap-2 text-[#94a3b8] mb-2">
                             <ShieldCheck size={16} />
-                            <span className="text-xs font-bold uppercase tracking-wider">Verified Snapshot</span>
+                            <span className="text-xs font-bold uppercase tracking-wider">Self-Reported Snapshot</span>
                         </div>
                         <p className="text-xs text-[#94a3b8] max-w-sm leading-relaxed">
                             This document serves as a point-in-time snapshot of financial standing as self-reported by the user.

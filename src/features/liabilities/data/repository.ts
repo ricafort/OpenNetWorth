@@ -1,7 +1,7 @@
 import { Liability } from '@/features/liabilities/types';
 import { IRepository } from '@/types/repository';
 import { createClient } from '@/utils/supabase/client';
-import { loadLiabilities, saveLiabilities } from '@/infrastructure/local_driver';
+import { loadLiabilities, saveLiabilities, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 
 const supabase = createClient();
 
@@ -79,8 +79,9 @@ export class SupabaseLiabilityRepository implements ILiabilityRepository {
     }
 }
 
+
 /**
- * DEMO/LOCAL Implementation: Uses LocalStorage
+ * Authoritative Local SQLite-backed Liability Repository (DATA-01, DATA-04, DATA-05).
  */
 export class LocalLiabilityRepository implements ILiabilityRepository {
     constructor(private templateId?: string | null) { }
@@ -97,27 +98,17 @@ export class LocalLiabilityRepository implements ILiabilityRepository {
     }
 
     async create(item: Liability): Promise<Liability> {
-        const items = loadLiabilities();
-        const newItem = { ...item };
-        items.push(newItem);
-        saveLiabilities(items);
-        return newItem;
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<Liability>('liabilities', item);
     }
 
     async update(item: Liability): Promise<Liability> {
-        const items = loadLiabilities();
-        const index = items.findIndex(i => i.id === item.id);
-        if (index !== -1) {
-            items[index] = item;
-            saveLiabilities(items);
-            return item;
-        }
-        throw new Error(`Liability with id ${item.id} not found locally`);
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<Liability>('liabilities', item);
     }
 
     async delete(id: string): Promise<void> {
-        const items = loadLiabilities();
-        const filtered = items.filter(i => i.id !== id);
-        saveLiabilities(filtered);
+        // Enforce durable scoped SQLite deletion (DATA-04, DATA-05)
+        await deleteScopedRecord('liabilities', id);
     }
 }

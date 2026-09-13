@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, AlertTriangle } from 'lucide-react';
 import { useForm, Controller, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AssetSchema, AssetFormData } from '@/features/assets/data/schemas';
@@ -22,6 +22,7 @@ export const AssetsPage = () => {
     // ... state ...
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
     const { baseCurrency } = useNetWorth();
 
@@ -59,7 +60,7 @@ export const AssetsPage = () => {
 
     // ... handlers ...
     const onSubmit = async (data: AssetFormData) => {
-        // ... submit logic ...
+        setSaveError(null);
         try {
             const isLiquid = data.type === 'cash' || data.type === 'investment';
             let investmentData;
@@ -74,6 +75,7 @@ export const AssetsPage = () => {
                 };
             }
 
+            // Durably commit to SQLite before resetting form inputs or closing modal (DATA-02)
             await addAsset({
                 ...data,
                 id: crypto.randomUUID(),
@@ -84,8 +86,10 @@ export const AssetsPage = () => {
 
             reset();
             setIsAdding(false);
-        } catch (error) {
+        } catch (error: any) {
+            // Retain user input in form and display actionable error message (DATA-03)
             console.error("Failed to add asset", error);
+            setSaveError(error?.message || 'Failed to save asset to local database. Please try again.');
         }
     };
 
@@ -158,6 +162,12 @@ export const AssetsPage = () => {
             {isAdding && (
                 <ContentCard className="shadow-xl animate-in fade-in slide-in-from-top-4 duration-200">
                     <h3 className="text-lg font-semibold mb-4">New Asset</h3>
+                    {saveError && (
+                        <div role="alert" className="p-3 mb-4 rounded-xl bg-destructive/15 border border-destructive/30 text-destructive text-sm font-medium flex items-center gap-2">
+                            <AlertTriangle size={16} className="shrink-0" />
+                            <span>{saveError}</span>
+                        </div>
+                    )}
                     <form className="grid grid-cols-1 md:grid-cols-4 gap-4" onSubmit={handleSubmit(onSubmit)}>
                         <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-5 gap-4">
                             <div className="space-y-1 col-span-2">
@@ -351,10 +361,20 @@ export const AssetsPage = () => {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex justify-center items-center gap-3">
-                                                <button className="text-muted-foreground hover:text-primary transition-colors" onClick={() => setEditingId(asset.id)}>
+                                                <button
+                                                    className="text-muted-foreground hover:text-primary transition-colors p-1 rounded hover:bg-muted cursor-pointer"
+                                                    onClick={() => setEditingId(asset.id)}
+                                                    aria-label={`Edit asset ${asset.name}`}
+                                                    title={`Edit ${asset.name}`}
+                                                >
                                                     <Edit2 size={16} />
                                                 </button>
-                                                <button className="text-muted-foreground hover:text-destructive transition-colors" onClick={() => handleDelete(asset.id)}>
+                                                <button
+                                                    className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded hover:bg-muted cursor-pointer"
+                                                    onClick={() => handleDelete(asset.id)}
+                                                    aria-label={`Delete asset ${asset.name}`}
+                                                    title={`Delete ${asset.name}`}
+                                                >
                                                     <Trash2 size={16} />
                                                 </button>
                                             </div>

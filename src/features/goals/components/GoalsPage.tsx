@@ -21,6 +21,7 @@ export const GoalsPage = () => {
     // ... existing hooks ...
     const { goals, addGoal, updateGoal, deleteGoal, isLoading } = useGoalsQuery();
     const [isAdding, setIsAdding] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
     const { netWorth, baseCurrency } = useNetWorth();
     const softBlurClass = isPrivacyBlur ? 'opacity-20 blur-[2px] pointer-events-none transition-all duration-500' : 'transition-all duration-500';
@@ -53,22 +54,29 @@ export const GoalsPage = () => {
     }, [category, netWorth, setValue]);
 
     const handleAddGoal = async (data: GoalFormData) => {
-        // ... submit logic ...
-        const newGoal: Goal = {
-            id: crypto.randomUUID(),
-            name: data.name,
-            target_amount: data.target_amount,
-            current_amount: data.category === 'net_worth' ? netWorth : data.current_amount,
-            currency: baseCurrency,
-            deadline: data.deadline ? data.deadline : null, // Send null if empty string
-            category: data.category,
-            created_at: new Date().toISOString(),
-            start_amount: data.category === 'net_worth' ? netWorth : data.current_amount
-        };
+        setSaveError(null);
+        try {
+            const newGoal: Goal = {
+                id: crypto.randomUUID(),
+                name: data.name,
+                target_amount: data.target_amount,
+                current_amount: data.category === 'net_worth' ? netWorth : data.current_amount,
+                currency: baseCurrency,
+                deadline: data.deadline ? data.deadline : null, // Send null if empty string
+                category: data.category,
+                created_at: new Date().toISOString(),
+                start_amount: data.category === 'net_worth' ? netWorth : data.current_amount
+            };
 
-        await addGoal(newGoal);
-        setIsAdding(false);
-        reset();
+            // Durably commit to SQLite before resetting form inputs or closing (DATA-02)
+            await addGoal(newGoal);
+            setIsAdding(false);
+            reset();
+        } catch (error: any) {
+            // Retain user input in form and display actionable error message (DATA-03)
+            console.error("Failed to add goal", error);
+            setSaveError(error?.message || 'Failed to save goal to local database. Please try again.');
+        }
     };
 
     return (
@@ -91,6 +99,12 @@ export const GoalsPage = () => {
             {isAdding && (
                 <ContentCard className="border-2 animate-in fade-in slide-in-from-top-4 duration-200">
                     <h3 className="text-lg font-semibold mb-4">Create New Goal</h3>
+                    {saveError && (
+                        <div role="alert" className="p-3 mb-4 rounded-xl bg-destructive/15 border border-destructive/30 text-destructive text-sm font-medium flex items-center gap-2">
+                            <AlertTriangle size={16} className="shrink-0" />
+                            <span>{saveError}</span>
+                        </div>
+                    )}
                     <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleSubmit(handleAddGoal)}>
                         <div className="space-y-1">
                             <label className="text-sm font-medium text-muted-foreground">Goal Name</label>

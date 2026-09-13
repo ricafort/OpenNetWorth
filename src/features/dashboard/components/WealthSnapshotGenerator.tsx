@@ -79,7 +79,7 @@ export default function WealthSnapshotGenerator() {
                 </div>
                 <div>
                     <h3 className="font-bold text-foreground">Generate Wealth Snapshot™</h3>
-                    <p className="text-sm text-muted-foreground font-medium">Download an official PDF report of your current standing.</p>
+                    <p className="text-sm text-muted-foreground font-medium">Download a PDF summary report of your current standing.</p>
                 </div>
                 <div className="ml-auto">
                     <Download size={20} className="text-muted-foreground group-hover:text-emerald-600" />

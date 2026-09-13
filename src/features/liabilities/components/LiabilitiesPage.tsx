@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, AlertTriangle } from 'lucide-react';
 import { useForm, Controller, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { LiabilitySchema, LiabilityFormData } from '@/features/liabilities/data/schemas';
@@ -24,6 +24,7 @@ export const LiabilitiesPage = () => {
     // ... state ...
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const { isPrivacyBlur } = useTheme();
     const { baseCurrency } = useNetWorth();
 
@@ -50,10 +51,11 @@ export const LiabilitiesPage = () => {
     const blurClass = 'privacy-value';
 
     const onSubmit = async (data: LiabilityFormData) => {
-        // ... submit logic ...
+        setSaveError(null);
         try {
             const isGoodDebt = ['mortgage', 'student_loan'].includes(data.type);
 
+            // Durably commit to SQLite before clearing form inputs or closing (DATA-02)
             await addLiability({
                 ...data,
                 id: crypto.randomUUID(),
@@ -64,8 +66,10 @@ export const LiabilitiesPage = () => {
 
             reset();
             setIsAdding(false);
-        } catch (error) {
+        } catch (error: any) {
+            // Retain user input in form and display actionable error message (DATA-03)
             console.error("Failed to add liability", error);
+            setSaveError(error?.message || 'Failed to save liability to local database. Please try again.');
         }
     };
 
@@ -126,6 +130,12 @@ export const LiabilitiesPage = () => {
             {isAdding && (
                 <ContentCard className="border-2 animate-in fade-in slide-in-from-top-4 duration-200">
                     <h3 className="text-lg font-semibold mb-4 text-rose-900">New Liability</h3>
+                    {saveError && (
+                        <div role="alert" className="p-3 mb-4 rounded-xl bg-destructive/15 border border-destructive/30 text-destructive text-sm font-medium flex items-center gap-2">
+                            <AlertTriangle size={16} className="shrink-0" />
+                            <span>{saveError}</span>
+                        </div>
+                    )}
                     <form className="grid grid-cols-1 md:grid-cols-5 gap-4" onSubmit={handleSubmit(onSubmit)}>
                         <div className="bg-white col-span-2 space-y-1">
                             <label className="text-sm font-medium text-slate-700">Name</label>
@@ -269,10 +279,20 @@ export const LiabilitiesPage = () => {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex justify-center items-center gap-3">
-                                                <button className="text-slate-400 hover:text-blue-500 transition-colors" onClick={() => setEditingId(liability.id)}>
+                                                <button
+                                                    className="text-slate-400 hover:text-blue-500 transition-colors p-1 rounded hover:bg-muted cursor-pointer"
+                                                    onClick={() => setEditingId(liability.id)}
+                                                    aria-label={`Edit liability ${liability.name}`}
+                                                    title={`Edit ${liability.name}`}
+                                                >
                                                     <Edit2 size={16} />
                                                 </button>
-                                                <button className="text-slate-400 hover:text-rose-500 transition-colors" onClick={() => handleDelete(liability.id)}>
+                                                <button
+                                                    className="text-slate-400 hover:text-rose-500 transition-colors p-1 rounded hover:bg-muted cursor-pointer"
+                                                    onClick={() => handleDelete(liability.id)}
+                                                    aria-label={`Delete liability ${liability.name}`}
+                                                    title={`Delete ${liability.name}`}
+                                                >
                                                     <Trash2 size={16} />
                                                 </button>
                                             </div>

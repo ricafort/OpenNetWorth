@@ -1,7 +1,7 @@
 import { Goal } from '@/features/goals/types';
 import { IRepository } from '@/types/repository';
 import { createClient } from '@/utils/supabase/client';
-import { loadGoals, saveGoals } from '@/infrastructure/local_driver';
+import { loadGoals, saveGoals, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 
 const supabase = createClient();
 
@@ -79,7 +79,7 @@ export class SupabaseGoalRepository implements IGoalRepository {
 }
 
 /**
- * DEMO/LOCAL Implementation: Uses LocalStorage
+ * Authoritative Local SQLite-backed Goal Repository (DATA-01, DATA-04, DATA-05).
  */
 export class LocalGoalRepository implements IGoalRepository {
     constructor(private templateId?: string | null) { }
@@ -94,27 +94,17 @@ export class LocalGoalRepository implements IGoalRepository {
     }
 
     async create(item: Goal): Promise<Goal> {
-        const items = loadGoals();
-        const newItem = { ...item };
-        items.push(newItem);
-        saveGoals(items);
-        return newItem;
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<Goal>('goals', item);
     }
 
     async update(item: Goal): Promise<Goal> {
-        const items = loadGoals();
-        const index = items.findIndex(i => i.id === item.id);
-        if (index !== -1) {
-            items[index] = item;
-            saveGoals(items);
-            return item;
-        }
-        throw new Error(`Goal with id ${item.id} not found locally`);
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<Goal>('goals', item);
     }
 
     async delete(id: string): Promise<void> {
-        const items = loadGoals();
-        const filtered = items.filter(i => i.id !== id);
-        saveGoals(filtered);
+        // Enforce durable scoped SQLite deletion (DATA-04, DATA-05)
+        await deleteScopedRecord('goals', id);
     }
 }

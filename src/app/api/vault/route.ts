@@ -2,9 +2,9 @@
  * Local Vault SQLite API Route
  * 
  * Why this exists:
- * Provides a fast, local-first API endpoint for reading and persisting all user
- * financial data directly to the local SQLite database (`data/opennetworth.sqlite`).
- * Completely bypasses cloud networks and SaaS providers.
+ * Authoritative, local-first API endpoint for reading and persisting all user
+ * financial data directly into the embedded SQLite database (`data/opennetworth.sqlite`).
+ * Supports both bulk synchronization and scoped single-record operations (DATA-01, DATA-05).
  */
 
 import { NextResponse } from 'next/server';
@@ -17,7 +17,6 @@ export async function GET(request: Request) {
         const db = getDb();
 
         if (entity) {
-            // Fetch specific entity table
             const allowed = ['assets', 'liabilities', 'goals', 'recurring_transactions', 'net_worth_history', 'cash_flow_history', 'profiles', 'settings'];
             const table = entity === 'recurring' ? 'recurring_transactions' :
                 entity === 'history' ? 'net_worth_history' :
@@ -96,9 +95,193 @@ export async function POST(request: Request) {
         const body = await request.json();
         const db = getDb();
 
+        const { action, entity, item, id } = body;
+
+        // --- SCOPED SINGLE-RECORD OPERATIONS (DATA-05) ---
+        if (action === 'scoped_save') {
+            if (!entity || !item || !item.id) {
+                return NextResponse.json({ error: 'Missing entity, item, or item ID for scoped save' }, { status: 400 });
+            }
+
+            if (entity === 'assets') {
+                const stmt = db.prepare(`
+                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
+                    VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        type = excluded.type,
+                        value = excluded.value,
+                        is_liquid = excluded.is_liquid,
+                        currency = excluded.currency,
+                        interest_rate = excluded.interest_rate,
+                        investment_details = excluded.investment_details,
+                        last_updated = excluded.last_updated
+                `);
+                stmt.run({
+                    id: item.id,
+                    user_id: item.user_id || 'local_user',
+                    name: item.name || 'Unnamed Asset',
+                    type: item.type || 'other',
+                    value: Number(item.value) || 0,
+                    is_liquid: item.is_liquid ? 1 : 0,
+                    currency: item.currency || 'USD',
+                    interest_rate: Number(item.interest_rate) || 0,
+                    investment_details: item.investment_details ? JSON.stringify(item.investment_details) : null,
+                    last_updated: item.last_updated || new Date().toISOString()
+                });
+                return NextResponse.json({ success: true, item });
+            }
+
+            if (entity === 'liabilities') {
+                const stmt = db.prepare(`
+                    INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
+                    VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        type = excluded.type,
+                        balance = excluded.balance,
+                        interest_rate = excluded.interest_rate,
+                        minimum_payment = excluded.minimum_payment,
+                        is_good_debt = excluded.is_good_debt,
+                        currency = excluded.currency,
+                        last_updated = excluded.last_updated
+                `);
+                stmt.run({
+                    id: item.id,
+                    user_id: item.user_id || 'local_user',
+                    name: item.name || 'Unnamed Debt',
+                    type: item.type || 'other',
+                    balance: Number(item.balance) || 0,
+                    interest_rate: Number(item.interest_rate) || 0,
+                    minimum_payment: Number(item.minimum_payment) || 0,
+                    is_good_debt: item.is_good_debt ? 1 : 0,
+                    currency: item.currency || 'USD',
+                    last_updated: item.last_updated || new Date().toISOString()
+                });
+                return NextResponse.json({ success: true, item });
+            }
+
+            if (entity === 'goals') {
+                const stmt = db.prepare(`
+                    INSERT INTO goals (id, user_id, name, target_amount, current_amount, start_amount, currency, category, deadline, created_at)
+                    VALUES (@id, @user_id, @name, @target_amount, @current_amount, @start_amount, @currency, @category, @deadline, @created_at)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        target_amount = excluded.target_amount,
+                        current_amount = excluded.current_amount,
+                        start_amount = excluded.start_amount,
+                        currency = excluded.currency,
+                        category = excluded.category,
+                        deadline = excluded.deadline
+                `);
+                stmt.run({
+                    id: item.id,
+                    user_id: item.user_id || 'local_user',
+                    name: item.name || 'Unnamed Goal',
+                    target_amount: Number(item.target_amount) || 0,
+                    current_amount: Number(item.current_amount) || 0,
+                    start_amount: Number(item.start_amount) || 0,
+                    currency: item.currency || 'USD',
+                    category: item.category || 'General',
+                    deadline: item.deadline || null,
+                    created_at: item.created_at || new Date().toISOString()
+                });
+                return NextResponse.json({ success: true, item });
+            }
+
+            if (entity === 'recurring') {
+                const stmt = db.prepare(`
+                    INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+                    VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        amount = excluded.amount,
+                        type = excluded.type,
+                        frequency = excluded.frequency,
+                        category = excluded.category,
+                        start_date = excluded.start_date,
+                        end_date = excluded.end_date,
+                        is_active = excluded.is_active,
+                        currency = excluded.currency
+                `);
+                stmt.run({
+                    id: item.id,
+                    user_id: item.user_id || 'local_user',
+                    name: item.name || 'Unnamed Item',
+                    amount: Number(item.amount) || 0,
+                    type: item.type || 'expense',
+                    frequency: item.frequency || 'monthly',
+                    category: item.category || 'General',
+                    start_date: item.start_date || new Date().toISOString().split('T')[0],
+                    end_date: item.end_date || null,
+                    is_active: item.is_active !== false ? 1 : 0,
+                    currency: item.currency || 'USD',
+                    created_at: item.created_at || new Date().toISOString()
+                });
+                return NextResponse.json({ success: true, item });
+            }
+
+            if (entity === 'cashFlow') {
+                const stmt = db.prepare(`
+                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    VALUES (@id, @user_id, @month, @income, @expenses, @currency)
+                    ON CONFLICT(user_id, month) DO UPDATE SET
+                        income = excluded.income,
+                        expenses = excluded.expenses,
+                        currency = excluded.currency
+                `);
+                stmt.run({
+                    id: item.id || crypto.randomUUID(),
+                    user_id: 'local_user',
+                    month: item.month,
+                    income: Number(item.income) || 0,
+                    expenses: Number(item.expenses) || 0,
+                    currency: item.currency || 'USD'
+                });
+                return NextResponse.json({ success: true, item });
+            }
+
+            return NextResponse.json({ error: `Unsupported entity for scoped save: ${entity}` }, { status: 400 });
+        }
+
+        // --- SCOPED SINGLE-RECORD DELETE (DATA-05) ---
+        if (action === 'scoped_delete') {
+            if (!entity || !id) {
+                return NextResponse.json({ error: 'Missing entity or id for scoped delete' }, { status: 400 });
+            }
+            const tableMap: Record<string, string> = {
+                assets: 'assets',
+                liabilities: 'liabilities',
+                goals: 'goals',
+                recurring: 'recurring_transactions',
+                cashFlow: 'cash_flow_history'
+            };
+            const table = tableMap[entity];
+            if (!table) {
+                return NextResponse.json({ error: `Unsupported entity for delete: ${entity}` }, { status: 400 });
+            }
+            db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+            return NextResponse.json({ success: true, deletedId: id });
+        }
+
+        // --- COMPLETE VAULT CLEAR/WIPE (DATA-01, DATA-05) ---
+        if (action === 'clear_vault' || action === 'wipe') {
+            const clearTx = db.transaction(() => {
+                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM settings").run();
+            });
+            clearTx();
+            return NextResponse.json({ success: true, message: 'Vault wiped successfully' });
+        }
+
+        // --- BULK SYNCHRONIZATION ---
         const { assets, liabilities, goals, recurring, history, cashFlow, settings, profile } = body;
 
-        // Run entire sync inside an atomic SQLite transaction
         const syncTransaction = db.transaction(() => {
             if (Array.isArray(assets)) {
                 db.prepare('DELETE FROM assets WHERE user_id = ?').run('local_user');
@@ -207,6 +390,24 @@ export async function POST(request: Request) {
                         total_assets: Number(h.totalAssets ?? h.total_assets) || 0,
                         total_liabilities: Number(h.totalLiabilities ?? h.total_liabilities) || 0,
                         net_worth: Number(h.netWorth ?? h.net_worth) || 0
+                    });
+                }
+            }
+
+            if (Array.isArray(cashFlow)) {
+                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                const insertCashFlow = db.prepare(`
+                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    VALUES (@id, @user_id, @month, @income, @expenses, @currency)
+                `);
+                for (const cf of cashFlow) {
+                    insertCashFlow.run({
+                        id: cf.id || crypto.randomUUID(),
+                        user_id: 'local_user',
+                        month: cf.month,
+                        income: Number(cf.income) || 0,
+                        expenses: Number(cf.expenses) || 0,
+                        currency: cf.currency || 'USD'
                     });
                 }
             }

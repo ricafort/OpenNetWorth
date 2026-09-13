@@ -1,7 +1,7 @@
 import { RecurringTransaction } from '@/features/cashflow/types';
 import { IRepository } from '@/types/repository';
 import { createClient } from '@/utils/supabase/client';
-import { loadRecurringTransactions, saveRecurringTransactions } from '@/infrastructure/local_driver';
+import { loadRecurringTransactions, saveRecurringTransactions, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 
 const supabase = createClient();
 
@@ -110,7 +110,7 @@ export class SupabaseCashflowRepository implements ICashflowRepository {
 }
 
 /**
- * DEMO/LOCAL Implementation: Uses LocalStorage
+ * Authoritative Local SQLite-backed Cashflow Repository (DATA-01, DATA-04, DATA-05).
  */
 export class LocalCashflowRepository implements ICashflowRepository {
     constructor(private templateId?: string | null) { }
@@ -125,27 +125,17 @@ export class LocalCashflowRepository implements ICashflowRepository {
     }
 
     async create(item: RecurringTransaction): Promise<RecurringTransaction> {
-        const items = loadRecurringTransactions();
-        const newItem = { ...item };
-        items.push(newItem);
-        saveRecurringTransactions(items);
-        return newItem;
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<RecurringTransaction>('recurring', item);
     }
 
     async update(item: RecurringTransaction): Promise<RecurringTransaction> {
-        const items = loadRecurringTransactions();
-        const index = items.findIndex(i => i.id === item.id);
-        if (index !== -1) {
-            items[index] = item;
-            saveRecurringTransactions(items);
-            return item;
-        }
-        throw new Error(`Recurring Transaction with id ${item.id} not found locally`);
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<RecurringTransaction>('recurring', item);
     }
 
     async delete(id: string): Promise<void> {
-        const items = loadRecurringTransactions();
-        const filtered = items.filter(i => i.id !== id);
-        saveRecurringTransactions(filtered);
+        // Enforce durable scoped SQLite deletion (DATA-04, DATA-05)
+        await deleteScopedRecord('recurring', id);
     }
 }

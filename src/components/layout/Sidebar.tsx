@@ -42,10 +42,21 @@ export default function Sidebar() {
             {/* Mobile Trigger */}
             <button
                 onClick={() => setIsMobileOpen(!isMobileOpen)}
-                className="md:hidden fixed top-4 right-4 z-50 p-2 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-600"
+                aria-label={isMobileOpen ? "Close navigation menu" : "Open navigation menu"}
+                aria-expanded={isMobileOpen}
+                className="md:hidden fixed top-4 right-4 z-50 p-2 bg-card rounded-lg shadow-sm border border-border text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
                 {isMobileOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
+
+            {/* Mobile Backdrop */}
+            {isMobileOpen && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm transition-opacity"
+                    onClick={() => setIsMobileOpen(false)}
+                    aria-hidden="true"
+                />
+            )}
 
             {/* Sidebar Container */}
             <div className={cn(

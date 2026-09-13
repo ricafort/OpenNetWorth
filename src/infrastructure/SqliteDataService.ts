@@ -2,8 +2,8 @@
  * SqliteDataService
  * 
  * Why this exists:
- * DataService implementation connecting OpenNetWorth to the local SQLite database.
- * Replaces SupabaseService and provides durable on-disk persistence.
+ * Authoritative DataService connecting OpenNetWorth components directly to the local SQLite database.
+ * Uses scoped single-record operations (DATA-05) and enforces durable persistence acknowledgment (DATA-02, DATA-03).
  */
 
 import { DataService } from './DataService';
@@ -19,10 +19,13 @@ export class SqliteDataService<T extends { id: string }> implements DataService<
         if (typeof window === 'undefined') return [];
         try {
             const res = await fetch(`/api/vault?entity=${this.entityName}`);
-            if (!res.ok) return [];
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: 'Database read failed' }));
+                throw new Error(err.error || `Failed to fetch ${this.entityName}`);
+            }
             const data = await res.json();
             return (data.data || []) as T[];
-        } catch (e) {
+        } catch (e: any) {
             console.error(`SqliteDataService getAll error for ${this.entityName}:`, e);
             return [];
         }
@@ -34,38 +37,72 @@ export class SqliteDataService<T extends { id: string }> implements DataService<
     }
 
     async create(item: T): Promise<T> {
-        const items = await this.getAll();
-        items.push(item);
-        await this.syncAll(items);
+        // Scoped atomic persistence to SQLite (DATA-02, DATA-04, DATA-05)
+        const res = await fetch('/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'scoped_save',
+                entity: this.entityName,
+                item
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Durable save failed' }));
+            throw new Error(err.error || `Failed to save ${this.entityName} to database`);
+        }
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('opennetworth_data_updated'));
+        }
+
         return item;
     }
 
     async update(item: T): Promise<T> {
-        const items = await this.getAll();
-        const index = items.findIndex(i => i.id === item.id);
-        if (index !== -1) {
-            items[index] = item;
-            await this.syncAll(items);
+        // Scoped atomic update to SQLite (DATA-02, DATA-05)
+        const res = await fetch('/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'scoped_save',
+                entity: this.entityName,
+                item
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Durable update failed' }));
+            throw new Error(err.error || `Failed to update ${this.entityName} in database`);
         }
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('opennetworth_data_updated'));
+        }
+
         return item;
     }
 
     async delete(id: string): Promise<void> {
-        const items = await this.getAll();
-        const filtered = items.filter(i => i.id !== id);
-        await this.syncAll(filtered);
-    }
+        // Scoped atomic delete from SQLite (DATA-05)
+        const res = await fetch('/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'scoped_delete',
+                entity: this.entityName,
+                id
+            })
+        });
 
-    private async syncAll(items: T[]): Promise<void> {
-        try {
-            await fetch('/api/vault', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [this.entityName]: items })
-            });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Durable delete failed' }));
+            throw new Error(err.error || `Failed to delete ${this.entityName} from database`);
+        }
+
+        if (typeof window !== 'undefined') {
             window.dispatchEvent(new Event('opennetworth_data_updated'));
-        } catch (e) {
-            console.error(`SqliteDataService sync error for ${this.entityName}:`, e);
         }
     }
 }

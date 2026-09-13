@@ -23,7 +23,7 @@ export default function StatCard({ title, value, change, trend, icon, privacySen
             <div>
                 <h3 className={`text-2xl font-black text-foreground tracking-tight mb-1 ${privacySensitive ? 'privacy-value' : ''}`}>{value}</h3>
 
-                {change && (
+                {change ? (
                     <div className={`flex items-center text-xs font-bold gap-1 
                         ${trend === 'up' ? 'text-emerald-600' :
                             trend === 'down' ? 'text-rose-600' : 'text-slate-500'}`}
@@ -32,7 +32,11 @@ export default function StatCard({ title, value, change, trend, icon, privacySen
                         {trend === 'down' && <TrendingDown size={14} />}
                         {trend === 'neutral' && <Minus size={14} />}
                         <span>{change}</span>
-                        <span className="text-muted-foreground ml-1 font-medium">vs last month</span>
+                        <span className="text-muted-foreground ml-1 font-medium">vs prior period</span>
+                    </div>
+                ) : (
+                    <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                        <span>Not enough history</span>
                     </div>
                 )}
             </div>

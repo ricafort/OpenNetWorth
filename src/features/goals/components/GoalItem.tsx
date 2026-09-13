@@ -19,6 +19,7 @@ interface GoalItemProps {
 
 export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDelete }: GoalItemProps) {
     const [isEditing, setIsEditing] = useState(false);
+    const [editError, setEditError] = useState<string | null>(null);
 
     // --- FORM SETUP (for Edit Mode) ---
     const {
@@ -36,29 +37,30 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
             // But UI displays in baseCurrency.
             // Let's stick to the pattern: Edit form shows values in Base Currency (if consistent with Page logic)
             // Actually, best practice: Edit values as stored in `goal.currency`.
-            // BUT the original page converted everything to `baseCurrency`.
-            // Let's follow the original page Logic: "values are in Base Currency for display".
-            // We'll init form with converting values if needed, but careful about saving back.
-            // Simplest: init with goal values, let user edit, save back.
-            // If goal.currency != baseCurrency, we might want to convert for the user?
-            // The original page did: defaultValue={targetVal} (converted).
-            // So we should load converted values into the form.
-            target_amount: convertAmount(goal.target_amount, goal.currency || 'USD', baseCurrency),
-            current_amount: goal.category === 'net_worth' ? netWorth : convertAmount(goal.current_amount || 0, goal.currency || 'USD', baseCurrency),
-            start_amount: convertAmount(goal.start_amount || 0, goal.currency || 'USD', baseCurrency),
-            currency: baseCurrency, // We switch to baseCurrency on save
+            name: goal.name,
+            target_amount: goal.target_amount,
+            current_amount: goal.current_amount || 0,
+            currency: goal.currency || baseCurrency,
+            category: goal.category,
             deadline: goal.deadline || undefined // Fix: Goal uses null, Form uses undefined
         }
     });
 
     const onSubmit = async (data: GoalFormData) => {
-        await onUpdate({
-            ...goal,
-            ...data,
-            // Ensure we save with the currency we displayed/edited in
-            current_amount: data.category === 'net_worth' ? netWorth : data.current_amount
-        } as Goal); // Cast needed if Schema differs slightly from Type (it shouldn't)
-        setIsEditing(false);
+        setEditError(null);
+        try {
+            await onUpdate({
+                ...goal,
+                ...data,
+                // Ensure we save with the currency we displayed/edited in
+                current_amount: data.category === 'net_worth' ? netWorth : data.current_amount
+            } as Goal);
+            setIsEditing(false);
+        } catch (err: any) {
+            // Retain inputs on failure and display actionable error (DATA-03)
+            console.error("Failed to update goal", err);
+            setEditError(err?.message || 'Failed to update goal');
+        }
     };
 
     // --- DERIVED METRICS ---
@@ -112,6 +114,12 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
         return (
             <div className="bg-card p-6 rounded-2xl border border-primary/20 shadow-sm ring-2 ring-primary/10">
                 <h3 className="text-sm font-bold text-primary mb-3">Edit Goal</h3>
+                {editError && (
+                    <div role="alert" className="p-3 mb-3 rounded-xl bg-destructive/15 border border-destructive/30 text-destructive text-sm font-medium flex items-center gap-2">
+                        <AlertTriangle size={16} className="shrink-0" />
+                        <span>{editError}</span>
+                    </div>
+                )}
                 <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
                     <div>
                         <label className="text-xs font-bold text-muted-foreground">Name</label>
@@ -177,10 +185,20 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
                     <h3 className="text-xl font-black text-foreground">{goal.name}</h3>
                 </div>
                 <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => setIsEditing(true)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors">
+                    <button
+                        onClick={() => setIsEditing(true)}
+                        aria-label={`Edit goal ${goal.name}`}
+                        title={`Edit ${goal.name}`}
+                        className="p-2 text-slate-400 hover:text-blue-500 rounded hover:bg-muted transition-colors cursor-pointer"
+                    >
                         <Edit2 size={16} />
                     </button>
-                    <button onClick={() => onDelete(goal.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
+                    <button
+                        onClick={() => onDelete(goal.id)}
+                        aria-label={`Delete goal ${goal.name}`}
+                        title={`Delete ${goal.name}`}
+                        className="p-2 text-slate-400 hover:text-rose-500 rounded hover:bg-muted transition-colors cursor-pointer"
+                    >
                         <Trash2 size={16} />
                     </button>
                 </div>

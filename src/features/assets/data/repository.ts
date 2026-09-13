@@ -1,7 +1,7 @@
 import { Asset } from '@/features/assets/types';
 import { IRepository } from '@/types/repository';
 import { createClient } from '@/utils/supabase/client';
-import { loadAssets, saveAssets } from '@/infrastructure/local_driver';
+import { loadAssets, saveAssets, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 
 const supabase = createClient();
 
@@ -84,8 +84,9 @@ export class SupabaseAssetRepository implements IAssetRepository {
     }
 }
 
+
 /**
- * DEMO/LOCAL Implementation: Uses LocalStorage
+ * Authoritative Local SQLite-backed Asset Repository (DATA-01, DATA-04, DATA-05).
  */
 export class LocalAssetRepository implements IAssetRepository {
     constructor(private templateId?: string | null) { }
@@ -94,7 +95,6 @@ export class LocalAssetRepository implements IAssetRepository {
         const allAssets = loadAssets();
         // If templateId is provided (e.g. 'fam', 'grow'), filter by it.
         // If not provided (Guest), filter by 'local_user' OR null/undefined to capture manual guest entries
-        // For strict isolation, we should assume Guest = 'local_user'
         const targetId = this.templateId || 'local_user';
 
         return allAssets.filter(a => a.user_id === targetId || (!a.user_id && targetId === 'local_user'));
@@ -106,27 +106,17 @@ export class LocalAssetRepository implements IAssetRepository {
     }
 
     async create(item: Asset): Promise<Asset> {
-        const assets = loadAssets();
-        const newItem = { ...item };
-        assets.push(newItem);
-        saveAssets(assets);
-        return newItem;
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<Asset>('assets', item);
     }
 
     async update(item: Asset): Promise<Asset> {
-        const assets = loadAssets();
-        const index = assets.findIndex(a => a.id === item.id);
-        if (index !== -1) {
-            assets[index] = item;
-            saveAssets(assets);
-            return item;
-        }
-        throw new Error(`Asset with id ${item.id} not found locally`);
+        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
+        return await persistScopedRecord<Asset>('assets', item);
     }
 
     async delete(id: string): Promise<void> {
-        const assets = loadAssets();
-        const filtered = assets.filter(a => a.id !== id);
-        saveAssets(filtered);
+        // Enforce durable scoped SQLite deletion (DATA-04, DATA-05)
+        await deleteScopedRecord('assets', id);
     }
 }

@@ -91,25 +91,19 @@ export const CashflowPage = () => { // Named export
     };
 
     const handleSaveRecurring = async (t: RecurringTransaction) => {
-        try {
-            const transactionToSave = {
-                ...t,
-                id: t.id || crypto.randomUUID(),
-                currency: t.currency || baseCurrency,
-                end_date: t.end_date || undefined // Let repo handle null conversion
-            };
+        const transactionToSave = {
+            ...t,
+            id: t.id || crypto.randomUUID(),
+            currency: t.currency || baseCurrency,
+            end_date: t.end_date || undefined // Let repo handle null conversion
+        };
 
-            if (editingRecurring) {
-                await updateRecurringContext(transactionToSave);
-                setEditingRecurring(null);
-            } else {
-                await addRecurringContext(transactionToSave);
-                setIsAddingRecurring(false);
-            }
-        } catch (error) {
-            console.error("Failed to save recurring transaction:", error);
-            // In a real app we would show a toast here
-            alert(`Failed to save: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
+        if (editingRecurring) {
+            await updateRecurringContext(transactionToSave);
+            setEditingRecurring(null);
+        } else {
+            await addRecurringContext(transactionToSave);
+            setIsAddingRecurring(false);
         }
     };
 

@@ -29,8 +29,9 @@ export default function WidgetWrapper({
                                 e.stopPropagation(); // Prevent drag start
                                 onRemove();
                             }}
-                            className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
-                            title="Hide Widget"
+                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+                            title={`Hide ${title || 'widget'}`}
+                            aria-label={`Hide ${title || 'widget'}`}
                         >
                             <X size={16} />
                         </button>

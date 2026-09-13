@@ -3,10 +3,10 @@
 import { useState, ChangeEvent, useEffect } from 'react';
 import { Download, Upload, Trash2, AlertTriangle, FileJson } from 'lucide-react';
 import { exportAllData, importData, clearAllData } from '@/infrastructure/local_driver';
-import { createClient } from '@/utils/supabase/client';
 
 export default function DataManagement() {
     const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [importErrorMessage, setImportErrorMessage] = useState<string | null>(null);
     const [lastExportDate, setLastExportDate] = useState<string | null>(null);
 
     useEffect(() => {
@@ -17,21 +17,26 @@ export default function DataManagement() {
     }, []);
 
     const handleExport = () => {
-        const data = exportAllData();
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `opennetworth-backup-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        try {
+            const data = exportAllData();
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `opennetworth-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
 
-        // Save export date
-        const now = new Date().toLocaleString();
-        localStorage.setItem('last_export_date', now);
-        setLastExportDate(now);
+            // Save export date
+            const now = new Date().toLocaleString();
+            localStorage.setItem('last_export_date', now);
+            setLastExportDate(now);
+        } catch (e: any) {
+            console.error('Export failed:', e);
+            alert(`Export failed: ${e.message}`);
+        }
     };
 
     const handleImport = (event: ChangeEvent<HTMLInputElement>) => {
@@ -39,58 +44,29 @@ export default function DataManagement() {
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             const result = e.target?.result as string;
-            if (importData(result)) {
+            const res = await importData(result);
+            if (res.success) {
                 setImportStatus('success');
+                setImportErrorMessage(null);
                 setTimeout(() => window.location.reload(), 1500);
             } else {
                 setImportStatus('error');
+                setImportErrorMessage(res.error || 'Failed to import data. Invalid file format.');
             }
         };
         reader.readAsText(file);
     };
 
     const handleClear = async () => {
-        if (confirm('Are you absolutely sure? This will delete ALL your data (Cloud & Local). This action cannot be undone.')) {
-            const supabase = createClient();
-            const { data: { user } } = await supabase.auth.getUser();
+        if (confirm('Are you absolutely sure? This will delete ALL your local financial data from this device. This action cannot be undone.')) {
+            // Local-first wipe of SQLite database and localStorage (DATA-01, DATA-05)
+            await clearAllData();
 
-            if (user) {
-                // Method 1: Try Server-Side RPC (Preferred/Most Complete)
-                const { error: rpcError } = await supabase.rpc('wipe_user_data');
-
-                if (rpcError) {
-                    console.warn("Wipe RPC failed (function might not exist), falling back to client-side delete:", rpcError);
-
-                    // Method 2: Fallback Client-Side Delete (RLS Permitting)
-                    await Promise.all([
-                        supabase.from('assets').delete().eq('user_id', user.id),
-                        supabase.from('liabilities').delete().eq('user_id', user.id),
-                        supabase.from('goals').delete().eq('user_id', user.id),
-                        supabase.from('recurring_transactions').delete().eq('user_id', user.id),
-                        // Note: user_badges often fails RLS on client-side delete, hence RPC is needed
-                        supabase.from('user_badges').delete().eq('user_id', user.id),
-                        (supabase.from('cash_flow_history') as any).delete().eq('user_id', user.id),
-                        (supabase.from('net_worth_history') as any).delete().eq('user_id', user.id)
-                    ]);
-                }
-            }
-
-            // Perform aggressive local cleanup
-            clearAllData();
-
-            // Explicitly remove initialization flags and cache
-            localStorage.removeItem('clearworth_initialized');
-            localStorage.removeItem('clearworth_demo_mode');
-            localStorage.removeItem('clearworth_cashflow'); // Fix for Cash Flow chart persistence
-
-            // Sign out to ensure clean state
-            await supabase.auth.signOut();
-
-            // Short timeout to ensure storage commit before reload
+            // Short timeout to ensure storage commit before hard reload
             setTimeout(() => {
-                window.location.href = '/'; // Hard navigation to root
+                window.location.href = '/';
             }, 100);
         }
     };
@@ -143,7 +119,10 @@ export default function DataManagement() {
             </div>
 
             {importStatus === 'error' && (
-                <p className="text-sm text-rose-600 font-medium text-center">Failed to import data. Invalid file format.</p>
+                <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium rounded-xl flex items-center gap-2">
+                    <AlertTriangle size={16} className="shrink-0" />
+                    <span>{importErrorMessage || 'Failed to import data. Invalid file format.'}</span>
+                </div>
             )}
 
             <div className="pt-6 border-t border-slate-100 space-y-3">
