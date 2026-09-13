@@ -1,45 +1,45 @@
-# AI Agent Rulebook & Project Index (v2.0)
+# OpenNetWorth AI Agent Rulebook & Guidelines
 
-> **FOR ALL AI AGENTS:** This is your primary directive. Read this first.
-> **Mission**: Build scalable, maintainable, and "Cognitively Optimized" software.
+> **FOR ALL AI AGENTS:** This is your primary directive for OpenNetWorth. Read this first.
+> **Mission**: Build sovereign, private, local-first personal wealth software with zero mandatory cloud dependencies.
 
 ## 1. Quick Start
-*   **Setup**: See `CONTRIBUTING.md`.
-*   **Active Tasks**: See `task.md`.
-*   **Architecture**: See `project_docs/architecture.md`.
+*   **Active Tech Stack**: See [techStack.md](./techStack.md).
+*   **Architecture**: See [architecture.md](./architecture.md).
+*   **Product Vision**: See [product.md](./product.md).
+*   **Directory Map**: See [project_structure.md](./project_structure.md).
 
 ## 2. Core Directives (HIGH PRIORITY)
 
-### 🧠 1. Cognitive Load Optimization (The "Golden Rule")
-*   **Simplicity**: Code should be readable by a junior developer. Avoid "clever" one-liners.
-*   **Organization**: Ruthlessly organize files. Follow the **Vertical Slice** pattern (`src/features/...`).
-*   **Visual Documentation**: ALWAYS generate Mermaid diagrams for complex logic or architecture changes. Use "Universal Text Art" for simple flows.
+### 🛡️ 1. Zero Cloud Data Leakage (The Privacy Hard-Lock)
+*   **Financial Balances & Holdings**: NEVER route user financial numbers, balances, or transactions to third-party cloud AI APIs (OpenAI, Anthropic, Gemini, etc.).
+*   **Local AI Execution**: All AI features (mentorship, natural language action parsing) MUST route through [src/lib/api/localLlm.ts](file:///d:/LocalVersions/OpenNetWorth/src/lib/api/localLlm.ts) to a Local LLM (LM Studio on port 1234 or Ollama on port 11434).
+*   **Offline Fallbacks**: Always provide deterministic offline rule-based fallbacks so unstarted LLM servers never block the user.
 
-### 🛡️ 2. Security First
-*   **Zero Trust**: Assume all input is malicious. Validate with **Zod**.
-*   **Secrets**: NEVER commit .env values or keys.
-*   **RLS**: Always verify Row Level Security policies when modifying database schemas.
+### 🧠 2. Cognitive Load Optimization
+*   **Simplicity**: Code should be readable by a junior developer. Avoid "clever" unreadable one-liners.
+*   **Organization**: Follow the **Vertical Slice** pattern (`src/features/[feature_name]/...`).
+*   **Visual Documentation**: ALWAYS generate diagrams for complex logic or architecture changes.
 
-### 🧪 3. Verification Mandate
-*   **Build Check**: You MUST run `npm run build` after significant changes.
-*   **Lint Check**: You MUST run `npm run lint` and fix errors before finishing.
-*   **Self-Correction**: If a tool fails, read the error, think, and retry. Do not loop blindly.
+### 🧪 3. Verification & Stability Mandate
+*   **React 19 & Turbopack**: Run `next dev -p 4000` with Turbopack. Keep the `@tailwindcss/postcss` resolution patch active via `scripts/patch-tailwind.cjs`.
+*   **Test Suite**: Verify with `npm test -- --run` before completing tasks.
+*   **Self-Correction**: If a tool fails, read the error, reason, and fix root cause. Do not loop blindly.
 
 ---
 
-## 3. Tech Stack Hard-Locks (The "Toolbox")
-* Deviating from this stack requires explicit user approval.
+## 3. Tech Stack Hard-Locks
 
 | Category | Technology | Constraint |
 | :--- | :--- | :--- |
-| **Framework** | Next.js 16 (App Router) | Use Server Components by default. Client Components (`'use client'`) only for interaction. |
-| **Language** | TypeScript | **Strict Mode**. No `any`. Zod for validation. |
-| **Styling** | Tailwind CSS | Use utility classes. Sort with Prettier standard. |
-| **State** | TanStack Query | For all Async/Server state. |
-| **Local State** | React Hooks | `useState`, `useReducer` for component-level logic. |
-| **Global UI** | Context API | Minimal use (Theme, Toast). Avoid complex global stores. |
-| **Database** | Supabase (PostgreSQL) | Use `supabase-js` v2. |
-| **Icons** | Lucide React | Use `lucide-react` imports. |
+| **Framework** | Next.js 16 (App Router + Turbopack) | Server Components by default. Client Components (`'use client'`) only for interaction. |
+| **Language** | TypeScript (Strict Mode) | No `any`. Use Zod and strict domain interfaces. |
+| **Styling** | Tailwind CSS v4 | Use utility classes. Patched for Turbopack base-directory resolution. |
+| **Local AI** | LM Studio / Ollama | Local REST integration (`src/lib/api/localLlm.ts`). Budget 2048 tokens for reasoning models. |
+| **Data Layer** | LocalStorageService (Local Vault) | Primary zero-config driver. Optional Supabase client for self-hosters. |
+| **State** | TanStack Query & React Hooks | For async/domain caching and component-level reactive state. |
+| **Charts** | Recharts | Responsive SVG charts for net worth, allocation, and cash flow. |
+| **Icons** | Lucide React | Clean, modern, accessible iconography. |
 
 ---
 
@@ -50,41 +50,38 @@
 *   **Colocation**: Keep `components`, `hooks`, and `types` close to where they are used.
 
 ### 📝 Naming Conventions
-> **GOLDEN RULE**: When using PostgreSQL (Supabase), **Database Naming takes priority**.
-*   **Database**: `snake_case` (Postgres standard).
-*   **API**: `snake_case` (Match Database).
-*   **Consistency**: **Avoid mapping names as much as possible.** Prefer using strict transformations or matching DB columns directly in types to reduce cognitive overhead.
-*   **Files**: `PascalCase.tsx` for Components, `camelCase.ts` for logic/hooks.
-*   **Variables**: `camelCase` (Unless matching a DB type, then `snake_case` is allowed/preferred to avoid mapping).
+*   **Database & Schemas**: `snake_case` (e.g., `user_id`, `interest_rate`).
+*   **API Payloads**: `snake_case` (matching domain schemas to avoid mapping boilerplate).
+*   **Files**: `PascalCase.tsx` for React Components, `camelCase.ts` for logic/hooks.
+*   **Variables**: `camelCase` (unless matching a DB schema type).
 
-### ⚡ Syntax Preferences
-*   **Functions**: Use `const` arrow functions.
-    *   ✅ `const MyComponent = () => { ... }`
-    *   ❌ `function MyComponent() { ... }`
-*   **Exports**: Use **Named Exports**.
-    *   ✅ `export const MyComponent = ...`
-    *   ❌ `export default ...` (Except for Next.js Pages/Layouts).
+### ⚡ Syntax & Safety Preferences
+*   **Functions**: Use `const` arrow functions (`const MyComponent = () => { ... }`).
+*   **Exports**: Use Named Exports (except for Next.js App Router Page/Layout files).
 *   **Async**: Always use `async/await`. Avoid `.then()` chains.
+*   **JSON Serialization**: Never pass React JSX elements (like Lucide icons) into objects passed to `JSON.stringify()`; always destructure them out before API calls.
 
 ---
 
 ## 5. Architectural Patterns
 
-### 📱 Rule 6: The "Screen Pattern"
-*   **Thin Routes**: `src/app` pages must NEVER contain logic.
+### 📱 The "Screen Pattern"
+*   **Thin Routes**: `src/app` pages must NEVER contain business logic.
 *   **Delegate Immediately**: Pages must import and render a full-page component from `src/features`.
-    *   ✅ `export default function Page() { return <AssetsPage />; }`
+    *   ✅ `export default function Page() { return <MentorsPage />; }`
 
-### 🏗️ Service Repository Pattern
-*   Data access must be abstracted behind a Repository Interface.
-*   **Goal**: Enable seamless switching between **Real Mode** (Supabase) and **Demo Mode** (Local Storage).
-*   **Pattern**: UI -> Hook -> Repository Interface -> Implementation (Supabase/Local).
+### 🏗️ Local Vault & Repository Pattern
+*   Data access is abstracted behind Repository interfaces.
+*   **Default**: LocalStorage-backed Local Vault with 1-click JSON export/import.
+*   **Optional**: Self-hosted Supabase with Row-Level Security (RLS) policies.
 
 ---
 
 ## 6. System Knowledge Map
+*   **Tech Stack**: [techStack.md](./techStack.md)
 *   **Product Vision**: [product.md](./product.md)
 *   **Architecture**: [architecture.md](./architecture.md)
 *   **Project Structure**: [project_structure.md](./project_structure.md)
 *   **Specifications**: [specifications.md](./specifications.md)
+*   **Deployment**: [deployment.md](./deployment.md)
 

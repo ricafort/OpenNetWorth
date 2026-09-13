@@ -13,7 +13,7 @@ Our current architecture excels at **Data Management**.
 **Target**: 6-12 Months
 **Pattern**: `Feature → Domain Service → Repository → Data Source`
 
-As ClearWorth evolves from a "Tracker" to a "Financial Modeler," CRUD is no longer sufficient. We need a dedicated layer for **Financial Logic** that is independent of the UI and the Database.
+As OpenNetWorth evolves from a "Tracker" to an "On-Device Financial Modeler," CRUD is no longer sufficient. We need a dedicated layer for **Financial Logic** that is independent of the UI and the Database.
 
 ### The "Why": Advanced Capabilities
 We are introducing features that require complex, data-heavy computations:
@@ -75,7 +75,7 @@ flowchart TB
 - **Integration**: AI Agents (Mentors) will call these Services to ground their advice in math.
 
 ## 4. Final Verdict
-This evolution moves ClearWorth from a "Data Entry App" to a "Financial Platform."
+This evolution moves OpenNetWorth from a simple tracker to a sovereign, privacy-first personal financial operating system.
 - **Testable**: You can unit test `RetirementSimulator` without a database.
-- **Scalable**: Complex logic lives in one place, reused by the API, the UI, and the AI Agents.
-- **AI-Ready**: LLMs need structured tools. Domain Services *are* those tools.
+- **Scalable**: Complex logic lives in one place, reused by the UI, local APIs, and local AI mentors.
+- **AI-Ready**: Local LLMs need structured tools and local data. Domain Services *are* those tools.

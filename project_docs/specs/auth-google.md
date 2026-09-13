@@ -1,7 +1,7 @@
-# Google Authentication Specification
+# Google Authentication Specification (Optional Cloud Sync)
 
 ## 1. Overview
-This feature adds "Sign in with Google" to ClearWorth, allowing users to authenticate using their Google accounts via Supabase Auth (OAuth 2.0).
+OpenNetWorth operates 100% locally out-of-the-box as "Local Vault Owner" with zero login required. For users who choose to enable multi-device sync via a self-hosted Supabase instance, this feature provides optional "Sign in with Google" via Supabase Auth (OAuth 2.0 PKCE flow).
 
 ## 2. Prerequisites (External Setup)
 

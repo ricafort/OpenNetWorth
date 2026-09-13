@@ -1,74 +1,74 @@
-# System Architecture
+# OpenNetWorth System Architecture
 
 ## 1. High-Level Architecture
 
-The system follows a **Uni-Directional Data Flow**. The client (Next.js) requests data via Hooks, which delegate fetching to Repositories. These Repositories abstract the data source (Supabase vs LocalStorage), ensuring the UI remains ignorant of the backend implementation.
+OpenNetWorth is built on a **Sovereign, Local-First Architecture**. By default, all financial data resides in the user's browser-backed **Local Vault** (`LocalStorageService`), and all AI features execute on-device against a **Local LLM** (LM Studio on port 1234 or Ollama on port 11434). Zero sensitive financial metrics leave the local network.
 
 ### Architecture Diagram
 
 ```text
-src
-├── 🚀 features                 (DOMAIN LOGIC: Vertical Slices)
-│   ├── 💰 assets               - Market prices, Portfolio
-│   ├── 💳 liabilities          - Debt payoff engine
-│   ├── 📊 dashboard            - Layouts, Widget Registry
-│   ├── 💸 cashflow             - Budgeting & Transactions
-│   ├── 🎯 goals                - Financial Goals
-│   ├── 🔄 bank                 - Plaid Integration & Sync
-│   ├── ⏳ timemachine          - Historical state
-│   ├── 🤖 mentors              - AI Persona logic
-│   ├── 🎮 gamification         - Badges & Achievements
-│   ├── 🪁 onboarding           - User setup flow
-│   ├── 🧪 demo                 - Demo data generation
-│   └── 🗽 freedom              - Financial Freedom calculations
-│
-├── 📱 app                      (ROUTING: Thin Layer)
-│   ├── (routes)                - assets/, liabilities/, etc.
-│   └── api                     - Route Handlers (REST endpoints)
-│
-├── 🧩 components               (SHARED UI: No Business Logic)
-│   ├── 🎨 ui                   - Atoms: Buttons, Inputs, Cards
-│   ├── 📐 layout               - Sidebar, Shell, Headers
-│   ├── 📈 charts               - Recharts wrappers
-│   └── 🧱 common               - Shared PageHeader, ContentCard
-│
-├── 🔌 infrastructure           (ADAPTERS: External Services)
-│   ├── 🏭 dataFactory.ts       - Abstract Factory
-│   ├── ☁️ SupabaseService.ts   - Real DB Adapter
-│   └── 💾 LocalStorageService.ts - Local/Demo Adapter
-│
-└── 🛠️ lib                      (UTILITIES: Shared Helpers)
-    ├── 🛠️ utils                - formatting, dates
-    └── 🧠 domain               - Pure logic (interest calculators)
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   CLIENT DEVICE (100% PRIVATE)                          │
+│                                                                                         │
+│  ┌─────────────────────────────────┐           ┌─────────────────────────────────────┐  │
+│  │     Next.js 16 UI Layer         │           │       Local AI Engine Subsystem     │  │
+│  │   (Turbopack + React 19)        │           │    (LM Studio:1234 / Ollama:11434)  │  │
+│  │                                 │           │                                     │  │
+│  │  • Dashboard & Net Worth Engine │           │  • AI Mentors (Long-Term, Stoic...) │  │
+│  │  • Assets & Liabilities Payoff  │           │  • Natural Language Action Parser   │  │
+│  │  • Cash Flow & Autopilot        │           │  • Reasoning & Thinking Models      │  │
+│  │  • Stealth & Privacy Modes      │           │  • Offline Heuristic Fallback       │  │
+│  └────────────────┬────────────────┘           └──────────────────▲──────────────────┘  │
+│                   │                                               │                     │
+│                   ▼                                               │                     │
+│  ┌─────────────────────────────────┐           ┌──────────────────┴──────────────────┐  │
+│  │      Feature Hooks & Repos      │──────────▶│     src/lib/api/localLlm.ts         │  │
+│  │ (useNetWorth, useAssetsQuery...)│           │   (Timeout, Token Budgeting, CORS)  │  │
+│  └────────────────┬────────────────┘           └─────────────────────────────────────┘  │
+│                   │                                                                     │
+│                   ▼                                                                     │
+│  ┌──────────────────────────────────────────────────────────┐                           │
+│  │            Local Vault Driver (Default)                  │                           │
+│  │  • LocalStorageService (100% On-Device Persistence)      │                           │
+│  │  • 1-Click JSON Backup Export / Restore                  │                           │
+│  └────────────────┬─────────────────────────────────────────┘                           │
+└───────────────────┼─────────────────────────────────────────────────────────────────────┘
+                    │ (Optional for Self-Hosters)
+                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│             OPTIONAL: Self-Hosted Cloud Sync                │
+│  • Supabase (PostgreSQL with Row-Level Security RLS)        │
+│  • OAuth (Google) / PKCE Auth Session Refresh via proxy.ts  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Security Layer Architecture
-
-We implement a **Defense-in-Depth** strategy. Security is enforced at the Database Level, making the API Layer thin and secure by default.
+### Local AI Subsystem Flow
 
 ```text
-[ 🌐 Client Request ]
-        │
-        ▼
-[ 🛡️ Middleware (proxy.ts) ] ──▶ Refreshes Auth Session
-        │
-        ▼
-[ ⚡ Server Actions ] ─────────▶ No Direct DB Access (Uses Repository)
-        │
-        ▼
-[ 🏗️ Infrastructure ] ────────▶ Supabase Client
-        │
-        ▼
-[ ☁️ Postgres (Supabase) ]
-        │
-        ├───▶ [ 🔐 Auth.Users ] (Identity)
-        │
-        ├───▶ [ 🚧 RLS Policies ] (The "Firewall")
-        │       ├── User: "Can view own rows"
-        │       └── Admin: "Can view IF admin_access_grants exists"
-        │
-        └───▶ [ ⚡ Triggers ] (Integrity)
-                └── check_profile_updates: Prevents Role Escalation
+[ 👤 User Prompt ] ────────▶ [ ⚡ API Route: /api/mentor ]
+                                       │
+                                       ▼
+                             [ 🧠 Context Assembly ]
+                             • Net Worth, Assets, Liabilities
+                             • Mentor Persona & Strict Constraints
+                                       │
+                                       ▼
+                             [ 🔌 queryLocalLlm() ]
+                             • Health check (LM Studio :1234 / Ollama :11434)
+                             • Auto-provider negotiation
+                             • 2,048 token budget (reasoning models)
+                                       │
+                    ┌──────────────────┴──────────────────┐
+                    ▼                                     ▼
+        [ 🤖 Local LLM Active ]               [ 🔌 Local LLM Offline ]
+        • Qwen 2.5/3.8, DeepSeek, Llama       • Deterministic Heuristic Fallback
+        • Strips thinking tokens              • Classical philosophical wisdom
+        • Returns tailored advice             • Setup guidance tip
+                    │                                     │
+                    └──────────────────┬──────────────────┘
+                                       │
+                                       ▼
+                             [ 💬 Mentors Chat UI ]
 ```
 
 ## 2. Core Patterns

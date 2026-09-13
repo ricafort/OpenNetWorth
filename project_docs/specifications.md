@@ -1,59 +1,37 @@
-# System Specifications
+# OpenNetWorth System Specifications
 
-This document consolidates the functional and technical specifications for ClearWorth features.
+This document consolidates the functional and technical specifications for OpenNetWorth.
 
 > [!NOTE]
-> This is a living document. Updates to features should be reflected here.
+> This is a living document. Updates to features and capabilities should be reflected here.
 
 ---
 
-## 🏗️ 1. Architecture & Admin
+## 🏗️ 1. Architecture & Local Vault
 
-### Admin Managed Demo Profiles
-**Goal**: Allow Admins to manage "Template Profiles" (e.g., "UK Investor", "JP Student") via the UI, replacing hardcoded JSON.
-
-#### Schema Changes
-- **`profiles` Table**: Added `is_template`, `role`, `country_code`, `currency_code`.
-- **Security**: Admins can CRUD all templates. Public users can READ templates.
-
-#### Workflow
-1.  **Dashboard (`/admin`)**: Admins view/edit templates.
-2.  **Edit Mode**: Admins "sign in" as the template user to modify Assets/Liabilities using the real UI.
-3.  **User Experience**: New users select a region (e.g., "United Kingdom"), and the app loads the "UK Demo" profile's data into the Redux/Zustand store.
+### Sovereign Local Vault (Default Driver)
+**Goal**: Provide full personal net worth management with zero server sign-up or mandatory cloud databases.
+- **Engine**: `LocalStorageService` operates on the user's browser device.
+- **Portability**: 1-click sovereign JSON export & import.
+- **Demo/Template Profiles**: Provides localized demo personas (e.g. UK Investor, AU Professional, Student) without external API dependencies.
 
 ---
 
-## 🔐 2. Authentication
+## 🔐 2. Authentication & Self-Hosted Sync
 
-### Google Authentication
-**Goal**: Enable "Sign in with Google" via Supabase Auth (OAuth 2.0).
-
-#### Implementation
-- **Provider**: Google Identity via Supabase.
-- **Callback**: `src/app/auth/callback/route.ts` handles the PKCE code exchange.
-- **Triggers**: `handle_new_user` Postgres trigger automatically creates a `profile` row upon signup.
-
-#### Requirements
-- **Prerequisites**: Google Cloud Console project with OAuth Consent Screen enabled.
-- **Environment**: `GEMINI_API_KEY` is separate, but `NEXT_PUBLIC_SUPABASE_URL` is required for Auth.
+### Local Vault Owner vs Optional Cloud Sync
+- **Default Mode**: Operates as "Local Vault Owner" (100% private, zero auth required).
+- **Optional Cloud Sync**: For users running a self-hosted Supabase instance, Google OAuth (PKCE) is supported via `src/app/auth/callback/route.ts`.
+- **Session Resilience**: `src/proxy.ts` wraps auth session checks in safe handlers to prevent stale token crashes.
 
 ---
 
 ## 🏦 3. Bank Integration
 
-### Plaid Integration
-**Goal**: Securely link bank accounts to sync Asset/Liability balances automatically.
-
-#### Flow
-1.  **User** clicks "Connect Bank".
-2.  **Plaid Link** modal opens (client-side).
-3.  **Public Token** is returned to client upon success.
-4.  **Server Action** exchanges Public Token for Access Token (never exposed to client).
-5.  **Sync**: Background job updates Asset balances.
-
-#### Requirements
-- **Sandbox Mode**: If `PLAID_CLIENT_ID` is missing, the system MUST fallback to a mock/demo mode.
-- **Security**: Access Tokens are stored securely in the database (encrypted at rest by Supabase).
+### Plaid & Basiq Connectors
+**Goal**: Link financial accounts to automatically sync Asset and Liability balances.
+- **Privacy Posture**: Credentials and access tokens are handled securely on the server side or local backend.
+- **Sandbox Mode**: When third-party API credentials are not configured, the system operates seamlessly in sandbox mode with realistic mock account data.
 
 ---
 
@@ -61,58 +39,49 @@ This document consolidates the functional and technical specifications for Clear
 
 ### Net Worth Engine
 - **Logic**: `Total Assets - Total Liabilities`.
-- **Display**: All values converted to User's `base_currency`.
+- **Display**: All values dynamically normalized to user's selected `base_currency`.
 
-### Widgets
-- **Grid Layout**: Drag-and-drop support via `react-grid-layout`.
-- **Growth Engine**: Calculates Portfolio Allocation and projected Dividends.
-- **Wealth Momentum**: Velocity score based on `(Income - Expenses) / Net Worth`.
+### Widgets & Customization
+- **Grid Layout**: Drag-and-drop customization via `react-grid-layout`.
+- **Growth Engine**: Evaluates asset allocation, risk weighting, and projected passive income (`portfolioAnalysis.ts`).
+- **Wealth Momentum**: Real-time velocity score based on monthly cash flow and savings rate.
 
-### Multi-Currency
-- **Input**: Forms accept any currency (e.g., USD asset in a GBP profile).
-- **Storage**: Stored in original currency + exchange rate.
-- **Display**: Normalized to Base Currency on the dashboard.
+### Multi-Currency Support
+- **Input**: Assets and liabilities can be registered in any global currency (USD, EUR, GBP, AUD, CAD, JPY, etc.).
+- **Conversion**: Real-time normalization against base currency.
 
 ---
 
-## 🧠 5. AI Mentorship ("Wisdom")
+## 🧠 5. AI Mentorship & Natural Language Actions ("Wisdom")
 
 ### Core Features
-1.  **Multi-Persona**: distinct system prompts (e.g., "Risk Guardian" vs "Tycoon").
-2.  **RAG Context**: Inject User's *current* Net Worth, Asset Allocation, and Debt Ratio into the LLM prompt.
-3.  **Chat Interface**: Conversational UI with history.
-
-### Technical Flow
-- **User Query**: "Should I buy a boat?"
-- **System Injection**: "User has $5k savings and $50k debt."
-- **LLM Response**: "No. Pay off your debt first."
+1. **Local LLM Engine**: Connects to LM Studio (`http://127.0.0.1:1234/v1`) or Ollama (`http://127.0.0.1:11434`) running on the user's machine. Zero financial metrics ever leave the local network.
+2. **Multi-Persona Wisdom**: Personas with distinct philosophical archetypes (Long-Term Thinker, Risk Guardian, Growth Optimist, Stoic Minimalist).
+3. **On-Device Context Injection**: Prompts receive local financial posture (Net Worth, Asset Total, Debt Total, Preferred Currency) directly on-device.
+4. **Reasoning Model Support**: Allocates 2,048 tokens and includes fallback extraction for reasoning models (Qwen 2.5/3.8, DeepSeek R1) that emit thinking tokens before content.
+5. **Natural Language Action Parsing**: Parses commands (e.g., *"Add $5,000 to High Yield Savings"*) into structured ledger entries with confirmation dialogs.
+6. **Deterministic Offline Fallback**: If local LLM software is paused, falls back to deterministic regex parsing and classical financial wisdom so user workflows are never blocked.
 
 ---
 
-## 🎮 6. Gamification
+## 🎮 6. Gamification & Onboarding
 
-### The "Badge Cycle"
-1.  **Action**: User updates data (pays off debt).
-2.  **Trigger**: Database trigger (`on_liab_change`) fires.
-3.  **Logic**: Checks condition (`liabilities == 0`).
-4.  **Reward**: Inserts row into `user_badges`.
-5.  **Feedback**: UI shows "Debt Free Badge Unlocked!".
-
-### Schema (`user_badges`)
-- Keys: `user_id`, `badge_id`.
-- Triggers: SQL functions handle the logic to ensure consistency.
+### Milestone Badges
+1. **Trigger**: Asset, liability, goal, or net worth changes trigger badge condition checks.
+2. **Badges**: Stored persistently in local storage (or `user_badges` in cloud mode).
+3. **Feedback**: UI toasts and badge unlock animations celebrate debt elimination and net worth milestones.
 
 ---
 
 ## 🛡️ 7. Privacy & Security
 
-### Stealth Mode
-- **Feature**: A Theme/CSS mode where `color: transparent; text-shadow: 0 0 5px rgba(0,0,0,0.5);`.
-- **Goal**: Use in public spaces without revealing specific numbers.
+### Zero Cloud Data Leakage
+- Net worth, balances, and portfolios remain on the user's physical machine.
+- Zero analytics tracking or behavioral profiling scripts.
 
-### Privacy Blur
-- **Feature**: Toggle button to apply `filter: blur(4px)` to all number fields.
+### Stealth Mode & Privacy Blur
+- **Stealth Theme**: Themes the UI to blend values into background colors for public viewing.
+- **Privacy Blur**: Single-click toggle applying CSS blur filter (`filter: blur(4px)`) across all numerical balances.
 
-### Data Protection
-- **Row Level Security (RLS)**: Postgres policies enforce `auth.uid() == user_id`.
-- **Export/Delete**: GDPR compliance features allowing full JSON export or account wipe.
+### Sovereign Vault Backups
+- Complete 1-click JSON backup export and import, allowing users to move their financial data between machines offline.

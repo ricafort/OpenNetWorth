@@ -41,7 +41,7 @@ When an Admin edits a template:
 
 ## 5. User Experience (The "Demo")
 for new visitors:
-1.  **Landing Page**: "Explore ClearWorth".
+1.  **Landing Page**: "Explore OpenNetWorth".
 2.  **Region Selector**: User picks "United Kingdom (GBP)".
 3.  **App Load**: 
     - Fetches the "UK Demo" profile.

@@ -49,8 +49,8 @@ The system SHALL display rotating quotes and insights on the dashboard.
                                            └────────────┬────────────┘
                                                         │
                                                         ▼
-    [ 💬 Response ] ◀────────────────────────── [ 🤖 Gemini LLM ]
-    "Considering your $50k debt..."
+    [ 💬 Response ] ◀────────────────────────── [ 🤖 Local LLM (LM Studio / Ollama) ]
+    "Considering your $50k debt..."            Zero cloud data leak
 ```
 
 ## Technical Implementation
@@ -61,13 +61,16 @@ Codebase: `src/features/mentors`
 - **Components**:
   - `ChatInterface.tsx`: Handles message list, input, and "Try saying..." suggestions.
   - `MentorList.tsx`: Sidebar for selecting active mentors (Standard & Custom).
-  - `AddMentorModal.tsx`: Form for generating/creating new custom mentors.
-  - `page.tsx`: Container component managing state (chat history, selected mentors).
+  - `AddMentorModal.tsx`: Form for generating/creating new custom mentors via Local LLM.
+  - `MentorsPage.tsx`: Container component managing state (chat history, selected mentors, multi-persona consensus).
 
 - **Data**:
   - `data/mentors.tsx`: Defines `STATIC_MENTORS` with Lucide icons.
-  - `internal/local_driver.ts`: Handles default quotes generation (Legacy path, migrating).
+  - `src/lib/api/localLlm.ts`: Unified Local LLM client with support for reasoning models, token allocation (2048 tokens), and timeout resilience.
 
 ### Integration
-- **AI Service**: `api/mentor` endpoint calls Gemini API.
-- **Context**: `userContext` (Net Worth, Assets, Liabilities) is injected into every prompt.
+- **Local AI Service**: `/api/mentor` endpoint routes queries strictly through `queryLocalLlm` to localhost (`1234` or `11434`).
+- **Context**: `userContext` (Net Worth, Assets, Liabilities, Preferred Currency) is injected into every prompt locally.
+- **Reasoning Models**: Automatically handles `reasoning_content` produced by thinking models (e.g. Qwen 2.5/3.8, DeepSeek R1).
+- **JSON Safety**: React JSX icons are stripped from mentor objects prior to serialization.
+- **Offline Fallback**: When the Local LLM runner is unstarted, grounded philosophical wisdom is delivered immediately with setup guidance tips.

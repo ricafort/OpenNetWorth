@@ -1,6 +1,6 @@
-# ClearWorth API Upgrade: Implementation Plan
+# OpenNetWorth API Upgrade: Implementation Plan
 
-Upgrading ClearWorth's market data and bank integration to a best-in-class, free-tier-friendly
+Upgrading OpenNetWorth's market data and bank integration to a best-in-class, free-tier-friendly
 architecture. This plan covers two tracks running in parallel: **Market Data** and **Banking**.
 
 ---
@@ -16,7 +16,7 @@ we added to `fetchAllPrices()` makes the experience feel slow and broken.
 ### Why Implement Basiq for Australia?
 `factory.ts` already stubs the routing. When `countryCode === 'AU'` is passed, the code
 warns and falls back to Plaid. **Plaid does not support Australian banks.** Any Australian
-user who clicks "Connect Bank" in ClearWorth today will receive an error or an empty bank
+user who clicks "Connect Bank" in OpenNetWorth today will receive an error or an empty bank
 list from Plaid's widget. This is a critical gap for our AU market.
 
 ---
@@ -108,7 +108,7 @@ Stock Price Fetching (marketData.ts)
 
 ### Track 1: Market Data Service (`src/services/marketData.ts`)
 
-#### [MODIFY] [marketData.ts](file:///d:/AntiGravityProjects/ClearWorth/src/services/marketData.ts)
+#### [MODIFY] [marketData.ts](file:///d:/LocalVersions/OpenNetWorth/src/services/marketData.ts)
 
 **Strategy:** Refactor into a provider-based model. The shared cache, `getMockPrice()`,
 `fetchCryptoPrice()`, and `fetchAllPrices()` all remain. Only `fetchStockPrice()` changes.
@@ -175,14 +175,14 @@ Barrel export for all market data providers.
 
 ### Track 1 Environment Changes
 
-#### [MODIFY] [env.ts](file:///d:/AntiGravityProjects/ClearWorth/src/lib/env.ts)
+#### [MODIFY] [env.ts](file:///d:/LocalVersions/OpenNetWorth/src/lib/env.ts)
 
 ```diff
 -   NEXT_PUBLIC_ALPHA_VANTAGE_KEY: z.string().optional(),
 +   FINNHUB_API_KEY: z.string().optional(),
 ```
 
-#### [MODIFY] [env-example.txt](file:///d:/AntiGravityProjects/ClearWorth/env-example.txt)
+#### [MODIFY] [env-example.txt](file:///d:/LocalVersions/OpenNetWorth/env-example.txt)
 
 ```diff
 -# Alpha Vantage (Stock Prices)
@@ -195,7 +195,7 @@ Barrel export for all market data providers.
 +# Yahoo Finance (ASX .AX tickers) — No API key needed. Uses yahoo-finance2 npm package.
 ```
 
-#### [MODIFY] [types.ts (assets)](file:///d:/AntiGravityProjects/ClearWorth/src/features/assets/types.ts)
+#### [MODIFY] [types.ts (assets)](file:///d:/LocalVersions/OpenNetWorth/src/features/assets/types.ts)
 
 Update the JSDoc comment on `currentPrice` to remove the "Alpha Vantage" reference:
 ```diff
@@ -248,7 +248,7 @@ class BasiqConnector implements UniversalBankConnector {
 
 ---
 
-#### [MODIFY] [factory.ts](file:///d:/AntiGravityProjects/ClearWorth/src/features/bank/factory.ts)
+#### [MODIFY] [factory.ts](file:///d:/LocalVersions/OpenNetWorth/src/features/bank/factory.ts)
 
 Uncomment and wire up `BasiqConnector` for AU:
 
@@ -266,7 +266,7 @@ Uncomment and wire up `BasiqConnector` for AU:
 
 ---
 
-#### [MODIFY] [types.ts (bank)](file:///d:/AntiGravityProjects/ClearWorth/src/features/bank/types.ts)
+#### [MODIFY] [types.ts (bank)](file:///d:/LocalVersions/OpenNetWorth/src/features/bank/types.ts)
 
 The `BankConnectionResult.provider` union type already includes `'basiq'`. No change needed.
 But we should add a `linkType` field to help the UI know whether to open Plaid Link or redirect:
@@ -290,7 +290,7 @@ But we should add a `linkType` field to help the UI know whether to open Plaid L
 
 ---
 
-#### [MODIFY] [/api/bank/link/route.ts](file:///d:/AntiGravityProjects/ClearWorth/src/app/api/bank/link/route.ts)
+#### [MODIFY] [/api/bank/link/route.ts](file:///d:/LocalVersions/OpenNetWorth/src/app/api/bank/link/route.ts)
 
 The response currently returns `{ link_token: string }`. For Basiq, we return a redirect URL.
 We need to update the response shape so the client knows how to handle it:
@@ -306,7 +306,7 @@ We need to update the response shape so the client knows how to handle it:
 
 ---
 
-#### [MODIFY] [ConnectBankButton.tsx](file:///d:/AntiGravityProjects/ClearWorth/src/components/bank/ConnectBankButton.tsx)
+#### [MODIFY] [ConnectBankButton.tsx](file:///d:/LocalVersions/OpenNetWorth/src/components/bank/ConnectBankButton.tsx)
 
 This is the most significant UI change. Currently it's hardcoded to use Plaid Link.
 We need to conditionally branch: if `mode === 'redirect'` (Basiq AU), redirect the user
@@ -348,7 +348,7 @@ Structure mirrors the existing `src/app/api/webhooks/plaid/route.ts`.
 
 ### Track 2 Environment Changes
 
-#### [MODIFY] [env.ts](file:///d:/AntiGravityProjects/ClearWorth/src/lib/env.ts)
+#### [MODIFY] [env.ts](file:///d:/LocalVersions/OpenNetWorth/src/lib/env.ts)
 
 ```diff
 +   BASIQ_API_KEY: z.string().optional(),
@@ -357,7 +357,7 @@ Structure mirrors the existing `src/app/api/webhooks/plaid/route.ts`.
 +   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 ```
 
-#### [MODIFY] [env-example.txt](file:///d:/AntiGravityProjects/ClearWorth/env-example.txt)
+#### [MODIFY] [env-example.txt](file:///d:/LocalVersions/OpenNetWorth/env-example.txt)
 
 ```diff
 +# Basiq (Australian Bank Integration — CDR/Open Banking)

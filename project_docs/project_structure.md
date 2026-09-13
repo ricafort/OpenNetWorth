@@ -120,15 +120,16 @@ Handles "How do we get data?".
 
 ---
 
-## 3. Key Files Reference
-
 | File | Purpose |
 | :--- | :--- |
-| `src/middleware.ts` | Edge Middleware running before requests. Handles Auth protection using Supabase Auth helpers. |
+| `src/proxy.ts` | Next.js Edge Middleware for route protection and token refresh resilience. |
+| `src/lib/api/localLlm.ts` | Unified Local LLM client (health probes, LM Studio & Ollama negotiation, token budget management). |
+| `src/components/ui/LocalAiSettingsModal.tsx` | UI modal to test Local LLM connection, switch engines, and select active model. |
+| `scripts/patch-tailwind.cjs` | Postinstall patch for `@tailwindcss/postcss` resolving Turbopack base-directory paths on page reload. |
 | `src/types/index.ts` | Global Types shared across the app (User, Currency definitions). |
-| `package.json` | Project Manifest. Defines scripts (`dev`, `build`, `lint`) and dependencies. |
+| `package.json` | Project Manifest. Defines scripts (`dev`, `build`, `test`, `lint`) and dependencies. |
 | `tsconfig.json` | TypeScript configuration. Defines paths (e.g. `@/*` alias mappings). |
-| `.env.local` | **SECRETS**. API Keys, Database URLs. Never commit this file. |
+| `.env.local` | Optional local overrides (e.g. `LOCAL_LLM_URL`, `LOCAL_LLM_MODEL`). Zero secrets required by default. |
 
 ## 4. Where do I put...?
 
@@ -141,15 +142,18 @@ Handles "How do we get data?".
     2. Create logic in `src/features/[route]/components/[Route]Page.tsx`.
 
 - **A database change?**
-    1. Edit `supabase_schema.sql` (or create new migration).
-    2. Run `npx supabase db reset` (or specific migration command).
+    1. Edit `supabase_schema.sql` (or create new migration in `supabase_migrations/`).
+    2. Run migration via script or Supabase CLI.
+
+- **A local AI feature or prompt?**
+    - Call `queryLocalLlm` from `src/lib/api/localLlm.ts` within an API route (`src/app/api/...`).
+    - Provide fallback wisdom if local engine is offline.
 
 - **A global utility function?**
     - `src/lib/utils` (if generic helper).
-    - `src/lib/domain` (if business logic like financial math).
+    - `src/lib/domain` (if business logic like financial math or mentor advice).
 
-
-This document explains the directory structure of ClearWorth, detailing **what** goes where and **why**.
+This document explains the directory structure of OpenNetWorth, detailing **what** goes where and **why**.
 We follow a **Feature-First Architecture** (Vertical Slice), grouped by business domain rather than technical type.
 
 ## Root Directory
