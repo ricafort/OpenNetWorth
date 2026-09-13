@@ -1,0 +1,426 @@
+/**
+ * Milestone 1 Account & Entity Management Service
+ * 
+ * Why this file exists:
+ * Provides transactional domain services to create, list, and update sovereign financial entities
+ * (persons, households, businesses, trusts) and double-entry financial accounts.
+ * When an account is created with an opening balance, this service atomically generates
+ * and commits a balanced double-entry opening balance transaction with an explicit
+ * `Opening Balance Equity` counterpart (M1-FLOW-01, T1).
+ * 
+ * Tricky logic:
+ * - Opening balance posting parity:
+ *   * For Assets: Debit Asset (+amount_cents), Credit Opening Balance Equity (-amount_cents).
+ *   * For Liabilities: Credit Liability (-amount_cents), Debit Opening Balance Equity (+amount_cents).
+ *   Both satisfy: Sum(amount_cents) = 0.
+ * - Idempotent equity account lookup: If the entity doesn't have an 'Opening Balance Equity' account yet,
+ *   we auto-provision one deterministically for that entity and currency.
+ * - Optimistic concurrency control (M1-SAFE-06): Updates require `expected_revision` and increment `revision + 1`.
+ *   If the row in SQLite has already been incremented by another operation, the update updates 0 rows
+ *   and throws a ConflictError.
+ * 
+ * TODO: Support automated multi-entity ownership splits on account creation in Slice 1D.
+ */
+
+import Database from 'better-sqlite3';
+import {
+    Account,
+    AccountSubType,
+    AccountType,
+    CurrencyCode,
+    Entity,
+    EntityType,
+    Posting,
+    Transaction,
+    assertValidMoneyCents,
+    validateTransactionBalance
+} from './types';
+
+export interface CreateEntityInput {
+    id?: string;
+    name: string;
+    type: EntityType;
+    currency: CurrencyCode;
+    parent_entity_id?: string | null;
+}
+
+export interface CreateAccountInput {
+    id?: string;
+    entity_id: string;
+    name: string;
+    type: AccountType;
+    sub_type: AccountSubType;
+    currency: CurrencyCode;
+    institution?: string | null;
+    account_number_mask?: string | null;
+    opening_date?: string | null; // YYYY-MM-DD
+    opening_balance_cents?: number | null; // Integer cents
+}
+
+export interface UpdateAccountInput {
+    name?: string;
+    sub_type?: AccountSubType;
+    institution?: string | null;
+    account_number_mask?: string | null;
+    is_active?: boolean;
+}
+
+export class ConflictError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ConflictError';
+    }
+}
+
+export class ValidationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ValidationError';
+    }
+}
+
+/**
+ * Creates an entity (Person, Household, Business, Trust).
+ */
+export function createEntity(db: Database.Database, input: CreateEntityInput): Entity {
+    if (!input.name || input.name.trim().length === 0) {
+        throw new ValidationError('Entity name is required and cannot be blank.');
+    }
+    const validTypes: EntityType[] = ['person', 'household', 'business', 'trust'];
+    if (!validTypes.includes(input.type)) {
+        throw new ValidationError(`Invalid entity type: ${input.type}. Must be one of: ${validTypes.join(', ')}`);
+    }
+    const currency = input.currency.toUpperCase();
+    const id = input.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const stmt = db.prepare(`
+        INSERT INTO m1_entities (id, name, type, currency, parent_entity_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(id, input.name.trim(), input.type, currency, input.parent_entity_id || null, now, now);
+
+    return {
+        id,
+        name: input.name.trim(),
+        type: input.type,
+        currency,
+        parent_entity_id: input.parent_entity_id || null,
+        created_at: now,
+        updated_at: now
+    };
+}
+
+/**
+ * Lists all entities in the ledger.
+ */
+export function listEntities(db: Database.Database): Entity[] {
+    const rows = db.prepare('SELECT * FROM m1_entities ORDER BY name ASC').all() as any[];
+    return rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        currency: r.currency,
+        parent_entity_id: r.parent_entity_id,
+        created_at: r.created_at,
+        updated_at: r.updated_at
+    }));
+}
+
+/**
+ * Retrieves an entity by ID.
+ */
+export function getEntity(db: Database.Database, id: string): Entity | null {
+    const row = db.prepare('SELECT * FROM m1_entities WHERE id = ?').get(id) as any;
+    if (!row) return null;
+    return {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        currency: row.currency,
+        parent_entity_id: row.parent_entity_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+    };
+}
+
+/**
+ * Ensures an 'Opening Balance Equity' account exists for the given entity and currency.
+ */
+function ensureOpeningEquityAccount(db: Database.Database, entityId: string, currency: CurrencyCode): Account {
+    const existing = db.prepare(`
+        SELECT * FROM m1_accounts
+        WHERE entity_id = ? AND type = 'equity' AND sub_type = 'opening_balance_equity' AND currency = ?
+    `).get(entityId, currency) as any;
+
+    if (existing) {
+        return {
+            id: existing.id,
+            entity_id: existing.entity_id,
+            name: existing.name,
+            type: existing.type,
+            sub_type: existing.sub_type,
+            currency: existing.currency,
+            is_active: Boolean(existing.is_active),
+            institution: existing.institution,
+            account_number_mask: existing.account_number_mask,
+            opening_date: existing.opening_date,
+            opening_balance_cents: existing.opening_balance_cents,
+            revision: existing.revision,
+            created_at: existing.created_at,
+            updated_at: existing.updated_at
+        };
+    }
+
+    const id = `acc-equity-${entityId}-${currency.toLowerCase()}`;
+    const now = new Date().toISOString();
+    db.prepare(`
+        INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
+        VALUES (?, ?, 'Opening Balance Equity', 'equity', 'opening_balance_equity', ?, 1, 1, ?, ?)
+    `).run(id, entityId, currency, now, now);
+
+    return {
+        id,
+        entity_id: entityId,
+        name: 'Opening Balance Equity',
+        type: 'equity',
+        sub_type: 'opening_balance_equity',
+        currency,
+        is_active: true,
+        revision: 1,
+        created_at: now,
+        updated_at: now
+    };
+}
+
+/**
+ * Creates a financial account, optionally posting a balanced opening balance entry.
+ * 
+ * Why this exists:
+ * Implements M1-DOM-02 and M1-FLOW-01. Guarantees that opening balances create
+ * a balanced double-entry record atomically, ensuring immediate agreement between
+ * account balances, opening equity, and net worth.
+ */
+export function createAccount(db: Database.Database, input: CreateAccountInput): { account: Account; openingTransaction?: Transaction } {
+    if (!input.name || input.name.trim().length === 0) {
+        throw new ValidationError('Account name is required and cannot be blank.');
+    }
+    const entity = getEntity(db, input.entity_id);
+    if (!entity) {
+        throw new ValidationError(`Entity not found with ID: ${input.entity_id}`);
+    }
+
+    const validTypes: AccountType[] = ['asset', 'liability', 'equity', 'income', 'expense', 'suspense'];
+    if (!validTypes.includes(input.type)) {
+        throw new ValidationError(`Invalid account type: ${input.type}. Must be one of: ${validTypes.join(', ')}`);
+    }
+
+    const currency = input.currency.toUpperCase();
+    const accountId = input.id || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const hasOpeningBalance = input.opening_balance_cents !== undefined &&
+        input.opening_balance_cents !== null &&
+        input.opening_balance_cents !== 0;
+
+    if (hasOpeningBalance) {
+        assertValidMoneyCents(input.opening_balance_cents!, 'Opening balance cents');
+        if (!input.opening_date || !/^\d{4}-\d{2}-\d{2}$/.test(input.opening_date)) {
+            throw new ValidationError('A valid opening date (YYYY-MM-DD) is required when specifying an opening balance.');
+        }
+    }
+
+    let createdAccount: Account;
+    let createdTx: Transaction | undefined;
+
+    // Atomic SQLite transaction enclosing account creation and opening balance posting
+    const tx = db.transaction(() => {
+        // 1. Insert Account
+        db.prepare(`
+            INSERT INTO m1_accounts (
+                id, entity_id, name, type, sub_type, currency, is_active,
+                institution, account_number_mask, opening_date, opening_balance_cents,
+                revision, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1, ?, ?)
+        `).run(
+            accountId,
+            input.entity_id,
+            input.name.trim(),
+            input.type,
+            input.sub_type,
+            currency,
+            input.institution || null,
+            input.account_number_mask || null,
+            input.opening_date || null,
+            hasOpeningBalance ? input.opening_balance_cents : null,
+            now,
+            now
+        );
+
+        createdAccount = {
+            id: accountId,
+            entity_id: input.entity_id,
+            name: input.name.trim(),
+            type: input.type,
+            sub_type: input.sub_type,
+            currency,
+            is_active: true,
+            institution: input.institution || null,
+            account_number_mask: input.account_number_mask || null,
+            opening_date: input.opening_date || null,
+            opening_balance_cents: hasOpeningBalance ? input.opening_balance_cents : null,
+            revision: 1,
+            created_at: now,
+            updated_at: now
+        };
+
+        // 2. If opening balance provided, post balanced double-entry transaction (M1-FLOW-01, T1)
+        if (hasOpeningBalance) {
+            const equityAccount = ensureOpeningEquityAccount(db, input.entity_id, currency);
+            const txId = `tx-open-${accountId}`;
+            const txDate = input.opening_date!;
+            const balanceCents = input.opening_balance_cents!;
+
+            // Calculate postings according to normal balance:
+            // Asset (+balance Debit, -balance Equity Credit)
+            // Liability (-balance Credit, +balance Equity Debit)
+            const isAsset = input.type === 'asset';
+            const accountLegCents = isAsset ? balanceCents : -balanceCents;
+            const equityLegCents = isAsset ? -balanceCents : balanceCents;
+
+            const postings: Posting[] = [
+                {
+                    id: `post-acc-${accountId}`,
+                    transaction_id: txId,
+                    account_id: accountId,
+                    amount_cents: accountLegCents,
+                    currency,
+                    memo: `Opening Balance for ${input.name.trim()}`
+                },
+                {
+                    id: `post-eq-${accountId}`,
+                    transaction_id: txId,
+                    account_id: equityAccount.id,
+                    amount_cents: equityLegCents,
+                    currency,
+                    memo: `Opening Balance Offset for ${input.name.trim()}`
+                }
+            ];
+
+            // Verify invariant: Sum must be 0
+            validateTransactionBalance(postings);
+
+            db.prepare(`
+                INSERT INTO m1_transactions (
+                    id, date, description, status, origin, idempotency_key, revision, created_at, updated_at
+                ) VALUES (?, ?, ?, 'posted', 'opening_balance', ?, 1, ?, ?)
+            `).run(
+                txId,
+                txDate,
+                `Opening Balance - ${input.name.trim()}`,
+                `idemp-open-${accountId}`,
+                now,
+                now
+            );
+
+            const insertPosting = db.prepare(`
+                INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `);
+
+            for (const p of postings) {
+                insertPosting.run(p.id, p.transaction_id, p.account_id, p.amount_cents, p.currency, p.memo || null);
+            }
+
+            createdTx = {
+                id: txId,
+                date: txDate,
+                description: `Opening Balance - ${input.name.trim()}`,
+                status: 'posted',
+                origin: 'opening_balance',
+                idempotency_key: `idemp-open-${accountId}`,
+                revision: 1,
+                created_at: now,
+                updated_at: now
+            };
+        }
+    });
+
+    tx();
+    return { account: createdAccount!, openingTransaction: createdTx };
+}
+
+/**
+ * Updates an account with optimistic concurrency revision checking (M1-SAFE-06).
+ */
+export function updateAccount(
+    db: Database.Database,
+    accountId: string,
+    expectedRevision: number,
+    updates: UpdateAccountInput
+): Account {
+    const existing = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    if (!existing) {
+        throw new ValidationError(`Account not found with ID: ${accountId}`);
+    }
+
+    const now = new Date().toISOString();
+    const newName = updates.name !== undefined ? updates.name.trim() : existing.name;
+    const newSubType = updates.sub_type !== undefined ? updates.sub_type : existing.sub_type;
+    const newInst = updates.institution !== undefined ? updates.institution : existing.institution;
+    const newMask = updates.account_number_mask !== undefined ? updates.account_number_mask : existing.account_number_mask;
+    const newActive = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : existing.is_active;
+
+    const res = db.prepare(`
+        UPDATE m1_accounts
+        SET name = ?, sub_type = ?, institution = ?, account_number_mask = ?, is_active = ?, revision = revision + 1, updated_at = ?
+        WHERE id = ? AND revision = ?
+    `).run(newName, newSubType, newInst, newMask, newActive, now, accountId, expectedRevision);
+
+    if (res.changes === 0) {
+        throw new ConflictError(`Account update failed due to stale revision (expected revision ${expectedRevision}). Another update has occurred.`);
+    }
+
+    return {
+        id: existing.id,
+        entity_id: existing.entity_id,
+        name: newName,
+        type: existing.type,
+        sub_type: newSubType,
+        currency: existing.currency,
+        is_active: Boolean(newActive),
+        institution: newInst,
+        account_number_mask: newMask,
+        opening_date: existing.opening_date,
+        opening_balance_cents: existing.opening_balance_cents,
+        revision: expectedRevision + 1,
+        created_at: existing.created_at,
+        updated_at: now
+    };
+}
+
+/**
+ * Lists accounts belonging to an entity.
+ */
+export function listAccounts(db: Database.Database, entityId?: string): Account[] {
+    const query = entityId
+        ? db.prepare('SELECT * FROM m1_accounts WHERE entity_id = ? ORDER BY type ASC, name ASC').all(entityId)
+        : db.prepare('SELECT * FROM m1_accounts ORDER BY type ASC, name ASC').all();
+
+    return (query as any[]).map(r => ({
+        id: r.id,
+        entity_id: r.entity_id,
+        name: r.name,
+        type: r.type,
+        sub_type: r.sub_type,
+        currency: r.currency,
+        is_active: Boolean(r.is_active),
+        institution: r.institution,
+        account_number_mask: r.account_number_mask,
+        opening_date: r.opening_date,
+        opening_balance_cents: r.opening_balance_cents,
+        revision: r.revision,
+        created_at: r.created_at,
+        updated_at: r.updated_at
+    }));
+}
