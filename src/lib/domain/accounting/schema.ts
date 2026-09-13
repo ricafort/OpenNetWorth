@@ -144,9 +144,102 @@ export const ACCOUNTING_SCHEMA_DDL = `
 `;
 
 /**
- * Initializes the Milestone 1 accounting schema on a SQLite database.
+ * Transactionally upgrades an existing SQLite database schema to match the latest
+ * accounting schema requirements (Assessor Finding 1).
+ * 
+ * Why this exists:
+ * In SQLite, `CREATE TABLE IF NOT EXISTS` does not modify existing tables if new columns
+ * or CHECK constraints are added in later versions.
+ * When an application database is opened that was created on an earlier commit:
+ * 1. `m1_asset_valuations` may lack the `source TEXT` column.
+ * 2. `m1_transaction_corrections` may have an older CHECK constraint lacking `'revaluation_cascade'`.
+ * This function inspects the existing table structures and transactionally upgrades them
+ * without altering existing rows, balances, revisions, evidence, or audit records.
+ * 
+ * Tricky logic:
+ * - In SQLite, CHECK constraints cannot be updated with `ALTER TABLE`.
+ *   We use the standard SQLite table migration pattern:
+ *   1. Create `m1_transaction_corrections_new` with the updated CHECK constraint.
+ *   2. Copy all existing rows from `m1_transaction_corrections`.
+ *   3. Drop `m1_transaction_corrections`.
+ *   4. Rename `m1_transaction_corrections_new` to `m1_transaction_corrections`.
+ * - All operations execute inside an explicit `db.transaction()` block.
+ * - Foreign keys are temporarily set to OFF during table replacement to prevent foreign key errors on drop/rename.
+ * 
+ * TODO: Support automated forward-migration logging in `schema_migrations` table for multi-version tracking in Milestone 2.
+ */
+export function migrateAccountingSchema(db: Database.Database): void {
+    const runMigration = db.transaction(() => {
+        // 1. Check if m1_asset_valuations table exists
+        const valTableExists = (db.prepare(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_asset_valuations'"
+        ).get() as any).cnt > 0;
+
+        if (valTableExists) {
+            const columns = db.prepare("PRAGMA table_info(m1_asset_valuations)").all() as Array<{ name: string }>;
+            const hasSource = columns.some(c => c.name === 'source');
+            if (!hasSource) {
+                db.prepare("ALTER TABLE m1_asset_valuations ADD COLUMN source TEXT").run();
+            }
+        }
+
+        // 2. Check if m1_transaction_corrections table exists and needs CHECK constraint upgrade
+        const corrTableExists = (db.prepare(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_transaction_corrections'"
+        ).get() as any).cnt > 0;
+
+        if (corrTableExists) {
+            const tableSql = (db.prepare(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'm1_transaction_corrections'"
+            ).get() as any)?.sql || '';
+
+            // If the table definition does not include 'revaluation_cascade', upgrade it
+            if (!tableSql.includes('revaluation_cascade')) {
+                // Table rebuild pattern
+                db.prepare(`
+                    CREATE TABLE m1_transaction_corrections_new (
+                        id TEXT PRIMARY KEY,
+                        transaction_id TEXT NOT NULL,
+                        operation TEXT NOT NULL CHECK (operation IN ('edit', 'void', 'reversal', 'revaluation_cascade')),
+                        reason TEXT NOT NULL,
+                        previous_state TEXT NOT NULL,
+                        corrected_state TEXT NOT NULL,
+                        performed_by TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE
+                    )
+                `).run();
+
+                db.prepare(`
+                    INSERT INTO m1_transaction_corrections_new (
+                        id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp
+                    ) SELECT id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp
+                    FROM m1_transaction_corrections
+                `).run();
+
+                db.prepare("DROP TABLE m1_transaction_corrections").run();
+                db.prepare("ALTER TABLE m1_transaction_corrections_new RENAME TO m1_transaction_corrections").run();
+            }
+        }
+    });
+
+    // Run migration safely with foreign key toggle
+    const currentFk = db.prepare("PRAGMA foreign_keys").get() as any;
+    const wasFkOn = currentFk?.foreign_keys === 1;
+    if (wasFkOn) db.pragma("foreign_keys = OFF");
+    try {
+        runMigration();
+    } finally {
+        if (wasFkOn) db.pragma("foreign_keys = ON");
+    }
+}
+
+/**
+ * Initializes the Milestone 1 accounting schema on a SQLite database,
+ * then applies any pending schema migrations.
  */
 export function initAccountingSchema(db: Database.Database): void {
     db.pragma('foreign_keys = ON');
     db.exec(ACCOUNTING_SCHEMA_DDL);
+    migrateAccountingSchema(db);
 }

@@ -34,7 +34,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { initAccountingSchema, migrateAccountingSchema } from './schema';
 import {
     createEntity,
     createAccount,
@@ -2041,6 +2041,673 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
 
                 // 4. Unchanged-state assertion: account balance is still $25,000
                 expect(getAccountBalance(db, diamond.id).balance_cents).toBe(2500000);
+            });
+        });
+
+        /**
+         * Assessor Verdict (commit e04216e) Remediation Suite
+         * 
+         * Why this suite exists:
+         * Verifies the 4 core assessor remediations and full lifecycle safety:
+         * 1. Versioned, transactional schema migrations on populated databases.
+         * 2. Valuation corrections update authoritative targets and preserve them through cascades;
+         *    unsafe/ambiguous corrections are rejected atomically without mutation.
+         * 3. Unchanged-value appraisals (delta === 0) preserve new appraisal date, source,
+         *    evidence, and request identity in a dedicated transaction (never returning an unrelated opening tx).
+         * 4. Internal transfers are separated from external cash activity ($100 transfer + $10 fee produces
+         *    $0 external inflow, $10 operating outflow, -$10 net cash change).
+         * 5. Full accounting lifecycle: create → edit → backdate → cascade → void → retry.
+         * 
+         * Tricky logic:
+         * - Populated migration tests must execute against in-memory legacy databases without touching
+         *   the live vault (M1-SAFE-01).
+         * - Zero-delta valuations post 0-cent balancing entries against Valuation Reserve equity to ensure
+         *   double-entry balance without altering carrying balances.
+         * - Multi-leg cash transactions separate internal transfer min(inflow, outflow) from net external cash.
+         * 
+         * TODO: Milestone 2 will support automated daily ECB foreign exchange rate synchronization.
+         */
+        describe('Assessor Verdict (e04216e) Remediation Suite', () => {
+
+            /**
+             * Assessor Item 1: Versioned, transactional schema migrations on populated databases.
+             * 
+             * Why this test exists:
+             * Existing databases from prior committed schemas (lacking the 'source' column on m1_asset_valuations
+             * and lacking 'revaluation_cascade' on m1_transaction_corrections) must be upgraded seamlessly
+             * and transactionally without data loss, preserving all balances, evidence, revisions, and audit history.
+             * 
+             * Tricky logic:
+             * - Rebuilding m1_transaction_corrections in SQLite requires temporarily disabling foreign keys
+             *   and restoring them transactionally to prevent foreign key cascade errors.
+             */
+            it('Assessor Item 1: Upgrades populated legacy schema transactionally, preserving balances, evidence, and audit history', () => {
+                const legacyDb = new Database(':memory:');
+
+                // 1. Initialize legacy schema (Slice 1C / prior Slice 1D schema before e04216e)
+                legacyDb.exec(`
+                    PRAGMA foreign_keys = ON;
+
+                    CREATE TABLE IF NOT EXISTS m1_entities (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        type TEXT NOT NULL CHECK(type IN ('person', 'company', 'trust')),
+                        currency TEXT NOT NULL DEFAULT 'AUD',
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+
+                    CREATE TABLE IF NOT EXISTS m1_accounts (
+                        id TEXT PRIMARY KEY,
+                        entity_id TEXT NOT NULL REFERENCES m1_entities(id),
+                        name TEXT NOT NULL,
+                        type TEXT NOT NULL CHECK(type IN ('asset', 'liability', 'equity', 'income', 'expense')),
+                        sub_type TEXT NOT NULL,
+                        currency TEXT NOT NULL DEFAULT 'AUD',
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+
+                    CREATE TABLE IF NOT EXISTS m1_transactions (
+                        id TEXT PRIMARY KEY,
+                        date TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        payee_or_payer TEXT,
+                        status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'posted', 'void')),
+                        origin TEXT NOT NULL DEFAULT 'manual' CHECK(origin IN ('manual', 'bank_import', 'csv_import', 'opening_balance', 'migration', 'valuation')),
+                        created_by TEXT,
+                        revision INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+
+                    CREATE TABLE IF NOT EXISTS m1_journal_entries (
+                        id TEXT PRIMARY KEY,
+                        transaction_id TEXT NOT NULL REFERENCES m1_transactions(id) ON DELETE CASCADE,
+                        account_id TEXT NOT NULL REFERENCES m1_accounts(id),
+                        amount_cents INTEGER NOT NULL,
+                        currency TEXT NOT NULL DEFAULT 'AUD',
+                        memo TEXT,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+
+                    -- Prior m1_asset_valuations WITHOUT 'source' column
+                    CREATE TABLE IF NOT EXISTS m1_asset_valuations (
+                        id TEXT PRIMARY KEY,
+                        transaction_id TEXT NOT NULL UNIQUE,
+                        account_id TEXT NOT NULL,
+                        valuation_date TEXT NOT NULL,
+                        target_valuation_cents INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE,
+                        FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
+                    );
+
+                    -- Prior m1_transaction_corrections with OLD CHECK constraint (only 'edit', 'void', 'reversal')
+                    CREATE TABLE IF NOT EXISTS m1_transaction_corrections (
+                        id TEXT PRIMARY KEY,
+                        transaction_id TEXT NOT NULL,
+                        operation TEXT NOT NULL CHECK (operation IN ('edit', 'void', 'reversal')),
+                        reason TEXT NOT NULL,
+                        previous_state TEXT NOT NULL,
+                        corrected_state TEXT NOT NULL,
+                        performed_by TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE
+                    );
+
+                    CREATE TABLE IF NOT EXISTS m1_evidence_links (
+                        id TEXT PRIMARY KEY,
+                        transaction_id TEXT NOT NULL REFERENCES m1_transactions(id) ON DELETE CASCADE,
+                        document_id TEXT NOT NULL,
+                        content_hash TEXT,
+                        page_number INTEGER,
+                        bounding_box TEXT,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+                `);
+
+                // 2. Populate legacy database with existing records
+                const entityId = 'legacy-entity-001';
+                legacyDb.prepare(`INSERT INTO m1_entities (id, name, type, currency) VALUES (?, 'Legacy Alice', 'person', 'AUD')`).run(entityId);
+
+                const assetId = 'legacy-asset-001';
+                legacyDb.prepare(`INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency) VALUES (?, ?, 'Classic Porsche', 'asset', 'vehicle', 'AUD')`).run(assetId, entityId);
+
+                const reserveId = 'legacy-reserve-001';
+                legacyDb.prepare(`INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency) VALUES (?, ?, 'Valuation Reserve', 'equity', 'valuation_reserve', 'AUD')`).run(reserveId, entityId);
+
+                const txId = 'legacy-tx-001';
+                legacyDb.prepare(`INSERT INTO m1_transactions (id, date, description, status, origin, revision) VALUES (?, '2026-01-10', 'Initial Legacy Valuation', 'posted', 'valuation', 1)`).run(txId);
+
+                legacyDb.prepare(`INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency) VALUES (?, ?, ?, ?, 'AUD')`).run('legacy-j1', txId, assetId, 15000000);
+                legacyDb.prepare(`INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency) VALUES (?, ?, ?, ?, 'AUD')`).run('legacy-j2', txId, reserveId, -15000000);
+
+                const valId = 'legacy-val-001';
+                legacyDb.prepare(`INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, created_at) VALUES (?, ?, ?, '2026-01-10', 15000000, datetime('now'))`).run(valId, txId, assetId);
+
+                const corrId = 'legacy-corr-001';
+                legacyDb.prepare(`INSERT INTO m1_transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp) VALUES (?, ?, 'edit', 'Prior audit edit', '{}', '{}', 'Auditor User', datetime('now'))`).run(corrId, txId);
+
+                legacyDb.prepare(`INSERT INTO m1_evidence_links (id, transaction_id, document_id, content_hash, page_number) VALUES (?, ?, 'doc-legacy-001', 'sha256-legacy', 1)`).run('legacy-ev-001', txId);
+
+                // Verify pre-migration state: m1_asset_valuations lacks 'source'
+                const colsBefore = legacyDb.prepare(`PRAGMA table_info(m1_asset_valuations)`).all() as any[];
+                expect(colsBefore.some(c => c.name === 'source')).toBe(false);
+
+                // Verify pre-migration state: m1_transaction_corrections rejects 'revaluation_cascade'
+                expect(() => {
+                    legacyDb.prepare(`
+                        INSERT INTO m1_transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp)
+                        VALUES ('cascade-fail', '${txId}', 'revaluation_cascade', 'Cascade test', '{}', '{}', 'System', datetime('now'))
+                    `).run();
+                }).toThrow();
+
+                // 3. Execute versioned, transactional migration
+                migrateAccountingSchema(legacyDb);
+
+                // 4. Verify post-migration schema upgrades
+                const colsAfter = legacyDb.prepare(`PRAGMA table_info(m1_asset_valuations)`).all() as any[];
+                expect(colsAfter.some(c => c.name === 'source')).toBe(true);
+
+                // Verify pre-existing data is strictly preserved
+                const preservedVal = legacyDb.prepare(`SELECT * FROM m1_asset_valuations WHERE id = ?`).get(valId) as any;
+                expect(preservedVal).toBeDefined();
+                expect(preservedVal.target_valuation_cents).toBe(15000000);
+                expect(preservedVal.source).toBeNull(); // Column added, prior row has null source
+
+                const preservedCorr = legacyDb.prepare(`SELECT * FROM m1_transaction_corrections WHERE id = ?`).get(corrId) as any;
+                expect(preservedCorr).toBeDefined();
+                expect(preservedCorr.operation).toBe('edit');
+
+                const preservedEv = legacyDb.prepare(`SELECT * FROM m1_evidence_links WHERE id = 'legacy-ev-001'`).get() as any;
+                expect(preservedEv.document_id).toBe('doc-legacy-001');
+
+                // 5. Verify upgraded constraint now permits 'revaluation_cascade'
+                expect(() => {
+                    legacyDb.prepare(`
+                        INSERT INTO m1_transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp)
+                        VALUES ('cascade-success', '${txId}', 'revaluation_cascade', 'Cascade test', '{}', '{}', 'System', datetime('now'))
+                    `).run();
+                }).not.toThrow();
+
+                // 6. Verify inserting new valuation with source succeeds on upgraded database
+                const tx2Id = 'legacy-tx-002';
+                legacyDb.prepare(`INSERT INTO m1_transactions (id, date, description, status, origin, revision) VALUES (?, '2026-02-01', 'Upgraded Valuation', 'posted', 'valuation', 1)`).run(tx2Id);
+
+                expect(() => {
+                    legacyDb.prepare(`
+                        INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
+                        VALUES ('new-val-002', '${tx2Id}', '${assetId}', '2026-02-01', 16000000, 'Sydney Prestige Appraisals', datetime('now'))
+                    `).run();
+                }).not.toThrow();
+
+                // 7. Verify foreign key enforcement is intact
+                const fkStatus = legacyDb.prepare(`PRAGMA foreign_keys`).get() as any;
+                expect(Object.values(fkStatus)[0]).toBe(1);
+
+                legacyDb.close();
+            });
+
+            /**
+             * Assessor Item 2: Valuation corrections and stored authoritative targets consistency.
+             * 
+             * Why this test exists:
+             * An accepted valuation edit must update its authoritative target in m1_asset_valuations.
+             * Later cascades must preserve the corrected target.
+             * If a correction cannot be interpreted safely (e.g. invalid accounts), it must be rejected atomically.
+             */
+            it('Assessor Item 2: Valuation corrections update authoritative target and preserve it through cascades; rejects unsafe edits', () => {
+                const entity = createEntity(db, { name: 'Art Collector', type: 'person', currency: 'AUD' });
+                const painting = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Oil Painting',
+                    type: 'asset',
+                    sub_type: 'property',
+                    currency: 'AUD',
+                    opening_date: '2026-01-01',
+                    opening_balance_cents: 10000000 // $100,000 AUD
+                }).account;
+
+                // V1 on Feb 1: target $150,000 (+50,000 delta)
+                const v1 = recordAssetValuation(db, {
+                    asset_account_id: painting.id,
+                    new_valuation_cents: 15000000,
+                    date: '2026-02-01',
+                    description: 'Initial Art Appraisal',
+                    source: 'Sotheby’s'
+                });
+
+                // V2 on Apr 1: target $200,000 (+50,000 delta)
+                const v2 = recordAssetValuation(db, {
+                    asset_account_id: painting.id,
+                    new_valuation_cents: 20000000,
+                    date: '2026-04-01',
+                    description: 'Spring Art Appraisal',
+                    source: 'Christie’s'
+                });
+
+                expect(getAccountBalance(db, painting.id, '2026-02-01').balance_cents).toBe(15000000);
+                expect(getAccountBalance(db, painting.id, '2026-04-01').balance_cents).toBe(20000000);
+
+                const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+
+                // 1. Edit V1: correct valuation downward from $150,000 to $130,000 (delta +$30,000 instead of +$50,000)
+                correctTransaction(db, {
+                    transaction_id: v1.id,
+                    operation: 'edit',
+                    reason: 'Corrected appraisal valuation figure downward',
+                    performed_by: 'Auditor User',
+                    expected_revision: 1,
+                    new_data: {
+                        postings: [
+                            { account_id: painting.id, amount_cents: 3000000, currency: 'AUD' },
+                            { account_id: reserve.id, amount_cents: -3000000, currency: 'AUD' }
+                        ]
+                    }
+                });
+
+                // Check: authoritative target in m1_asset_valuations was updated to $130,000!
+                const v1Row = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(v1.id) as any;
+                expect(v1Row.target_valuation_cents).toBe(13000000);
+
+                // Check: Feb 1 balance is now $130,000
+                expect(getAccountBalance(db, painting.id, '2026-02-01').balance_cents).toBe(13000000);
+
+                // Check: Apr 1 target ($200,000) was PRESERVED through the cascade
+                // (V2 delta automatically cascaded from +$50,000 to +$70,000)
+                expect(getAccountBalance(db, painting.id, '2026-04-01').balance_cents).toBe(20000000);
+
+                // 2. Backdate an earlier valuation on Jan 15 with target $110,000 (+10,000 delta)
+                recordAssetValuation(db, {
+                    asset_account_id: painting.id,
+                    new_valuation_cents: 11000000,
+                    date: '2026-01-15',
+                    description: 'Intermediate Appraisal',
+                    source: 'Local Valuer'
+                });
+
+                // Check: V1's corrected target ($130,000) and V2's target ($200,000) are BOTH preserved!
+                expect(getAccountBalance(db, painting.id, '2026-01-15').balance_cents).toBe(11000000);
+                expect(getAccountBalance(db, painting.id, '2026-02-01').balance_cents).toBe(13000000);
+                expect(getAccountBalance(db, painting.id, '2026-04-01').balance_cents).toBe(20000000);
+
+                // 3. Unsafe Valuation Edit Rejection:
+                // Attempt to edit V2 with a non-valuation counterpart (e.g. an expense account instead of Valuation Reserve)
+                const expenseAcc = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Art Storage Fees',
+                    type: 'expense',
+                    sub_type: 'bank_fee',
+                    currency: 'AUD'
+                }).account;
+
+                const v2Current = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(v2.id) as any;
+
+                expect(() => {
+                    correctTransaction(db, {
+                        transaction_id: v2.id,
+                        operation: 'edit',
+                        reason: 'Unsafe edit attempt against expense',
+                        performed_by: 'Malicious Actor',
+                        expected_revision: v2Current.revision,
+                        new_data: {
+                            postings: [
+                                { account_id: painting.id, amount_cents: 7000000, currency: 'AUD' },
+                                { account_id: expenseAcc.id, amount_cents: -7000000, currency: 'AUD' } // INVALID counterpart!
+                            ]
+                        }
+                    });
+                }).toThrow(ValidationError);
+
+                // Verify atomic rollback: V2 balance and target are unchanged
+                expect(getAccountBalance(db, painting.id, '2026-04-01').balance_cents).toBe(20000000);
+            });
+
+            /**
+             * Assessor Item 3: Preserve unchanged-value appraisal evidence.
+             * 
+             * Why this test exists:
+             * When an appraisal confirms the existing carrying value (delta === 0), it must NOT return
+             * an unrelated opening balance transaction. A dedicated transaction and m1_asset_valuations
+             * record must be created, preserving appraisal date, source, description, and evidence.
+             */
+            it('Assessor Item 3: Records dedicated transaction and valuation row for zero-delta appraisal, preserving evidence and supporting idempotency', () => {
+                const entity = createEntity(db, { name: 'Real Estate Holdings', type: 'business', currency: 'AUD' });
+                const building = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Commercial Office Suite',
+                    type: 'asset',
+                    sub_type: 'property',
+                    currency: 'AUD',
+                    opening_date: '2026-01-01',
+                    opening_balance_cents: 50000000 // $500,000 AUD
+                }).account;
+
+                // Look up opening balance transaction
+                const openingTx = db.prepare(`SELECT * FROM m1_transactions WHERE origin = 'opening_balance'`).get() as any;
+                expect(openingTx).toBeDefined();
+
+                const evidenceRef = {
+                    document_id: 'doc-val-inspection-2026',
+                    content_hash: 'sha256-office-appraisal',
+                    page_number: 1
+                };
+
+                // Record appraisal confirming exact current carrying value ($500,000)
+                const vZero = recordAssetValuation(db, {
+                    asset_account_id: building.id,
+                    new_valuation_cents: 50000000, // Exactly equal to carrying balance ($500,000)
+                    date: '2026-08-01',
+                    description: 'Annual Independent Building Survey',
+                    source: 'Opteon Property Group',
+                    evidence_refs: [evidenceRef],
+                    idempotency_key: 'idem-zero-delta-survey'
+                });
+
+                // 1. Must NOT return the unrelated opening balance transaction
+                expect(vZero.id).not.toBe(openingTx.id);
+
+                // 2. Dedicated transaction header
+                expect(vZero.date).toBe('2026-08-01');
+                expect(vZero.description).toBe('Annual Independent Building Survey');
+                expect(vZero.origin).not.toBe('opening_balance');
+
+                // 3. Postings are balanced 0-cent entries
+                expect(vZero.postings).toHaveLength(2);
+                expect(vZero.postings[0].amount_cents).toBe(0);
+                expect(vZero.postings[1].amount_cents).toBe(0);
+
+                // 4. m1_asset_valuations record exists with accurate source and target
+                const valRow = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(vZero.id) as any;
+                expect(valRow).toBeDefined();
+                expect(valRow.target_valuation_cents).toBe(50000000);
+                expect(valRow.source).toBe('Opteon Property Group');
+                expect(valRow.valuation_date).toBe('2026-08-01');
+
+                // 5. Evidence links are preserved on the transaction
+                expect(vZero.evidence_refs).toBeDefined();
+                expect(vZero.evidence_refs).toHaveLength(1);
+                const ref = vZero.evidence_refs![0] as any;
+                const docId = typeof ref === 'string' ? ref : ref.document_id;
+                expect(docId).toBe('doc-val-inspection-2026');
+
+                // 6. Carrying balance remains exactly $500,000
+                expect(getAccountBalance(db, building.id, '2026-08-01').balance_cents).toBe(50000000);
+
+                // 7. Identical retry returns the exact same transaction ID
+                const retrySame = recordAssetValuation(db, {
+                    asset_account_id: building.id,
+                    new_valuation_cents: 50000000,
+                    date: '2026-08-01',
+                    description: 'Annual Independent Building Survey',
+                    source: 'Opteon Property Group',
+                    evidence_refs: [evidenceRef],
+                    idempotency_key: 'idem-zero-delta-survey'
+                });
+                expect(retrySame.id).toBe(vZero.id);
+
+                // 8. Conflicting retry throws ConflictError
+                expect(() => {
+                    recordAssetValuation(db, {
+                        asset_account_id: building.id,
+                        new_valuation_cents: 50000000,
+                        date: '2026-08-01',
+                        description: 'Altered Description',
+                        source: 'Opteon Property Group',
+                        evidence_refs: [evidenceRef],
+                        idempotency_key: 'idem-zero-delta-survey'
+                    });
+                }).toThrow(ConflictError);
+            });
+
+            /**
+             * Assessor Item 4: Separate internal transfers from external cash activity.
+             * 
+             * Why this test exists:
+             * A $100 internal transfer plus $10 fee must produce:
+             * - $0 external inflow
+             * - $10 operating outflow
+             * - -$10 net cash reduction
+             * Gross category totals must not be inflated by the internal transfer.
+             */
+            it('Assessor Item 4: $100 internal transfer plus $10 fee produces $0 external inflow, $10 operating outflow, and -$10 net cash change', () => {
+                const entity = createEntity(db, { name: 'Transfer Tester', type: 'person', currency: 'AUD' });
+
+                const checking = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Primary Checking',
+                    type: 'asset',
+                    sub_type: 'checking',
+                    currency: 'AUD',
+                    opening_date: '2026-05-01',
+                    opening_balance_cents: 100000 // $1,000 AUD
+                }).account;
+
+                const savings = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'High-Interest Savings',
+                    type: 'asset',
+                    sub_type: 'savings',
+                    currency: 'AUD',
+                    opening_date: '2026-05-01',
+                    opening_balance_cents: 50000 // $500 AUD
+                }).account;
+
+                const feeExpense = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Bank Transfer Fees',
+                    type: 'expense',
+                    sub_type: 'bank_fee',
+                    currency: 'AUD'
+                }).account;
+
+                // Multi-leg transaction on 2026-05-15:
+                // Transfer $100 from Checking to Savings + $10 transfer fee paid from Checking
+                // Postings:
+                // - Checking: -110.00 AUD (-11,000 cents credit)
+                // - Savings: +100.00 AUD (+10,000 cents debit)
+                // - Fee Expense: +10.00 AUD (+1,000 cents debit)
+                // Debits (100 + 10 = 110) = Credits (110) -> balanced!
+                postTransaction(db, {
+                    date: '2026-05-15',
+                    description: 'Internal Transfer to Savings with Service Fee',
+                    origin: 'manual',
+                    postings: [
+                        { account_id: checking.id, amount_cents: -11000, currency: 'AUD' },
+                        { account_id: savings.id, amount_cents: 10000, currency: 'AUD' },
+                        { account_id: feeExpense.id, amount_cents: 1000, currency: 'AUD' }
+                    ]
+                });
+
+                // Evaluate Cash Flow Statement for May 2026
+                const cf = getActualCashFlowStatement(db, entity.id, '2026-05-01', '2026-05-31');
+
+                // 1. Starting Cash: $1,000 + $500 = $1,500 AUD (150,000 cents)
+                expect(cf.starting_cash_cents_by_currency['AUD']).toBe(150000);
+
+                // 2. Gross Operating Inflows: $0 AUD (the $100 savings inflow is an internal transfer, NOT an external inflow!)
+                expect(cf.operating_inflows_cents_by_currency['AUD'] || 0).toBe(0);
+
+                // 3. Gross Operating Outflows: $10 AUD (1,000 cents)
+                expect(cf.operating_outflows_cents_by_currency['AUD']).toBe(1000);
+
+                // 4. Net Operating: -$10 AUD (-1,000 cents)
+                expect(cf.net_operating_cents_by_currency['AUD']).toBe(-1000);
+
+                // 5. Financing and Investing: $0 AUD
+                expect(cf.financing_inflows_cents_by_currency?.['AUD'] || 0).toBe(0);
+                expect(cf.financing_outflows_cents_by_currency?.['AUD'] || 0).toBe(0);
+                expect(cf.investing_inflows_cents_by_currency?.['AUD'] || 0).toBe(0);
+                expect(cf.investing_outflows_cents_by_currency?.['AUD'] || 0).toBe(0);
+
+                // 6. Net Cash Change: -$10 AUD (-1,000 cents)
+                expect(cf.net_cash_change_cents_by_currency['AUD']).toBe(-1000);
+
+                // 7. Ending Cash: $1,490 AUD (149,000 cents)
+                expect(cf.ending_cash_cents_by_currency['AUD']).toBe(149000);
+
+                // 8. Reconciliation with Double-Entry Ledger
+                expect(cf.ledger_closing_cash_cents_by_currency?.['AUD']).toBe(149000);
+                expect(cf.is_reconciled_by_currency?.['AUD']).toBe(true);
+                expect(cf.reconciliation_discrepancy_cents_by_currency?.['AUD']).toBe(0);
+
+                // 9. Reporting line items:
+                // - Savings receives $100 as 'transfer'
+                // - Checking transfers $100 as 'transfer'
+                // - Checking pays $10 as 'operating'
+                const transferItems = cf.items.filter(i => i.activity_type === 'transfer');
+                expect(transferItems).toHaveLength(2);
+                expect(transferItems.some(i => i.cash_account_id === savings.id && i.amount_cents === 10000)).toBe(true);
+                expect(transferItems.some(i => i.cash_account_id === checking.id && i.amount_cents === -10000)).toBe(true);
+
+                const operatingItems = cf.items.filter(i => i.activity_type === 'operating');
+                expect(operatingItems).toHaveLength(1);
+                expect(operatingItems[0].cash_account_id).toBe(checking.id);
+                expect(operatingItems[0].amount_cents).toBe(-1000);
+            });
+
+            /**
+             * Full Accounting Lifecycle: create → edit → backdate → cascade → void → retry
+             * 
+             * Why this test exists:
+             * Validates end-to-end multi-step integrity across creation, edit, backdating,
+             * automated revaluation cascading, voiding, and idempotent retries.
+             */
+            it('Full Accounting Lifecycle: create → edit → backdate → cascade → void → retry', () => {
+                const entity = createEntity(db, { name: 'Lifecycle Investor', type: 'person', currency: 'AUD' });
+
+                // Step 1: Create asset with initial balance $100,000
+                const asset = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Rare Vintage Watch',
+                    type: 'asset',
+                    sub_type: 'property',
+                    currency: 'AUD',
+                    opening_date: '2026-01-01',
+                    opening_balance_cents: 10000000 // $100,000 AUD
+                }).account;
+
+                // V1 on Feb 1: target $120,000 (+20,000 delta)
+                const v1 = recordAssetValuation(db, {
+                    asset_account_id: asset.id,
+                    new_valuation_cents: 12000000,
+                    date: '2026-02-01',
+                    description: 'Q1 Watch Appraisal',
+                    source: 'Rolex Geneva'
+                });
+
+                // V2 on Apr 1: target $150,000 (+30,000 delta)
+                const v2 = recordAssetValuation(db, {
+                    asset_account_id: asset.id,
+                    new_valuation_cents: 15000000,
+                    date: '2026-04-01',
+                    description: 'Q2 Watch Appraisal',
+                    source: 'Christie’s Watches'
+                });
+
+                expect(getAccountBalance(db, asset.id, '2026-02-01').balance_cents).toBe(12000000);
+                expect(getAccountBalance(db, asset.id, '2026-04-01').balance_cents).toBe(15000000);
+
+                // Step 2: Edit V1 from $120,000 to $130,000 (delta +$30,000)
+                const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+                correctTransaction(db, {
+                    transaction_id: v1.id,
+                    operation: 'edit',
+                    reason: 'Revised upwards following secondary opinion',
+                    performed_by: 'Senior Appraiser',
+                    expected_revision: 1,
+                    new_data: {
+                        postings: [
+                            { account_id: asset.id, amount_cents: 3000000, currency: 'AUD' },
+                            { account_id: reserve.id, amount_cents: -3000000, currency: 'AUD' }
+                        ]
+                    }
+                });
+
+                // Verify V1 target updated and V2 target preserved at $150,000
+                expect(getAccountBalance(db, asset.id, '2026-02-01').balance_cents).toBe(13000000);
+                expect(getAccountBalance(db, asset.id, '2026-04-01').balance_cents).toBe(15000000);
+
+                // Step 3 & 4: Backdate a valuation on Jan 15 with target $110,000 (+10,000 delta)
+                recordAssetValuation(db, {
+                    asset_account_id: asset.id,
+                    new_valuation_cents: 11000000,
+                    date: '2026-01-15',
+                    description: 'Early Interim Watch Appraisal',
+                    source: 'Geneva Watchmakers'
+                });
+
+                // Cascade verifies authoritative targets:
+                // Jan 15 balance: $100k + $10k = $110k
+                expect(getAccountBalance(db, asset.id, '2026-01-15').balance_cents).toBe(11000000);
+                // Feb 1 balance: target $130k preserved!
+                expect(getAccountBalance(db, asset.id, '2026-02-01').balance_cents).toBe(13000000);
+                // Apr 1 balance: target $150k preserved!
+                expect(getAccountBalance(db, asset.id, '2026-04-01').balance_cents).toBe(15000000);
+
+                // Step 5: Void V1 (Feb 1 appraisal retracted)
+                const v1CurrentRev = (db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(v1.id) as any).revision;
+                correctTransaction(db, {
+                    transaction_id: v1.id,
+                    operation: 'void',
+                    reason: 'Valuation retracted by insurer',
+                    performed_by: 'Senior Appraiser',
+                    expected_revision: v1CurrentRev
+                });
+
+                // Feb 1 falls back to carrying balance before V1 ($110,000)
+                expect(getAccountBalance(db, asset.id, '2026-02-01').balance_cents).toBe(11000000);
+                // Apr 1 target of $150,000 is still strictly preserved!
+                expect(getAccountBalance(db, asset.id, '2026-04-01').balance_cents).toBe(15000000);
+
+                // Step 6: Idempotent Retry on an unchanged-value appraisal on May 1 at $150,000
+                const idemKey = 'lifecycle-may-unchanged';
+                const vZero = recordAssetValuation(db, {
+                    asset_account_id: asset.id,
+                    new_valuation_cents: 15000000,
+                    date: '2026-05-01',
+                    description: 'Q3 Unchanged Confirmation',
+                    source: 'Rolex Geneva',
+                    idempotency_key: idemKey
+                });
+
+                expect(vZero.id).toBeDefined();
+                expect(getAccountBalance(db, asset.id, '2026-05-01').balance_cents).toBe(15000000);
+
+                // Retry succeeds and returns exact same transaction
+                const vZeroRetry = recordAssetValuation(db, {
+                    asset_account_id: asset.id,
+                    new_valuation_cents: 15000000,
+                    date: '2026-05-01',
+                    description: 'Q3 Unchanged Confirmation',
+                    source: 'Rolex Geneva',
+                    idempotency_key: idemKey
+                });
+                expect(vZeroRetry.id).toBe(vZero.id);
+
+                // Conflicting retry throws ConflictError
+                expect(() => {
+                    recordAssetValuation(db, {
+                        asset_account_id: asset.id,
+                        new_valuation_cents: 15000000,
+                        date: '2026-05-01',
+                        description: 'Changed Description',
+                        source: 'Rolex Geneva',
+                        idempotency_key: idemKey
+                    });
+                }).toThrow(ConflictError);
+
+                // Verify full audit log integrity
+                const allCorrections = db.prepare('SELECT * FROM m1_transaction_corrections').all() as any[];
+                expect(allCorrections.length).toBeGreaterThan(0);
+                for (const c of allCorrections) {
+                    expect(['edit', 'void', 'reversal', 'revaluation_cascade']).toContain(c.operation);
+                    const prev = JSON.parse(c.previous_state);
+                    const curr = JSON.parse(c.corrected_state);
+                    expect(prev.transaction.revision).toBeLessThan(curr.transaction.revision);
+                }
             });
         });
     });

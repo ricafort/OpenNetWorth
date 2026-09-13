@@ -1398,48 +1398,22 @@ export function recordAssetValuation(
         const postings: Array<{ account_id: string; amount_cents: number; currency: CurrencyCode; memo?: string }> = [];
 
         if (deltaCents === 0) {
-            // Check if there are subsequent valuations to cascade even if delta is 0
-            const subsequentCount = (db.prepare(`
-                SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date > ?
-            `).get(assetAccount.id, valDate) as any).cnt;
-
-            if (subsequentCount === 0) {
-                // Return no-op transaction if balance already exactly equals target
-                const existingRecent = db.prepare(`
-                    SELECT t.* FROM m1_transactions t
-                    JOIN m1_journal_entries j ON t.id = j.transaction_id
-                    WHERE j.account_id = ? AND t.status = 'posted' AND t.date <= ?
-                    ORDER BY t.date DESC, t.created_at DESC LIMIT 1
-                `).get(assetAccount.id, valDate) as any;
-
-                if (existingRecent) {
-                    const postRows = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingRecent.id) as any[];
-                    return {
-                        id: existingRecent.id,
-                        date: existingRecent.date,
-                        description: existingRecent.description,
-                        payee_or_payer: existingRecent.payee_or_payer,
-                        status: existingRecent.status,
-                        origin: existingRecent.origin,
-                        idempotency_key: existingRecent.idempotency_key,
-                        evidence_refs: existingRecent.evidence_refs ? JSON.parse(existingRecent.evidence_refs) : null,
-                        revision: existingRecent.revision,
-                        created_at: existingRecent.created_at,
-                        updated_at: existingRecent.updated_at,
-                        postings: postRows.map(p => ({
-                            id: p.id,
-                            transaction_id: p.transaction_id,
-                            account_id: p.account_id,
-                            amount_cents: p.amount_cents,
-                            currency: p.currency,
-                            memo: p.memo
-                        }))
-                    };
-                }
-            }
-        }
-
-        if (deltaCents >= 0) {
+            // Unchanged-Value Appraisal Evidence Preservation (Assessor Finding 3)
+            // Record the appraisal transaction and valuation record even when carrying value is unchanged.
+            // Two balanced 0-cent postings against Valuation Reserve equity ensure zero carrying balance delta.
+            postings.push({
+                account_id: assetAccount.id,
+                amount_cents: 0,
+                currency,
+                memo: 'Appraisal verified (carrying value unchanged)'
+            });
+            postings.push({
+                account_id: equityAccount.id,
+                amount_cents: 0,
+                currency,
+                memo: 'Unrealized Valuation Reserve (carrying value unchanged)'
+            });
+        } else if (deltaCents > 0) {
             // Valuation Gain: Debit Asset (+), Credit Valuation Equity (-)
             postings.push({
                 account_id: assetAccount.id,
@@ -1612,7 +1586,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                 }
 
                 // Verify accounts exist, currencies match, and all replacement accounts belong to the same sovereign entity
-                const accountLookup = db.prepare('SELECT id, name, currency, entity_id FROM m1_accounts WHERE id = ?');
+                const accountLookup = db.prepare('SELECT id, name, currency, entity_id, type, sub_type FROM m1_accounts WHERE id = ?');
                 let correctionEntityId: string | null = null;
                 for (const p of preparedNew) {
                     const acc = accountLookup.get(p.account_id) as any;
@@ -1642,6 +1616,43 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                     );
                 }
 
+                // Valuation safety check (Assessor Finding 2):
+                // If editing a valuation transaction, verify replacement postings can be interpreted safely as an authoritative valuation
+                const valRowPre = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
+                let computedTargetCents: number | null = null;
+                if (valRowPre) {
+                    const assetPostings = preparedNew.filter(p => p.account_id === valRowPre.account_id);
+                    if (assetPostings.length !== 1) {
+                        throw new ValidationError(
+                            'Cannot safely interpret edited postings as an asset valuation: exactly one asset account posting is required.'
+                        );
+                    }
+                    const counterpartPostings = preparedNew.filter(p => p.account_id !== valRowPre.account_id);
+                    const counterpartAccounts = counterpartPostings.map(p => accountLookup.get(p.account_id) as any);
+                    const allEquityReserve = counterpartAccounts.every(a => a && a.type === 'equity' && a.sub_type === 'valuation_reserve');
+                    if (!allEquityReserve) {
+                        throw new ValidationError(
+                            'Cannot safely interpret edited postings as an asset valuation: counterpart postings must be Unrealized Valuation Reserve equity.'
+                        );
+                    }
+
+                    // Calculate new authoritative target valuation
+                    const priorRows = db.prepare(`
+                        SELECT j.amount_cents
+                        FROM m1_journal_entries j
+                        JOIN m1_transactions t ON j.transaction_id = t.id
+                        WHERE j.account_id = ?
+                          AND t.status = 'posted'
+                          AND t.id != ?
+                          AND (t.date < ? OR (t.date = ? AND t.id NOT IN (SELECT transaction_id FROM m1_asset_valuations WHERE account_id = ?)))
+                    `).all(valRowPre.account_id, input.transaction_id, newDate, newDate, valRowPre.account_id) as Array<{ amount_cents: number }>;
+                    const priorBalance = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
+                    computedTargetCents = priorBalance + assetPostings[0].amount_cents;
+                    if (computedTargetCents <= 0) {
+                        throw new ValidationError(`Target valuation must be strictly positive, calculated: ${computedTargetCents} cents.`);
+                    }
+                }
+
                 // Delete old postings and insert new
                 db.prepare('DELETE FROM m1_journal_entries WHERE transaction_id = ?').run(input.transaction_id);
                 const insertPosting = db.prepare(`
@@ -1652,6 +1663,15 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                     insertPosting.run(p.id, p.transaction_id, p.account_id, p.amount_cents, p.currency, p.memo);
                 }
                 updatedPostings = preparedNew;
+
+                // Update authoritative target in m1_asset_valuations if computed
+                if (valRowPre && computedTargetCents !== null) {
+                    db.prepare('UPDATE m1_asset_valuations SET target_valuation_cents = ?, valuation_date = ? WHERE id = ?').run(
+                        computedTargetCents,
+                        newDate,
+                        valRowPre.id
+                    );
+                }
             }
 
             const res = db.prepare(`
