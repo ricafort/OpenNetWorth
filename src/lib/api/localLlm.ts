@@ -205,7 +205,7 @@ export async function queryLocalLlm(
     const endpoint = config.endpoint || health.endpoint || getLocalLlmEndpoint();
     const model = config.model || health.activeModel || getDefaultModel();
     const temperature = config.temperature ?? 0.7;
-    const maxTokens = config.maxTokens ?? 1000;
+    const maxTokens = config.maxTokens ?? 2048;
 
     if (!health.isAvailable && !config.endpoint) {
         throw new Error('LOCAL_LLM_OFFLINE: Could not reach Local LLM on port 1234 or 11434.');
@@ -218,7 +218,7 @@ export async function queryLocalLlm(
         : `${endpoint.replace(/\/+$/, '')}/chat/completions`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s timeout for local inference
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for local inference
 
     try {
         let body: any;
@@ -258,12 +258,23 @@ export async function queryLocalLlm(
         const data = await res.json();
 
         if (isOllamaNative) {
-            return data.message?.content || '';
+            const ollamaContent = data.message?.content;
+            if (!ollamaContent || !ollamaContent.trim()) {
+                throw new Error('Ollama returned an empty response');
+            }
+            return ollamaContent;
         }
 
-        const content = data.choices?.[0]?.message?.content;
-        if (typeof content !== 'string') {
-            throw new Error('Malformed response from Local LLM');
+        const choice = data.choices?.[0];
+        let content = choice?.message?.content;
+
+        // Fallback for reasoning models (e.g. Qwen 2.5/3.8, DeepSeek R1) that store output in reasoning_content
+        if ((!content || !content.trim()) && choice?.message?.reasoning_content) {
+            content = choice.message.reasoning_content;
+        }
+
+        if (typeof content !== 'string' || !content.trim()) {
+            throw new Error('Local LLM returned an empty or malformed response');
         }
 
         return content;

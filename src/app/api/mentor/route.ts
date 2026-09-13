@@ -60,10 +60,14 @@ STRICT CONSTRAINTS:
                 endpoint: localConfig?.endpoint,
                 model: localConfig?.model,
                 temperature: 0.7,
-                maxTokens: 500,
+                maxTokens: 2048,
             });
 
-            return NextResponse.json({ response: responseText });
+            if (!responseText || !responseText.trim()) {
+                throw new Error('Local LLM returned an empty response');
+            }
+
+            return NextResponse.json({ response: responseText.trim() });
         } catch (llmError: any) {
             console.warn('Local LLM unavailable, using offline wisdom fallback:', llmError.message);
 

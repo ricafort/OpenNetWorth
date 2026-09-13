@@ -203,11 +203,14 @@ export const MentorsPage = () => {
 
             const responses = await Promise.all(
                 selectedMentors.map(async (m) => {
+                    // Strip non-serializable React JSX icon property to avoid circular structure JSON serialization error
+                    const { icon, ...serializableMentor } = m;
+
                     const resp = await fetch('/api/mentor', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            mentor: m,
+                            mentor: serializableMentor,
                             mode,
                             userContext: {
                                 netWorth: metrics.netWorth,
@@ -220,7 +223,8 @@ export const MentorsPage = () => {
                         })
                     });
                     const data = await resp.json();
-                    return { id: m.id, name: m.name, content: data.response || data.error };
+                    const reply = data.response?.trim() || data.error || 'No advice could be generated at this time. Please ensure your Local LLM is active.';
+                    return { id: m.id, name: m.name, content: reply };
                 })
             );
 
@@ -232,7 +236,8 @@ export const MentorsPage = () => {
                 const consensusMsg = `### Consensus Board Summary\n\nBased on the shared wisdom of ${responses.map(r => r.name).join(', ')}, we find common ground.`;
                 setChat(prev => [...prev, { role: 'consensus', content: consensusMsg }]);
             }
-        } catch (e) {
+        } catch (e: any) {
+            console.error('Mentors chat error:', e);
             setChat(prev => [...prev, { role: 'mentor', content: 'Connection error. Ensure your Local LLM (LM Studio on port 1234 or Ollama on port 11434) is running.' }]);
         } finally {
             setIsLoading(false);

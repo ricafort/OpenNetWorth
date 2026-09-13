@@ -49,7 +49,7 @@ Focus on their chosen strategy. Keep it under 3 sentences. Be punchy.`;
     ];
 
     try {
-        const text = await queryLocalLlm(messages, { maxTokens: 150, temperature: 0.7 });
+        const text = await queryLocalLlm(messages, { maxTokens: 1000, temperature: 0.7 });
         return text.trim();
     } catch (error) {
         console.error("Error generating debt advice with local LLM:", error);
@@ -78,7 +78,7 @@ Keep it under 3 sentences. Be punchy and authentic to your persona.`;
     ];
 
     try {
-        const text = await queryLocalLlm(messages, { maxTokens: 150, temperature: 0.7 });
+        const text = await queryLocalLlm(messages, { maxTokens: 1000, temperature: 0.7 });
         return text.trim();
     } catch (error) {
         console.error("Error generating investment advice with local LLM:", error);

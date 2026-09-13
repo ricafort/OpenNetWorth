@@ -45,7 +45,7 @@ JSON Schema:
                 endpoint: localConfig?.endpoint,
                 model: localConfig?.model,
                 temperature: 0.7,
-                maxTokens: 400,
+                maxTokens: 1500,
             });
 
             const jsonMatch = responseText.match(/\{[\s\S]*\}/);

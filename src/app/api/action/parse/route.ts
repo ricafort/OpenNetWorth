@@ -55,7 +55,7 @@ Rules:
                 endpoint: localConfig?.endpoint,
                 model: localConfig?.model,
                 temperature: 0.1,
-                maxTokens: 150,
+                maxTokens: 1000,
             });
 
             // Clean markdown code blocks if the local model wrapped in ```json
