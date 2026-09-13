@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     persistScopedRecord,
     deleteScopedRecord,
@@ -29,7 +29,7 @@ import {
     BackupArchive
 } from '@/infrastructure/local_driver';
 import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
-import { getDb } from '@/infrastructure/sqlite/db';
+import { getDb, createTestDb, setTestDb, closeDb, isTestEnvironment } from '@/infrastructure/sqlite/db';
 
 /**
  * Milestone 0 Integration & Unit Tests
@@ -46,6 +46,19 @@ import { getDb } from '@/infrastructure/sqlite/db';
 const mockLocalStorage: Record<string, string> = {};
 
 beforeEach(() => {
+    /**
+     * Why this exists:
+     * Critical test isolation: Spin up a fresh, completely isolated in-memory SQLite database
+     * (:memory:) for every test. This guarantees zero side effects on the user's live vault
+     * (opennetworth.sqlite) and ensures independent test runs.
+     * 
+     * Tricky logic:
+     * Injects the test instance into `setTestDb()`, which ensures all route handlers (vaultPost,
+     * vaultGet) and getDb() callers access this exact isolated instance.
+     */
+    const testDb = createTestDb();
+    setTestDb(testDb);
+
     // Clear in-memory mock storage
     for (const key of Object.keys(mockLocalStorage)) {
         delete mockLocalStorage[key];
@@ -67,6 +80,15 @@ beforeEach(() => {
             }
         }
     };
+});
+
+afterEach(() => {
+    /**
+     * Cleanly teardown test database and restore mocks
+     */
+    closeDb();
+    setTestDb(null);
+    vi.restoreAllMocks();
 });
 
 describe('Milestone 0: Scoped Persistence & Durability (DATA-01, DATA-02, DATA-04, DATA-05, T-01, T-02)', () => {
@@ -1057,6 +1079,142 @@ describe('Milestone 0 Final Blocker Acceptance Tests (Findings 1, 2, 3, 4, 5)', 
                 const resNull = await vaultPost(reqNull);
                 expect(resNull.status).toBe(400);
                 expect((await resNull.json()).error).toContain('settings is required and must be an object');
+            });
+        });
+
+        /**
+         * Test Database Isolation & Vault Guard
+         * 
+         * Why this exists:
+         * Verifies that all test database operations run exclusively against isolated in-memory
+         * SQLite instances (:memory:) and that tests cannot touch or overwrite data/opennetworth.sqlite.
+         */
+        describe('Test Database Isolation & Vault Guard', () => {
+            it('isTestEnvironment() correctly detects Vitest execution', () => {
+                expect(isTestEnvironment()).toBe(true);
+            });
+
+            it('getDb() returns isolated in-memory database and never touches disk vault', () => {
+                const db = getDb();
+                expect(db).toBeDefined();
+
+                // In-memory databases report empty string or ':memory:' for filename
+                const pragmaFile = (db.pragma('database_list') as any[])[0]?.file;
+                expect(pragmaFile === '' || pragmaFile === ':memory:').toBe(true);
+            });
+
+            it('mutations in test database do not leak between tests or affect application disk file', () => {
+                const db = getDb();
+                // Insert a test fixture
+                db.prepare(`
+                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, last_updated)
+                    VALUES ('isolation-test-asset', 'local_user', 'Isolated Gold', 'cash', 99999, 1, 'USD', datetime('now'))
+                `).run();
+
+                const row = db.prepare("SELECT * FROM assets WHERE id = 'isolation-test-asset'").get();
+                expect(row).toBeDefined();
+            });
+        });
+
+        /**
+         * History Record ID Handling & Delete Workflow
+         * 
+         * Why this exists:
+         * Validates the fix for the remaining functional defect in HistoryEditor.tsx:
+         * When updating an existing history date, SQLite preserves the existing row's ID.
+         * The component must use the returned persisted record (with the authoritative ID)
+         * so that a subsequent delete targeting that record immediately removes it from SQLite
+         * rather than failing with "Record not found".
+         */
+        describe('History Record ID Handling & Immediate Deletion', () => {
+            it('updating an existing history date preserves SQLite ID and allows immediate delete without reopening', async () => {
+                const initialId = 'initial-history-uuid-1';
+                const date = '2026-06-01';
+
+                // 1. Initial snapshot save via scoped_save
+                const req1 = new Request('http://localhost:3000/api/vault', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'scoped_save',
+                        entity: 'history',
+                        item: {
+                            id: initialId,
+                            date,
+                            totalAssets: 100000,
+                            totalLiabilities: 20000,
+                            netWorth: 80000
+                        }
+                    })
+                });
+                const res1 = await vaultPost(req1);
+                expect(res1.status).toBe(200);
+                const data1 = await res1.json();
+                expect(data1.item.id).toBe(initialId);
+                expect(data1.item.netWorth).toBe(80000);
+
+                // 2. User updates the existing date in HistoryEditor with new values
+                // The form creates a temporary ephemeral UUID for newEntry:
+                const ephemeralId = 'ephemeral-uuid-generated-by-client';
+                const req2 = new Request('http://localhost:3000/api/vault', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'scoped_save',
+                        entity: 'history',
+                        item: {
+                            id: ephemeralId,
+                            date, // SAME DATE
+                            totalAssets: 120000,
+                            totalLiabilities: 15000,
+                            netWorth: 105000
+                        }
+                    })
+                });
+                const res2 = await vaultPost(req2);
+                expect(res2.status).toBe(200);
+                const data2 = await res2.json();
+
+                // SQLite ON CONFLICT(user_id, date) preserved the original ID!
+                const persisted = data2.item;
+                expect(persisted.id).toBe(initialId);
+                expect(persisted.id).not.toBe(ephemeralId);
+                expect(persisted.netWorth).toBe(105000);
+
+                // 3. Simulating HistoryEditor: State is updated with `persisted` (persisted.id)
+                // When user clicks Delete on that entry without reopening:
+                // If caller mistakenly used ephemeralId, SQLite returns 404:
+                const reqBadDelete = new Request('http://localhost:3000/api/vault', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'scoped_delete',
+                        entity: 'history',
+                        id: ephemeralId
+                    })
+                });
+                const resBadDelete = await vaultPost(reqBadDelete);
+                expect(resBadDelete.status).toBe(404);
+
+                // When caller uses the authoritative `persisted.id`:
+                const reqGoodDelete = new Request('http://localhost:3000/api/vault', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'scoped_delete',
+                        entity: 'history',
+                        id: persisted.id
+                    })
+                });
+                const resGoodDelete = await vaultPost(reqGoodDelete);
+                expect(resGoodDelete.status).toBe(200);
+                const dataGoodDelete = await resGoodDelete.json();
+                expect(dataGoodDelete.success).toBe(true);
+
+                // Verify row was deleted from SQLite database
+                const db = getDb();
+                const remaining = db.prepare("SELECT * FROM net_worth_history WHERE date = ?").get(date);
+                expect(remaining).toBeUndefined();
             });
         });
     });

@@ -73,10 +73,23 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
         };
 
         try {
-            await persistScopedRecord('history', newEntry);
+            /**
+             * Why this exists:
+             * Persists the history entry to SQLite via scoped save.
+             * 
+             * Tricky logic:
+             * Capture and use the authoritative `persisted` record returned by persistScopedRecord!
+             * When updating an existing history date, SQLite preserves the pre-existing row's primary key `id`.
+             * If we used `newEntry.id` (a newly generated ephemeral UUID), the displayed list would hold an
+             * ID that does not exist in SQLite, causing a subsequent delete on that updated item to fail with
+             * "Record not found".
+             * 
+             * TODO: Support batch editing of multiple historical snapshots simultaneously.
+             */
+            const persisted = await persistScopedRecord('history', newEntry);
 
-            // Update confirmed displayed list only after successful persistence
-            const updated = [...history.filter(h => h.date !== newEntry.date), newEntry]
+            // Update confirmed displayed list only after successful persistence with authoritative persisted ID
+            const updated = [...history.filter(h => h.date !== persisted.date), persisted]
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             setHistory(updated);
 

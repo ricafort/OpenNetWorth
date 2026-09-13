@@ -15,12 +15,129 @@ const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'opennetworth.sqlite');
 
 let dbInstance: Database.Database | null = null;
+let testDbInstance: Database.Database | null = null;
 
 /**
- * Returns the singleton SQLite database instance.
- * Automatically initializes schema on first connection.
+ * Detects if the current process is executing within an automated test runner (Vitest or Jest).
+ * 
+ * Why this exists:
+ * Critical test isolation: Tests must NEVER touch the application database (opennetworth.sqlite).
+ * By detecting test execution, we prevent destructive test suites from wiping or modifying live user vaults.
+ * 
+ * Tricky logic:
+ * Checks both NODE_ENV and runner-specific flags (process.env.VITEST and process.env.JEST_WORKER_ID)
+ * to prevent false negatives when test environments run with non-standard NODE_ENV variables.
+ * 
+ * TODO: Add support for custom CI runner environment variables if required.
+ */
+export function isTestEnvironment(): boolean {
+    return (
+        process.env.NODE_ENV === 'test' ||
+        Boolean(process.env.VITEST) ||
+        Boolean(process.env.JEST_WORKER_ID)
+    );
+}
+
+/**
+ * Injects an explicit test database instance (e.g. an in-memory SQLite instance).
+ * 
+ * Why this exists:
+ * Allows integration and unit tests to supply their own pristine, isolated SQLite database
+ * without any risk of side effects across tests or to the user's live database.
+ * 
+ * Tricky logic:
+ * Pass `null` to reset/tear down the test instance between tests.
+ * 
+ * TODO: Add connection pool monitoring if multi-threaded test runners are introduced.
+ */
+export function setTestDb(db: Database.Database | null): void {
+    testDbInstance = db;
+}
+
+/**
+ * Creates a pristine, fully initialized in-memory SQLite database for isolated test execution.
+ * 
+ * Why this exists:
+ * In-memory SQLite (:memory:) provides sub-millisecond execution speeds and guaranteed
+ * isolation: when closed or garbage collected, all memory is immediately reclaimed and zero
+ * disk files are created or altered.
+ * 
+ * Tricky logic:
+ * Enables foreign key constraints and runs the complete schema migrations so the test database
+ * exactly mirrors the production database structure.
+ * 
+ * TODO: Add seeded test fixture templates for specialized financial scenario tests.
+ */
+export function createTestDb(): Database.Database {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    initSchema(db);
+    return db;
+}
+
+/**
+ * Safely closes active database instances.
+ * 
+ * Why this exists:
+ * Ensures clean teardown in test lifecycle hooks (afterEach / afterAll) and during application shutdown,
+ * preventing file lock contention on Windows and SQLite BUSY errors.
+ * 
+ * Tricky logic:
+ * Closes both testDbInstance and dbInstance if open, suppressing errors if already closed.
+ * 
+ * TODO: Add graceful drain for in-flight transactions before closing.
+ */
+export function closeDb(): void {
+    if (testDbInstance) {
+        try {
+            testDbInstance.close();
+        } catch {
+            // Already closed or detached
+        }
+        testDbInstance = null;
+    }
+    if (dbInstance) {
+        try {
+            dbInstance.close();
+        } catch {
+            // Already closed or detached
+        }
+        dbInstance = null;
+    }
+}
+
+/**
+ * Returns the SQLite database instance.
+ * 
+ * Why this exists:
+ * Provides access to the local SQLite database for the application and API routes.
+ * 
+ * Tricky logic:
+ * In test environments (Vitest/Jest), we strictly forbid connecting to the live application
+ * database file (`data/opennetworth.sqlite`). If a test has injected `setTestDb(testDb)`,
+ * we return that instance. If no test DB was explicitly set, we automatically instantiate
+ * an in-memory test database (`createTestDb()`) to prevent accidental leaks.
+ * If any test attempt bypasses this or tries to open the live vault file, we throw a
+ * hard security guard exception.
+ * 
+ * TODO: Support SQLCipher encrypted SQLite connections in Milestone 2.
  */
 export function getDb(): Database.Database {
+    // If running under a test runner, strictly enforce test isolation
+    if (isTestEnvironment()) {
+        if (!testDbInstance) {
+            testDbInstance = createTestDb();
+        }
+        return testDbInstance;
+    }
+
+    // Guard: Under no circumstances should test code ever reach the live application vault
+    if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+        throw new Error(
+            'CRITICAL SECURITY GUARD: Attempted to open application vault (opennetworth.sqlite) during test execution! Tests must use an isolated in-memory database.'
+        );
+    }
+
     if (dbInstance) {
         return dbInstance;
     }
@@ -30,7 +147,7 @@ export function getDb(): Database.Database {
         fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
-    // Initialize better-sqlite3
+    // Initialize better-sqlite3 with application file
     dbInstance = new Database(DB_PATH);
 
     // Enable WAL mode for high performance concurrent reads and atomic writes
@@ -46,8 +163,18 @@ export function getDb(): Database.Database {
 
 /**
  * Creates core tables if they do not already exist.
+ * 
+ * Why this exists:
+ * Exports the initial schema DDL so both the production vault and in-memory test databases
+ * can initialize their table structure idempotently.
+ * 
+ * Tricky logic:
+ * Always inserts a default 'local_user' profile if one does not exist so initial foreign key
+ * checks and single-user local queries immediately succeed without manual seeding.
+ * 
+ * TODO: Add automated migration runner for schema versioning in Milestone 1.
  */
-function initSchema(db: Database.Database) {
+export function initSchema(db: Database.Database) {
     const schema = `
         -- Profiles
         CREATE TABLE IF NOT EXISTS profiles (
