@@ -130,6 +130,9 @@ export const DailyEventsView: React.FC = () => {
     const [formLoanInterest, setFormLoanInterest] = useState('');
     const [formLoanFee, setFormLoanFee] = useState('');
 
+    // Stable idempotency key across submission retries (M1-SAFE-05)
+    const [submissionIdempotencyKey, setSubmissionIdempotencyKey] = useState<string>(() => crypto.randomUUID());
+
     const fetchData = async (entityId?: string) => {
         setIsLoading(true);
         setError(null);
@@ -179,6 +182,9 @@ export const DailyEventsView: React.FC = () => {
         setIsSubmitting(true);
 
         try {
+            const selectedAccount = accounts.find(a => a.id === formAccountId);
+            const selectedCurrency = (selectedAccount?.currency || 'USD') as CurrencyCode;
+
             let action = '';
             let payload: any = {};
 
@@ -188,10 +194,11 @@ export const DailyEventsView: React.FC = () => {
                     entity_id: selectedEntityId,
                     bank_account_id: formAccountId,
                     category: formCategory,
-                    amount_cents: parseToCents(formAmount),
+                    amount_cents: parseToCents(formAmount, selectedCurrency),
                     date: formDate,
                     payer: formPayee,
-                    description: formDescription.trim() || `Income - ${formPayee || formCategory}`
+                    description: formDescription.trim() || `Income - ${formPayee || formCategory}`,
+                    idempotency_key: submissionIdempotencyKey
                 };
             } else if (activeTab === 'expense') {
                 action = 'record_expense';
@@ -199,34 +206,37 @@ export const DailyEventsView: React.FC = () => {
                     entity_id: selectedEntityId,
                     payment_account_id: formAccountId,
                     category: formCategory,
-                    amount_cents: parseToCents(formAmount),
+                    amount_cents: parseToCents(formAmount, selectedCurrency),
                     date: formDate,
                     payee: formPayee,
-                    description: formDescription.trim() || `Expense - ${formPayee || formCategory}`
+                    description: formDescription.trim() || `Expense - ${formPayee || formCategory}`,
+                    idempotency_key: submissionIdempotencyKey
                 };
             } else if (activeTab === 'transfer') {
                 action = 'record_transfer';
                 payload = {
                     from_account_id: formAccountId,
                     to_account_id: formToAccountId,
-                    amount_cents: parseToCents(formAmount),
+                    amount_cents: parseToCents(formAmount, selectedCurrency),
                     date: formDate,
-                    description: formDescription.trim() || 'Internal Account Transfer'
+                    description: formDescription.trim() || 'Internal Account Transfer',
+                    idempotency_key: submissionIdempotencyKey
                 };
             } else if (activeTab === 'card_repayment') {
                 action = 'record_card_repayment';
                 payload = {
                     bank_account_id: formAccountId,
                     card_account_id: formToAccountId,
-                    amount_cents: parseToCents(formAmount),
+                    amount_cents: parseToCents(formAmount, selectedCurrency),
                     date: formDate,
-                    description: formDescription.trim() || 'Credit Card Bill Repayment'
+                    description: formDescription.trim() || 'Credit Card Bill Repayment',
+                    idempotency_key: submissionIdempotencyKey
                 };
             } else if (activeTab === 'loan_repayment') {
                 action = 'record_loan_repayment';
-                const principal = parseToCents(formLoanPrincipal || '0');
-                const interest = parseToCents(formLoanInterest || '0');
-                const fee = parseToCents(formLoanFee || '0');
+                const principal = parseToCents(formLoanPrincipal || '0', selectedCurrency);
+                const interest = parseToCents(formLoanInterest || '0', selectedCurrency);
+                const fee = parseToCents(formLoanFee || '0', selectedCurrency);
 
                 payload = {
                     bank_account_id: formAccountId,
@@ -236,7 +246,8 @@ export const DailyEventsView: React.FC = () => {
                     fee_cents: fee,
                     date: formDate,
                     payee: formPayee,
-                    description: formDescription.trim() || 'Loan Instalment Payment'
+                    description: formDescription.trim() || 'Loan Instalment Payment',
+                    idempotency_key: submissionIdempotencyKey
                 };
             }
 
@@ -251,7 +262,8 @@ export const DailyEventsView: React.FC = () => {
                 throw new Error(errData.error || 'Failed to record transaction');
             }
 
-            // Success
+            // Success - generate fresh idempotency key for next submission
+            setSubmissionIdempotencyKey(crypto.randomUUID());
             setIsRecordModalOpen(false);
             // Reset form fields
             setFormAmount('');
@@ -410,12 +422,12 @@ export const DailyEventsView: React.FC = () => {
                 </div>
             )}
 
-            {/* Cash Flow Summary Cards */}
+            {/* Accrual Income & Expense Summary Cards */}
             {cashFlow && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
                         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                            <span>Period Inflows (Income)</span>
+                            <span>Period Income</span>
                             <ArrowDownRight className="w-4 h-4 text-emerald-500" />
                         </div>
                         <div className="text-xl font-bold text-slate-900 dark:text-slate-100">
@@ -424,11 +436,12 @@ export const DailyEventsView: React.FC = () => {
                             ))}
                             {Object.keys(cashFlow.formatted_income_by_currency).length === 0 && '$0.00'}
                         </div>
+                        <div className="text-[11px] text-slate-400 mt-1">Accrual income recognized in period</div>
                     </div>
 
                     <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
                         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                            <span>Period Outflows (Expenses)</span>
+                            <span>Period Expenses</span>
                             <ArrowUpRight className="w-4 h-4 text-rose-500" />
                         </div>
                         <div className="text-xl font-bold text-slate-900 dark:text-slate-100">
@@ -437,11 +450,12 @@ export const DailyEventsView: React.FC = () => {
                             ))}
                             {Object.keys(cashFlow.formatted_expenses_by_currency).length === 0 && '$0.00'}
                         </div>
+                        <div className="text-[11px] text-slate-400 mt-1">Accrual expenses recognized in period</div>
                     </div>
 
                     <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
                         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                            <span>Net Savings / Retained</span>
+                            <span>Income Minus Expenses</span>
                             <Building2 className="w-4 h-4 text-blue-500" />
                         </div>
                         <div className="text-xl font-bold text-slate-900 dark:text-slate-100">
@@ -450,6 +464,7 @@ export const DailyEventsView: React.FC = () => {
                             ))}
                             {Object.keys(cashFlow.formatted_net_savings_by_currency).length === 0 && '$0.00'}
                         </div>
+                        <div className="text-[11px] text-slate-400 mt-1">Net period earnings / retained savings</div>
                     </div>
                 </div>
             )}
