@@ -210,13 +210,22 @@ export function loadSettings(): UserSettings {
     return { ...defaults, ...get<Partial<UserSettings>>(STORAGE_KEYS.SETTINGS) };
 }
 
+/**
+ * Saves general user settings.
+ * 
+ * Why this exists:
+ * Persists application preferences (baseCurrency, theme, checkInFrequency).
+ * 
+ * Tricky logic:
+ * Must commit to SQLite FIRST before updating the browser cache.
+ * We delegate directly to persistScopedRecord, which only updates local cache
+ * upon a verified HTTP 200 response, and propagates HTTP errors (e.g. 500) and
+ * network rejections directly to the caller.
+ * 
+ * TODO: Support partial settings patching if preferences become modular.
+ */
 export async function saveSettings(settings: UserSettings): Promise<void> {
-    set(STORAGE_KEYS.SETTINGS, settings);
-    try {
-        await persistScopedRecord('settings' as any, settings as any);
-    } catch (e) {
-        console.error('Failed to durably save settings to SQLite:', e);
-    }
+    await persistScopedRecord('settings' as any, settings as any);
 }
 
 // Assets
@@ -242,32 +251,48 @@ export function loadNetWorthHistory(): NetWorthSnapshot[] {
     return get<NetWorthSnapshot[]>(STORAGE_KEYS.NET_WORTH_HISTORY) || [];
 }
 
+/**
+ * Saves the entire net worth history array.
+ * 
+ * Why this exists:
+ * Used when backfilling, bulk importing, or replacing historical snapshot series.
+ * 
+ * Tricky logic:
+ * Commit to SQLite first and verify HTTP 200 before updating local storage cache.
+ * Throws on HTTP error or network rejection to prevent silent data loss or cache desync.
+ * 
+ * TODO: Support paginated snapshot retrieval if history exceeds 1,000 records.
+ */
 export async function saveNetWorthHistory(history: NetWorthSnapshot[]): Promise<void> {
-    set(STORAGE_KEYS.NET_WORTH_HISTORY, history);
     if (typeof window !== 'undefined') {
-        try {
-            await fetch('/api/vault', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ history })
-            });
-        } catch (e) {
-            console.error('Failed to durably persist net worth history to SQLite:', e);
+        const res = await fetch('/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Durable net worth history write failed' }));
+            throw new Error(err.error || 'Failed to persist net worth history to local SQLite database');
         }
     }
+    // Commit succeeded: update local cache
+    set(STORAGE_KEYS.NET_WORTH_HISTORY, history);
 }
 
+/**
+ * Saves a single net worth snapshot (e.g. at end of monthly check-in or asset change).
+ * 
+ * Why this exists:
+ * Records the point-in-time net worth calculation.
+ * 
+ * Tricky logic:
+ * Delegates to persistScopedRecord which performs commit-first SQLite storage,
+ * updating the local history cache only after verified HTTP 200, and propagating errors.
+ * 
+ * TODO: Auto-prune duplicate daily snapshots if multiple edits occur in one calendar day.
+ */
 export async function saveFullSnapshot(snapshot: NetWorthSnapshot): Promise<void> {
-    const history = loadNetWorthHistory();
-    // Remove existing entry for same date if exists
-    const filtered = history.filter(h => h.date !== snapshot.date);
-    const updated = [...filtered, snapshot].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    set(STORAGE_KEYS.NET_WORTH_HISTORY, updated);
-    try {
-        await persistScopedRecord('history', snapshot);
-    } catch (e) {
-        console.error('Failed to durably persist snapshot to SQLite:', e);
-    }
+    await persistScopedRecord('history', snapshot);
 }
 
 // Goals
@@ -567,7 +592,7 @@ export async function importData(jsonString: string): Promise<{ success: boolean
         saveLiabilities(vault.liabilities);
         saveGoals(vault.goals);
         saveRecurringTransactions(vault.recurring);
-        saveNetWorthHistory(vault.history);
+        set(STORAGE_KEYS.NET_WORTH_HISTORY, vault.history);
         saveCashFlow(vault.cashFlow);
 
         if (vault.settings) {
@@ -602,13 +627,19 @@ export function loadFreedomSettings(): { strategy: PayoffStrategy; extraMonthlyP
     return { ...defaults, ...saved };
 }
 
+/**
+ * Saves debt payoff freedom settings (strategy, extra monthly payment).
+ * 
+ * Why this exists:
+ * Configures the debt snowball/avalanche acceleration engine.
+ * 
+ * Tricky logic:
+ * Commit to SQLite first before updating cache. Propagates errors to caller.
+ * 
+ * TODO: Allow custom debt priority ordering beyond snowball and avalanche.
+ */
 export async function saveFreedomSettings(settings: { strategy: PayoffStrategy; extraMonthlyPayment: number }): Promise<void> {
-    set(STORAGE_KEYS.FREEDOM_SETTINGS, settings);
-    try {
-        await persistScopedRecord('settings' as any, { key: 'freedomSettings', value: settings } as any);
-    } catch (e) {
-        console.error('Failed to durably save freedom settings to SQLite:', e);
-    }
+    await persistScopedRecord('settings' as any, { key: 'freedomSettings', value: settings } as any);
 }
 
 // Recurring Transactions
@@ -697,63 +728,77 @@ export function applyRecurringToMonth(month: string): boolean {
     return true;
 }
 
+/**
+ * Synchronizes the Debt Freedom Accelerator as an active recurring transaction.
+ * 
+ * Why this exists:
+ * When extra debt payments are budgeted in Freedom Settings, this creates or updates
+ * an automatic monthly recurring expense transaction so cash flow accurately reflects it.
+ * 
+ * Tricky logic:
+ * Commit to SQLite first via persistScopedRecord, which propagates failures to the caller
+ * and only updates the browser cache upon verified HTTP 200 commit.
+ * 
+ * TODO: Link recurring payment directly to specific liability payoff timeline.
+ */
 export async function updateDebtRecurringTransaction(amount: number): Promise<void> {
     const DEBT_TRX_ID = 'debt-freedom-accelerator';
     const transactions = loadRecurringTransactions();
-    const existingIndex = transactions.findIndex(t => t.id === DEBT_TRX_ID);
+    const existing = transactions.find(t => t.id === DEBT_TRX_ID);
 
     if (amount <= 0) {
-        if (existingIndex >= 0) {
-            transactions[existingIndex].amount = 0;
-            transactions[existingIndex].is_active = false;
-            set(STORAGE_KEYS.RECURRING, transactions);
-            try {
-                await persistScopedRecord('recurring', transactions[existingIndex]);
-            } catch (e) {
-                console.error('Failed to update debt accelerator recurring status in SQLite:', e);
-            }
+        if (existing) {
+            const deactivated: RecurringTransaction = {
+                ...existing,
+                amount: 0,
+                is_active: false
+            };
+            await persistScopedRecord('recurring', deactivated);
         }
         return;
     }
 
-    const newTrx: RecurringTransaction = {
-        id: DEBT_TRX_ID,
-        name: 'Debt Freedom Accelerator',
-        amount: amount,
-        type: 'expense',
-        frequency: 'monthly',
-        category: 'Debt Repayment',
-        start_date: new Date().toISOString().split('T')[0],
-        is_active: true,
-        currency: 'USD'
-    };
+    const targetTrx: RecurringTransaction = existing
+        ? { ...existing, amount, is_active: true }
+        : {
+            id: DEBT_TRX_ID,
+            name: 'Debt Freedom Accelerator',
+            amount: amount,
+            type: 'expense',
+            frequency: 'monthly',
+            category: 'Debt Repayment',
+            start_date: new Date().toISOString().split('T')[0],
+            is_active: true,
+            currency: 'USD'
+        };
 
-    if (existingIndex >= 0) {
-        transactions[existingIndex] = { ...transactions[existingIndex], amount, is_active: true };
-    } else {
-        transactions.push(newTrx);
-    }
-    set(STORAGE_KEYS.RECURRING, transactions);
-
-    try {
-        await persistScopedRecord('recurring', existingIndex >= 0 ? transactions[existingIndex] : newTrx);
-    } catch (e) {
-        console.error('Failed to durably persist debt accelerator recurring transaction:', e);
-    }
+    await persistScopedRecord('recurring', targetTrx);
 }
 
+/**
+ * Wipes all user data across both SQLite and local storage.
+ * 
+ * Why this exists:
+ * Used during reset app / re-onboard danger zone actions.
+ * 
+ * Tricky logic:
+ * Issue durable wipe to SQLite first. If SQLite returns an error or network rejects,
+ * throw immediately without clearing localStorage, so the user's data is not prematurely lost.
+ * 
+ * TODO: Add confirmation token requirement for API-level wipe operations.
+ */
 export async function clearAllData(): Promise<void> {
     if (typeof window === 'undefined') return;
-    localStorage.clear();
-    try {
-        await fetch('/api/vault', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'clear_vault' })
-        });
-    } catch (e) {
-        console.error('Failed to clear SQLite vault:', e);
+    const res = await fetch('/api/vault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear_vault' })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to clear SQLite vault' }));
+        throw new Error(err.error || 'Failed to clear local SQLite database');
     }
+    localStorage.clear();
     window.dispatchEvent(new Event('opennetworth_data_updated'));
     window.dispatchEvent(new Event('clearworth_data_updated'));
 }
@@ -840,13 +885,19 @@ export function loadDashboardLayout(): DashboardConfig | null {
     return get<DashboardConfig>(STORAGE_KEYS_DASHBOARD);
 }
 
+/**
+ * Saves user dashboard layout customization.
+ * 
+ * Why this exists:
+ * Allows user to toggle and reorder dashboard widgets.
+ * 
+ * Tricky logic:
+ * Commit to SQLite first before updating cache. Propagates errors to caller.
+ * 
+ * TODO: Provide cloud sync or export for dashboard layouts across devices.
+ */
 export async function saveDashboardLayout(config: DashboardConfig): Promise<void> {
-    set(STORAGE_KEYS_DASHBOARD, config);
-    try {
-        await persistScopedRecord('settings' as any, { key: 'dashboardLayout', value: config } as any);
-    } catch (e) {
-        console.error('Failed to durably save dashboard layout to SQLite:', e);
-    }
+    await persistScopedRecord('settings' as any, { key: 'dashboardLayout', value: config } as any);
 }
 
 /**

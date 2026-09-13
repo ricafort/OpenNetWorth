@@ -23,16 +23,39 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
     const [newAssets, setNewAssets] = useState('');
     const [newLiabilities, setNewLiabilities] = useState('');
 
+    // Error and saving state for user-facing feedback and input retention (Milestone 0)
+    const [error, setError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
     useEffect(() => {
         if (isOpen) {
+            setError(null);
             // Load and sort desc by date
             const loaded = loadNetWorthHistory();
             setHistory(loaded.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         }
     }, [isOpen]);
 
+    /**
+     * Handles adding a new historical snapshot.
+     * 
+     * Why this exists:
+     * Allows backfilling or manually recording net worth snapshots.
+     * 
+     * Tricky logic:
+     * In accordance with honest persistence rules (Milestone 0):
+     * 1. Attempt persistence to SQLite first.
+     * 2. Only on HTTP 200 / success: update displayed history list, clear form fields, and notify parent via onSave().
+     * 3. On failure: retain form inputs (newDate, newAssets, newLiabilities) and the existing history list,
+     *    display an actionable error message, and do NOT invoke onSave().
+     * 
+     * TODO: Support importing CSV historical series directly from bank exports.
+     */
     const handleAdd = async () => {
-        if (!newDate || !newAssets) return;
+        if (!newDate || !newAssets || isSaving) return;
+
+        setError(null);
+        setIsSaving(true);
 
         const assetsBase = parseFloat(newAssets);
         const liabilitiesBase = parseFloat(newLiabilities || '0');
@@ -49,36 +72,63 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
             netWorth: Math.round(assetsUSD - liabilitiesUSD)
         };
 
-        const updated = [...history, newEntry].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setHistory(updated);
         try {
             await persistScopedRecord('history', newEntry);
-        } catch (err) {
+
+            // Update confirmed displayed list only after successful persistence
+            const updated = [...history.filter(h => h.date !== newEntry.date), newEntry]
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            setHistory(updated);
+
+            // Reset form fields only on successful commit
+            setNewAssets('');
+            setNewLiabilities('');
+            setNewDate('');
+
+            onSave();
+        } catch (err: any) {
             console.error('Failed to persist history snapshot to SQLite:', err);
+            setError(err.message || 'Failed to save snapshot to local database. Your input has been preserved.');
+        } finally {
+            setIsSaving(false);
         }
-
-        // Reset form
-        setNewAssets('');
-        setNewLiabilities('');
-        setNewDate('');
-
-        onSave();
     };
 
+    /**
+     * Handles deleting a historical snapshot.
+     * 
+     * Why this exists:
+     * Allows removing erroneous or duplicate snapshots.
+     * 
+     * Tricky logic:
+     * Delete from SQLite first. If deletion fails, keep the displayed list intact,
+     * show an actionable error message, and do not call onSave().
+     * 
+     * TODO: Add undo toast support for deleted snapshots.
+     */
     const handleDelete = async (dateToDelete: string) => {
+        if (isSaving) return;
+        setError(null);
+        setIsSaving(true);
+
         const itemToDelete = history.find(h => h.date === dateToDelete);
-        const updated = history.filter(h => h.date !== dateToDelete);
-        setHistory(updated);
         try {
             if (itemToDelete?.id) {
                 await deleteScopedRecord('history', itemToDelete.id);
             } else {
                 await deleteScopedRecord('history', dateToDelete);
             }
-        } catch (err) {
+
+            // Update displayed list only after confirmed deletion
+            const updated = history.filter(h => h.date !== dateToDelete);
+            setHistory(updated);
+            onSave();
+        } catch (err: any) {
             console.error('Failed to delete history snapshot from SQLite:', err);
+            setError(err.message || 'Failed to delete snapshot from local database. Record has not been removed.');
+        } finally {
+            setIsSaving(false);
         }
-        onSave();
     };
 
     const handleGenerateMock = () => {
@@ -109,6 +159,19 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                    {/* Error Banner */}
+                    {error && (
+                        <div role="alert" className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium flex items-center justify-between">
+                            <span>{error}</span>
+                            <button
+                                onClick={() => setError(null)}
+                                className="text-rose-500 hover:text-rose-700 ml-2 font-bold text-sm"
+                                aria-label="Dismiss error"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                    )}
 
                     {/* Add New Form */}
                     <div className="bg-muted/30 p-5 rounded-2xl border border-border">
@@ -147,10 +210,10 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
                             </div>
                             <button
                                 onClick={handleAdd}
-                                disabled={!newDate || !newAssets}
+                                disabled={!newDate || !newAssets || isSaving}
                                 className="bg-primary text-primary-foreground font-black py-2.5 px-6 rounded-xl hover:opacity-90 disabled:opacity-50 transition-all text-sm uppercase tracking-wider active:scale-95 shadow-lg shadow-black/5"
                             >
-                                Add
+                                {isSaving ? 'Saving...' : 'Add'}
                             </button>
                         </div>
                     </div>
@@ -202,7 +265,9 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
                                                 <td className="px-5 py-4 text-right">
                                                     <button
                                                         onClick={() => handleDelete(entry.date)}
-                                                        className="text-muted-foreground/30 hover:text-rose-500 transition-all p-1 hover:scale-110"
+                                                        disabled={isSaving}
+                                                        aria-label={`Delete snapshot for ${entry.date}`}
+                                                        className="text-muted-foreground/30 hover:text-rose-500 transition-all p-1 hover:scale-110 disabled:opacity-30 disabled:pointer-events-none"
                                                     >
                                                         <Trash2 size={14} />
                                                     </button>

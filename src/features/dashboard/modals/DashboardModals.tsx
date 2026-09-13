@@ -32,15 +32,22 @@ export default function DashboardModals() {
         }
     }, []);
 
-    const handleCheckInUpdate = () => {
+    const handleCheckInUpdate = async () => {
         const settings = loadSettings();
-        saveSettings({ ...settings, lastCheckIn: new Date().toISOString() });
+        try {
+            await saveSettings({ ...settings, lastCheckIn: new Date().toISOString() });
+        } catch (e) {
+            console.error('Failed to update lastCheckIn in SQLite:', e);
+        }
         setIsCheckInOpen(false);
     };
 
-    const handleSettingsSave = (newSettings: any) => {
-        saveSettings(newSettings);
-        // refreshAttributes(); // Context data is now reactive query-based
+    const handleSettingsSave = (_newSettings: any) => {
+        /**
+         * Why this exists:
+         * GeneralSettingsModal already commits settings durably to SQLite before invoking onSave.
+         * Reactive UI updates are already dispatched via window events.
+         */
     };
 
     return (

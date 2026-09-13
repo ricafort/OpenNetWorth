@@ -27,20 +27,48 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
         extraMonthlyPayment: 500
     });
 
+    // Error and saving state for user-facing feedback and input retention (Milestone 0)
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
     const [isLocalAiModalOpen, setIsLocalAiModalOpen] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
+            setSaveError(null);
             setSettings(loadSettings());
             setFreedomSettings(loadFreedomSettings());
         }
     }, [isOpen]);
 
+    /**
+     * Handles saving general settings and freedom settings.
+     * 
+     * Why this exists:
+     * Commits base currency, check-in frequency, and debt payoff settings.
+     * 
+     * Tricky logic:
+     * Must commit to SQLite first (via saveSettings and saveFreedomSettings).
+     * If any error occurs, do NOT close the modal, keep all current selections intact,
+     * display an actionable error message, and do NOT invoke onSave callback.
+     * Close modal and invoke onSave ONLY after both commits succeed.
+     * 
+     * TODO: Add granular feedback if one sub-setting succeeds while another fails.
+     */
     const handleSave = async () => {
-        await saveSettings(settings);
-        await saveFreedomSettings(freedomSettings);
-        if (onSave) onSave(settings);
-        onClose();
+        setSaveError(null);
+        setIsSaving(true);
+        try {
+            await saveSettings(settings);
+            await saveFreedomSettings(freedomSettings);
+            if (onSave) onSave(settings);
+            onClose();
+        } catch (err: any) {
+            console.error('Failed to save settings to local SQLite database:', err);
+            setSaveError(err.message || 'Failed to save settings to local database. Your selections have been preserved.');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     if (!isOpen) return null;
@@ -56,6 +84,19 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
                 </div>
 
                 <div className="p-8 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
+                    {/* Error Banner */}
+                    {saveError && (
+                        <div role="alert" className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium flex items-center justify-between">
+                            <span>{saveError}</span>
+                            <button
+                                onClick={() => setSaveError(null)}
+                                className="text-rose-500 hover:text-rose-700 ml-2 font-bold text-sm"
+                                aria-label="Dismiss error"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                    )}
                     {/* Base Currency */}
                     <div>
                         <div className="flex justify-between items-center mb-4">
@@ -185,10 +226,11 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
                 <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-end px-8 shrink-0">
                     <button
                         onClick={handleSave}
-                        className="flex items-center gap-2 px-8 py-3 bg-slate-950 text-white rounded-xl font-black uppercase text-xs hover:bg-black transition-all shadow-md active:scale-95"
+                        disabled={isSaving}
+                        className="flex items-center gap-2 px-8 py-3 bg-slate-950 text-white rounded-xl font-black uppercase text-xs hover:bg-black transition-all shadow-md active:scale-95 disabled:opacity-50"
                     >
                         <Save size={16} />
-                        Save Changes
+                        {isSaving ? 'Saving...' : 'Save Changes'}
                     </button>
                 </div>
             </div>

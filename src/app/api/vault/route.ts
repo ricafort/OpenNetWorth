@@ -468,11 +468,18 @@ export async function POST(request: Request) {
         const isBulkRestore = action === 'bulk_restore';
 
         /**
-         * Why this exists (Finding 5):
+         * Why this exists (Finding 5 & Milestone 0 final signoff):
          * Protects against incomplete destructive restore requests.
-         * The server must independently validate that all 6 core collections are present
-         * and formatted as arrays, and pre-validate record data integrity BEFORE executing
-         * any table deletions.
+         * The server must independently validate that all 6 core financial collections
+         * AND the settings object are present and well-formed BEFORE executing any table deletions.
+         * 
+         * Tricky logic:
+         * In a bulk restore, the settings table is cleared alongside financial records.
+         * If settings is omitted or malformed, restoring without it would permanently erase
+         * the user's existing settings. Therefore, settings is strictly required (must be an object,
+         * not null or an array).
+         * 
+         * TODO: Support versioned schema validation if settings schema evolves in Milestone 1+.
          */
         if (isBulkRestore) {
             const requiredCollections = ['assets', 'liabilities', 'goals', 'recurring', 'history', 'cashFlow'];
@@ -484,9 +491,9 @@ export async function POST(request: Request) {
                 }
             }
 
-            if (settings !== undefined && (typeof settings !== 'object' || settings === null || Array.isArray(settings))) {
+            if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
                 return NextResponse.json({
-                    error: 'Invalid restore payload: settings must be an object'
+                    error: 'Invalid restore payload: settings is required and must be an object'
                 }, { status: 400 });
             }
 
