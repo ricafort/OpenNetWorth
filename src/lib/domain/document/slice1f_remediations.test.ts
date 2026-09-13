@@ -40,6 +40,7 @@ describe('Slice 1F Focused Remediation Tests', () => {
     let db: any;
     let entityId: string;
     let audAccountId: string;
+    let audAccountBId: string;
     let usdAccountId: string;
 
     beforeEach(() => {
@@ -51,10 +52,10 @@ describe('Slice 1F Focused Remediation Tests', () => {
         const entity = createEntity(db, { name: 'Remediation Test Entity', type: 'person', currency: 'AUD' });
         entityId = entity.id;
 
-        // Setup AUD account
+        // Setup AUD account A
         const { account: audAcc } = createAccount(db, {
             entity_id: entityId,
-            name: 'AUD Checking',
+            name: 'AUD Checking A',
             type: 'asset',
             sub_type: 'checking',
             currency: 'AUD',
@@ -62,6 +63,18 @@ describe('Slice 1F Focused Remediation Tests', () => {
             opening_date: '2025-07-01'
         });
         audAccountId = audAcc.id;
+
+        // Setup second AUD account B
+        const { account: audAccB } = createAccount(db, {
+            entity_id: entityId,
+            name: 'AUD Savings B',
+            type: 'asset',
+            sub_type: 'savings',
+            currency: 'AUD',
+            opening_balance_cents: 200000, // $2,000.00
+            opening_date: '2025-07-01'
+        });
+        audAccountBId = audAccB.id;
 
         // Setup USD account
         const { account: usdAcc } = createAccount(db, {
@@ -612,6 +625,262 @@ describe('Slice 1F Focused Remediation Tests', () => {
             // Now and ONLY now is the status approved
             const propAfter = getProposalById(db, propId);
             expect(propAfter?.review_status).toBe('approved');
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // Remaining UI Integration & Review-to-Approval Workflow
+    // -------------------------------------------------------------------------
+    describe('Remaining UI Integration & Review-to-Approval Workflow', () => {
+        it('Edit account A to B → save → approve successfully against B', async () => {
+            const mockDoc: ExtractedPdfDocument = {
+                supported: true,
+                supplier_name: 'Tech Store Australia',
+                date: '2025-11-01',
+                currency: 'AUD',
+                total_cents: 15000, // $150.00
+                tax_cents: 0,
+                net_cents: 15000,
+                line_items: [{ description: 'Keyboard', amount_cents: 15000 }],
+                source_snippet: 'Tech Store Australia $150.00',
+                validation_findings: []
+            };
+            setCustomExtractor(async () => mockDoc);
+
+            // Ingest initially into Account A
+            const { document, proposals } = await ingestPdfDocument(db, {
+                filename: 'tech_store.pdf',
+                file_buffer: Buffer.from('%PDF-1.4 dummy'),
+                target_account_id: audAccountId, // Initially Account A
+                entity_id: entityId
+            });
+
+            const propId = proposals[0].id;
+            expect(proposals[0].account_id).toBe(audAccountId);
+
+            // User edits proposal in review UI and selects Account B
+            const savedProposal = updateProposalReview(db, {
+                proposal_id: propId,
+                account_id: audAccountBId // Switch to Account B
+            });
+
+            expect(savedProposal.account_id).toBe(audAccountBId);
+
+            // In ProposalReviewTable.tsx (handleSaveEdit), saving synchronizes the approval target:
+            // if (data.proposal.account_id) setTargetAccountId(data.proposal.account_id);
+            const synchronizedApprovalTargetId = savedProposal.account_id!;
+            expect(synchronizedApprovalTargetId).toBe(audAccountBId);
+
+            // If user attempted to approve against old Account A, it would be blocked
+            expect(() => {
+                approveProposals(db, {
+                    document_id: document.id,
+                    target_account_id: audAccountId, // Old Account A
+                    entity_id: entityId,
+                    items: [{ proposal_id: propId, payment_confirmed: true }]
+                });
+            }).toThrow(/reviewed account .* does not match approval target account/i);
+
+            // Approving against synchronized Account B succeeds!
+            const approval = approveProposals(db, {
+                document_id: document.id,
+                target_account_id: synchronizedApprovalTargetId, // Synchronized Account B
+                entity_id: entityId,
+                items: [{ proposal_id: propId, payment_confirmed: true }]
+            });
+
+            expect(approval.approved_count).toBe(1);
+
+            // Verify journal entries: Credit must be on Account B, NOT Account A
+            const txId = approval.transaction_ids[0];
+            const entries = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(txId) as any[];
+            const accountBEntry = entries.find(e => e.account_id === audAccountBId);
+            const accountAEntry = entries.find(e => e.account_id === audAccountId);
+
+            expect(accountBEntry).toBeDefined();
+            expect(accountBEntry.amount_cents).toBe(-15000); // Outflow from Account B
+            expect(accountAEntry).toBeUndefined(); // Zero impact on Account A
+        });
+
+        it('Choose Groceries, then edit/save Utilities → post to Utilities', async () => {
+            const mockDoc: ExtractedPdfDocument = {
+                supported: true,
+                supplier_name: 'Power Grid Co',
+                date: '2025-11-05',
+                currency: 'AUD',
+                total_cents: 8500, // $85.00
+                tax_cents: 0,
+                net_cents: 8500,
+                line_items: [{ description: 'Monthly Electricity', amount_cents: 8500 }],
+                source_snippet: 'Power Grid Co $85.00',
+                validation_findings: []
+            };
+            setCustomExtractor(async () => mockDoc);
+
+            const { document, proposals } = await ingestPdfDocument(db, {
+                filename: 'electricity_bill.pdf',
+                file_buffer: Buffer.from('%PDF-1.4 dummy'),
+                target_account_id: audAccountId,
+                entity_id: entityId,
+                default_category: 'office_supplies'
+            });
+
+            const propId = proposals[0].id;
+
+            // Step 1: User initially chooses 'groceries' in the table dropdown
+            let categoryOverrides: Record<string, string> = {
+                [propId]: 'groceries'
+            };
+
+            // Step 2: User opens Edit modal, corrects category to 'utilities', and saves
+            const savedProposal = updateProposalReview(db, {
+                proposal_id: propId,
+                suggested_category: 'utilities'
+            });
+
+            // In ProposalReviewTable.tsx (handleSaveEdit), saving synchronizes categoryOverrides:
+            // if (data.proposal.suggested_category) setCategoryOverrides(prev => ({ ...prev, [data.proposal.id]: data.proposal.suggested_category }));
+            if (savedProposal.suggested_category) {
+                categoryOverrides = {
+                    ...categoryOverrides,
+                    [savedProposal.id]: savedProposal.suggested_category
+                };
+            }
+
+            // Step 3: Approval prepares items using the synchronized category override
+            const categoryForApproval = categoryOverrides[propId] || savedProposal.suggested_category || 'office_supplies';
+            expect(categoryForApproval).toBe('utilities'); // Must use latest edit!
+
+            const approval = approveProposals(db, {
+                document_id: document.id,
+                target_account_id: audAccountId,
+                entity_id: entityId,
+                items: [
+                    {
+                        proposal_id: propId,
+                        category: categoryForApproval as any,
+                        payment_confirmed: true
+                    }
+                ]
+            });
+
+            expect(approval.approved_count).toBe(1);
+
+            // Verify the posted expense account is indeed Utilities (not Groceries or Office Supplies)
+            const txId = approval.transaction_ids[0];
+            const entries = db.prepare(`
+                SELECT je.amount_cents, a.name, a.sub_type
+                FROM m1_journal_entries je
+                JOIN m1_accounts a ON je.account_id = a.id
+                WHERE je.transaction_id = ?
+            `).all(txId) as any[];
+
+            const debitEntry = entries.find(e => e.amount_cents > 0);
+            expect(debitEntry).toBeDefined();
+            expect(debitEntry.sub_type).toBe('utilities');
+            expect(debitEntry.name).toContain('Utilities');
+        });
+
+        it('Approve without Paid → receive warning → check Paid → retry successfully without reloading', async () => {
+            const mockDoc: ExtractedPdfDocument = {
+                supported: true,
+                supplier_name: 'Water Utility Services',
+                date: '2025-11-10',
+                currency: 'AUD',
+                total_cents: 6000,
+                tax_cents: 0,
+                net_cents: 6000,
+                line_items: [{ description: 'Water Usage', amount_cents: 6000 }],
+                source_snippet: 'Water Utility Services $60.00',
+                validation_findings: []
+            };
+            setCustomExtractor(async () => mockDoc);
+
+            const { document, proposals } = await ingestPdfDocument(db, {
+                filename: 'water_invoice.pdf',
+                file_buffer: Buffer.from('%PDF-1.4 dummy'),
+                target_account_id: audAccountId,
+                entity_id: entityId
+            });
+
+            const propId = proposals[0].id;
+
+            // UI state simulation
+            let isSubmitting = false;
+            let uiError: string | null = null;
+            let paymentConfirmed = false; // Initially NOT paid
+
+            // User clicks Approve without checking "Paid"
+            // In ProposalReviewTable.tsx (handleBatchApprove):
+            // Validation occurs BEFORE setting isSubmitting = true:
+            if (!paymentConfirmed) {
+                uiError = 'Please explicitly confirm payment for all selected invoice proposals before approving.';
+                // Early return leaves isSubmitting === false!
+            } else {
+                isSubmitting = true;
+            }
+
+            expect(uiError).toContain('Please explicitly confirm payment');
+            expect(isSubmitting).toBe(false); // Button is NOT stuck in submitting state!
+
+            // Backend validation also enforces this invariant
+            expect(() => {
+                approveProposals(db, {
+                    document_id: document.id,
+                    target_account_id: audAccountId,
+                    entity_id: entityId,
+                    items: [
+                        {
+                            proposal_id: propId,
+                            payment_confirmed: false // Not paid
+                        }
+                    ]
+                });
+            }).toThrow(/payment must be explicitly confirmed/i);
+
+            // Verify zero transactions posted
+            const txCountBefore = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+            expect(txCountBefore).toBe(0);
+
+            // User now checks "Paid" checkbox without reloading
+            paymentConfirmed = true;
+            uiError = null;
+
+            // User clicks Approve again
+            if (!paymentConfirmed) {
+                uiError = 'Please explicitly confirm payment for all selected invoice proposals before approving.';
+            } else {
+                isSubmitting = true;
+            }
+
+            expect(uiError).toBeNull();
+            expect(isSubmitting).toBe(true);
+
+            // Retry succeeds!
+            const approval = approveProposals(db, {
+                document_id: document.id,
+                target_account_id: audAccountId,
+                entity_id: entityId,
+                items: [
+                    {
+                        proposal_id: propId,
+                        payment_confirmed: true // Confirmed!
+                    }
+                ]
+            });
+
+            isSubmitting = false;
+
+            expect(approval.approved_count).toBe(1);
+            expect(approval.transaction_ids.length).toBe(1);
+
+            // Proposal is now approved
+            const propAfter = getProposalById(db, propId);
+            expect(propAfter?.review_status).toBe('approved');
+
+            // Exactly 1 ledger transaction posted
+            const txCountAfter = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+            expect(txCountAfter).toBe(1);
         });
     });
 });

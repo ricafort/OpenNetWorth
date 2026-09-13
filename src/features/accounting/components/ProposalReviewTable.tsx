@@ -169,6 +169,25 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
 
             // Update proposals in state
             setProposals(prev => prev.map(p => p.id === data.proposal.id ? data.proposal : p));
+
+            // Fix 1: Synchronize the approval target with the saved account.
+            // Why this exists: If the user corrects payment account from Account A to Account B,
+            // the approval target must switch to Account B to avoid account-mismatch validation errors upon approval.
+            if (data.proposal.account_id) {
+                setTargetAccountId(data.proposal.account_id);
+            }
+
+            // Fix 2: Synchronize category overrides so approval and table use the latest saved edit.
+            // Why this exists: If the user previously selected a category in the table dropdown (e.g. Groceries),
+            // and subsequently edits and saves a new category (e.g. Utilities), the override map must be updated
+            // to ensure approval uses the latest saved edit rather than stale table state.
+            if (data.proposal.suggested_category) {
+                setCategoryOverrides(prev => ({
+                    ...prev,
+                    [data.proposal.id]: data.proposal.suggested_category
+                }));
+            }
+
             setSuccessMessage(`Updated proposal successfully.`);
             setEditingProposal(null);
         } catch (err: any) {
@@ -293,10 +312,10 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
             return;
         }
 
-        setIsSubmitting(true);
-        setError(null);
-        setSuccessMessage(null);
-
+        // Fix 3: Validate payment confirmation BEFORE setting isSubmitting=true.
+        // Why this exists: If payment confirmation is missing for any invoice proposal,
+        // returning early before setting isSubmitting ensures the approve button is not stuck
+        // in "Committing Transactions...", allowing the user to check "Paid" and retry immediately without reloading.
         const isPdfDoc = document?.mime_type === 'application/pdf';
         if (isPdfDoc) {
             const unconfirmed = proposals.filter(p => selectedIds.has(p.id) && !paymentConfirmedMap[p.id]);
@@ -305,6 +324,10 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                 return;
             }
         }
+
+        setIsSubmitting(true);
+        setError(null);
+        setSuccessMessage(null);
 
         const itemsToApprove = proposals
             .filter(p => selectedIds.has(p.id))
