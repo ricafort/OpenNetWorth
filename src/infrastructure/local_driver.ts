@@ -5,21 +5,26 @@ import { CashFlowEntry, RecurringTransaction, WealthMomentum } from '@/features/
 import { NetWorthSnapshot, UserSettings, DashboardConfig } from '@/types';
 import { SAMPLE_ASSETS, SAMPLE_LIABILITIES, SAMPLE_GOALS } from './sampleData';
 
-// Key constants
+// Key constants - Primary OpenNetWorth keys with backward compatibility
 const STORAGE_KEYS = {
-    ASSETS: 'clearworth_assets',
-    LIABILITIES: 'clearworth_liabilities',
-    NET_WORTH_HISTORY: 'clearworth_nw_history',
-    GOALS: 'clearworth_goals',
-    CASH_FLOW: 'clearworth_cash_flow',
-    SETTINGS: 'clearworth_settings',
-    FREEDOM_SETTINGS: 'clearworth_freedom_settings'
+    ASSETS: 'opennetworth_assets',
+    LIABILITIES: 'opennetworth_liabilities',
+    NET_WORTH_HISTORY: 'opennetworth_nw_history',
+    GOALS: 'opennetworth_goals',
+    CASH_FLOW: 'opennetworth_cash_flow',
+    SETTINGS: 'opennetworth_settings',
+    FREEDOM_SETTINGS: 'opennetworth_freedom_settings'
 };
 
-// Generic helper
+// Generic helper with backward-compatible key lookup
 function get<T>(key: string, parse = true): T | null {
     if (typeof window === 'undefined') return null;
-    const item = localStorage.getItem(key);
+    let item = localStorage.getItem(key);
+    if (!item && key.startsWith('opennetworth_')) {
+        // Fallback to legacy clearworth key
+        const legacyKey = key.replace('opennetworth_', 'clearworth_');
+        item = localStorage.getItem(legacyKey);
+    }
     if (!item) return null;
     try {
         return parse ? JSON.parse(item) : (item as unknown as T);
@@ -31,9 +36,17 @@ function get<T>(key: string, parse = true): T | null {
 
 function set<T>(key: string, value: T) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(key, JSON.stringify(value));
+    const str = JSON.stringify(value);
+    localStorage.setItem(key, str);
+
+    // Keep legacy key in sync during transition
+    if (key.startsWith('opennetworth_')) {
+        const legacyKey = key.replace('opennetworth_', 'clearworth_');
+        localStorage.setItem(legacyKey, str);
+    }
 
     // Dispatch custom event for reactive UI updates
+    window.dispatchEvent(new Event('opennetworth_data_updated'));
     window.dispatchEvent(new Event('clearworth_data_updated'));
 }
 

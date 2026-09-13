@@ -102,7 +102,7 @@ export default function WisdomBanner({ customMentors = [], onOpenSettings }: Wis
 
     const handleShare = () => {
         const currentQuote = filteredQuotes[currentIndex];
-        const text = `"${currentQuote?.text}" — ${currentQuote?.author} via ClearWorth`;
+        const text = `"${currentQuote?.text}" — ${currentQuote?.author} via OpenNetWorth`;
         navigator.clipboard.writeText(text);
         alert('Quote copied to clipboard!');
     };

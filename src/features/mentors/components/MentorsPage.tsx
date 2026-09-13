@@ -183,10 +183,13 @@ export const MentorsPage = () => {
         }
 
         try {
+            const { getSavedLocalAiConfig } = await import('@/components/ui/LocalAiSettingsModal');
+            const localConfig = getSavedLocalAiConfig();
+
             const parseResp = await fetch('/api/action/parse', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userMsg })
+                body: JSON.stringify({ message: userMsg, localConfig })
             });
             const intent = await parseResp.json();
 
@@ -212,7 +215,8 @@ export const MentorsPage = () => {
                                 totalLiabilities: metrics.liabilities,
                                 currency: baseCurrency
                             },
-                            message: userMsg
+                            message: userMsg,
+                            localConfig
                         })
                     });
                     const data = await resp.json();
@@ -229,7 +233,7 @@ export const MentorsPage = () => {
                 setChat(prev => [...prev, { role: 'consensus', content: consensusMsg }]);
             }
         } catch (e) {
-            setChat(prev => [...prev, { role: 'mentor', content: 'Connection error. Please check your API key.' }]);
+            setChat(prev => [...prev, { role: 'mentor', content: 'Connection error. Ensure your Local LLM (LM Studio on port 1234 or Ollama on port 11434) is running.' }]);
         } finally {
             setIsLoading(false);
         }

@@ -1,8 +1,8 @@
 import { GoalsPage } from '@/features/goals/components/GoalsPage';
 
 export const metadata = {
-    title: 'Goals | ClearWorth',
-    description: 'Track your financial goals and milestones',
+    title: 'Goals | OpenNetWorth',
+    description: 'Track your financial goals and milestones in your local vault',
 };
 
 export default function Page() {

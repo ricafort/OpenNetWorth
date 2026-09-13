@@ -1,36 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getMentorDebtAdvice, getMentorInvestmentAdvice } from './mentorAdvice';
-import * as geminiApi from '@/lib/api/gemini';
+import * as localLlmApi from '@/lib/api/localLlm';
 
-// Mock the dependencies
-vi.mock('@/lib/api/gemini', () => ({
-    getGeminiModel: vi.fn(),
-    generateContentWithRetry: vi.fn()
+// Mock the Local LLM dependencies
+vi.mock('@/lib/api/localLlm', () => ({
+    queryLocalLlm: vi.fn(),
+    checkLocalLlmHealth: vi.fn(),
+    ruleBasedParseIntent: vi.fn()
 }));
 
-describe('MentorAdvice Service', () => {
+describe('MentorAdvice Service (Local LLM)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
     const mockResponseText = "Here is some wise financial advice.";
-    const mockModel = {};
 
     const setupSuccessMock = () => {
-        (geminiApi.getGeminiModel as any).mockReturnValue(mockModel);
-        (geminiApi.generateContentWithRetry as any).mockResolvedValue({
-            response: Promise.resolve({
-                text: () => mockResponseText
-            })
-        });
+        (localLlmApi.queryLocalLlm as any).mockResolvedValue(mockResponseText);
     };
 
     const setupErrorMock = () => {
-        (geminiApi.getGeminiModel as any).mockReturnValue(mockModel);
-        (geminiApi.generateContentWithRetry as any).mockRejectedValue(new Error("API Error"));
+        (localLlmApi.queryLocalLlm as any).mockRejectedValue(new Error("Local LLM Offline"));
     };
 
-    it('should return AI advice for debt scenarios', async () => {
+    it('should return AI advice for debt scenarios via local LLM', async () => {
         setupSuccessMock();
 
         const advice = await getMentorDebtAdvice('Naval', 'Philosopher', {
@@ -42,10 +36,10 @@ describe('MentorAdvice Service', () => {
         });
 
         expect(advice).toBe(mockResponseText);
-        expect(geminiApi.generateContentWithRetry).toHaveBeenCalled();
+        expect(localLlmApi.queryLocalLlm).toHaveBeenCalled();
     });
 
-    it('should return fallback advice on API failure (Debt)', async () => {
+    it('should return fallback advice on Local LLM failure (Debt)', async () => {
         setupErrorMock();
 
         const advice = await getMentorDebtAdvice('Naval', 'Philosopher', {
@@ -59,7 +53,7 @@ describe('MentorAdvice Service', () => {
         expect(advice).toContain("mathematical certainty"); // Fallback text
     });
 
-    it('should return AI advice for investment scenarios', async () => {
+    it('should return AI advice for investment scenarios via local LLM', async () => {
         setupSuccessMock();
 
         const advice = await getMentorInvestmentAdvice('Buffett', 'Sage', {
@@ -70,9 +64,10 @@ describe('MentorAdvice Service', () => {
         });
 
         expect(advice).toBe(mockResponseText);
+        expect(localLlmApi.queryLocalLlm).toHaveBeenCalled();
     });
 
-    it('should return fallback advice on API failure (Investment)', async () => {
+    it('should return fallback advice on Local LLM failure (Investment)', async () => {
         setupErrorMock();
 
         const advice = await getMentorInvestmentAdvice('Buffett', 'Sage', {

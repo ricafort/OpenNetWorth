@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Bell, Globe, TrendingUp } from 'lucide-react';
+import { X, Save, Bell, Globe, TrendingUp, Cpu } from 'lucide-react';
 import { loadSettings, saveSettings, loadFreedomSettings, saveFreedomSettings } from '@/infrastructure/local_driver'; // Updated import
 import { UserSettings } from '@/types'; // Updated import
 import { FreedomSettings } from '@/features/liabilities/types';
 import CurrencySelector from '@/components/ui/CurrencySelector';
+import LocalAiSettingsModal from '@/components/ui/LocalAiSettingsModal';
 
 interface GeneralSettingsModalProps {
     isOpen: boolean;
@@ -25,6 +26,8 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
         strategy: 'avalanche',
         extraMonthlyPayment: 500
     });
+
+    const [isLocalAiModalOpen, setIsLocalAiModalOpen] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -142,6 +145,26 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
                         <p className="text-[10px] text-slate-500 mt-2 font-medium">How often should your mentor nudge you to update your net worth?</p>
                     </div>
 
+                    {/* Local AI Engine Configuration */}
+                    <div className="pt-4 border-t border-slate-100">
+                        <div className="flex justify-between items-center mb-3">
+                            <label className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                                <Cpu size={14} className="text-blue-600" /> Local LLM Engine
+                            </label>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsLocalAiModalOpen(true)}
+                            className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 text-left transition-all flex items-center justify-between group"
+                        >
+                            <div>
+                                <p className="text-xs font-bold text-slate-900 group-hover:text-blue-700">Configure LM Studio / Ollama</p>
+                                <p className="text-[10px] text-slate-500">Pick active model, test ports, and verify 100% private execution.</p>
+                            </div>
+                            <span className="text-xs font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform">&rarr;</span>
+                        </button>
+                    </div>
+
                     {/* Reset App Section */}
                     <div className="pt-4 border-t border-slate-100">
                         <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-3 text-red-600/80">Danger Zone</h4>
@@ -169,6 +192,12 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
                     </button>
                 </div>
             </div>
+
+            {/* Submodal for Local LLM Engine */}
+            <LocalAiSettingsModal
+                isOpen={isLocalAiModalOpen}
+                onClose={() => setIsLocalAiModalOpen(false)}
+            />
         </div>
     );
 }

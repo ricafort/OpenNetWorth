@@ -1,8 +1,8 @@
 import { CashflowPage } from '@/features/cashflow/components/CashflowPage';
 
 export const metadata = {
-    title: 'Cash Flow | ClearWorth',
-    description: 'Master your inflows and outflows',
+    title: 'Cash Flow | OpenNetWorth',
+    description: 'Master your inflows and outflows with private local tracking',
 };
 
 export default function Page() {

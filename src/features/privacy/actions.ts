@@ -94,28 +94,43 @@ export async function revokeSupportAccess() {
  * Check if the current user has granted active support access
  */
 export async function getSupportStatus() {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { cookies: { getAll: () => cookieStore.getAll(), setAll: () => { } } }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { active: false };
-
-    const { data } = await supabase
-        .from('admin_access_grants')
-        .select('expires_at')
-        .eq('user_id', user.id)
-        .gt('expires_at', new Date().toISOString()) // Only future expiry
-        .order('expires_at', { ascending: false })
-        .limit(1)
-        .single();
-
-    if (data) {
-        return { active: true, expiresAt: data.expires_at };
+    // Why this exists:
+    // In OpenNetWorth local-first mode, there is no remote admin or support access.
+    // If Supabase credentials are missing, we immediately return inactive status.
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseKey) {
+        return { active: false };
     }
 
-    return { active: false };
+    try {
+        const cookieStore = await cookies();
+        const supabase = createServerClient(
+            supabaseUrl,
+            supabaseKey,
+            { cookies: { getAll: () => cookieStore.getAll(), setAll: () => { } } }
+        );
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return { active: false };
+        }
+
+        const { data } = await supabase
+            .from('admin_access_grants')
+            .select('expires_at')
+            .eq('user_id', user.id)
+            .gt('expires_at', new Date().toISOString()) // Only future expiry
+            .order('expires_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (data) {
+            return { active: true, expiresAt: data.expires_at };
+        }
+
+        return { active: false };
+    } catch {
+        return { active: false };
+    }
 }

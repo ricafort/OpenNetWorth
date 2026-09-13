@@ -8,12 +8,12 @@
 import { DataService } from './DataService';
 
 const STORAGE_KEYS = {
-    assets: 'clearworth_assets',
-    liabilities: 'clearworth_liabilities',
-    goals: 'clearworth_goals',
-    recurring: 'clearworth_recurring',
-    history: 'clearworth_nw_history',
-    cashFlow: 'clearworth_cash_flow',
+    assets: 'opennetworth_assets',
+    liabilities: 'opennetworth_liabilities',
+    goals: 'opennetworth_goals',
+    recurring: 'opennetworth_recurring',
+    history: 'opennetworth_nw_history',
+    cashFlow: 'opennetworth_cash_flow',
 } as const;
 
 type EntityType = keyof typeof STORAGE_KEYS;
@@ -23,14 +23,19 @@ type EntityType = keyof typeof STORAGE_KEYS;
  */
 export class LocalStorageService<T extends { id: string }> implements DataService<T> {
     private storageKey: string;
+    private legacyKey: string;
 
     constructor(entityType: EntityType) {
         this.storageKey = STORAGE_KEYS[entityType];
+        this.legacyKey = this.storageKey.replace('opennetworth_', 'clearworth_');
     }
 
     async getAll(): Promise<T[]> {
         if (typeof window === 'undefined') return [];
-        const item = localStorage.getItem(this.storageKey);
+        let item = localStorage.getItem(this.storageKey);
+        if (!item) {
+            item = localStorage.getItem(this.legacyKey);
+        }
         if (!item) return [];
         try {
             return JSON.parse(item) as T[];
@@ -64,7 +69,10 @@ export class LocalStorageService<T extends { id: string }> implements DataServic
 
     private save(items: T[]): void {
         if (typeof window === 'undefined') return;
-        localStorage.setItem(this.storageKey, JSON.stringify(items));
+        const str = JSON.stringify(items);
+        localStorage.setItem(this.storageKey, str);
+        localStorage.setItem(this.legacyKey, str);
+        window.dispatchEvent(new Event('opennetworth_data_updated'));
         window.dispatchEvent(new Event('clearworth_data_updated'));
     }
 }

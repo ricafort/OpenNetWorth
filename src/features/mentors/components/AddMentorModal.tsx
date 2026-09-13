@@ -26,13 +26,16 @@ export default function AddMentorModal({ isOpen, onClose, onAdd }: AddMentorModa
         setIsGeneratingProfile(true);
         try {
             const savedSettings = JSON.parse(localStorage.getItem('mentor_controls') || '{}');
+            const { getSavedLocalAiConfig } = await import('@/components/ui/LocalAiSettingsModal');
+            const localConfig = getSavedLocalAiConfig();
 
             const resp = await fetch('/api/mentor/profile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: newMentor.name,
-                    count: savedSettings.quotesToGenerate || 20
+                    count: savedSettings.quotesToGenerate || 5,
+                    localConfig
                 })
             });
             const data = await resp.json();

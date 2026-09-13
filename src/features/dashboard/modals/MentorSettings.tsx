@@ -82,7 +82,13 @@ export default function MentorSettings({ isOpen, onClose, onSave }: MentorSettin
                             />
                             <span className="text-sm text-slate-600 font-medium">quotes fetched on add</span>
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-2 font-medium">Number of distinct quotes to generate when adding a new mentor (Pro: Max 20).</p>
+                        <p className="text-[10px] text-slate-500 mt-2 font-medium">Number of distinct quotes to generate with your local LLM when synthesizing a new mentor.</p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100">
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            💡 All mentor reasoning runs on your local machine. Open Local LLM settings to configure LM Studio or Ollama.
+                        </p>
                     </div>
                 </div>
 

@@ -18,19 +18,19 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'ClearWorth | Net Worth Tracker & Financial Dashboard',
-  description: 'Track your assets, liabilities, and net worth progress with privacy-first analytics.',
+  title: 'OpenNetWorth | 100% Private, Local-First Financial Control Room',
+  description: 'Open-source personal net worth tracker and financial manager. 100% on-device storage powered by Local LLMs.',
   openGraph: {
-    title: 'ClearWorth | Net Worth Tracker',
-    description: 'Track your assets, liabilities, and net worth progress with privacy-first analytics.',
-    url: 'https://clearworth.wisdomwits.com',
-    siteName: 'ClearWorth',
+    title: 'OpenNetWorth | Private & Local-First Financial Control Room',
+    description: 'Open-source personal net worth tracker and financial manager. Zero cloud telemetry.',
+    url: 'https://opennetworth.org',
+    siteName: 'OpenNetWorth',
     images: [
       {
-        url: '/og-image.jpg', // Placeholder - user should create this
+        url: '/og-image.jpg',
         width: 1200,
         height: 630,
-        alt: 'ClearWorth Dashboard Preview',
+        alt: 'OpenNetWorth Dashboard Preview',
       },
     ],
     locale: 'en_US',
@@ -38,11 +38,11 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ClearWorth | Net Worth Tracker',
-    description: 'Track your assets, liabilities, and net worth progress with privacy-first analytics.',
-    images: ['/og-image.jpg'], // Placeholder
+    title: 'OpenNetWorth | Private & Local-First Financial Control Room',
+    description: 'Track your wealth and debt payoff 100% on-device with Local LLMs.',
+    images: ['/og-image.jpg'],
   },
-  metadataBase: new URL('https://clearworth.wisdomwits.com'),
+  metadataBase: new URL('http://localhost:4000'),
 };
 
 import GlobalPrivacyBanner from "@/components/layout/GlobalPrivacyBanner";

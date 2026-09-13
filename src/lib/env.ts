@@ -5,10 +5,16 @@
 import { z } from 'zod';
 
 const envSchema = z.object({
-    // Required Core Infra
-    NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL"),
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is missing"),
-    GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is missing"),
+    // Optional Cloud Infra (OpenNetWorth is 100% local-first by default)
+    NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL").optional(),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is missing").optional(),
+    GEMINI_API_KEY: z.string().optional(),
+
+    // Local LLM Configuration (OpenNetWorth Local AI Engine)
+    // Supports LM Studio (default: http://127.0.0.1:1234/v1), Ollama (http://127.0.0.1:11434), or OpenAI-compatible local endpoints
+    LOCAL_LLM_URL: z.string().url().default("http://127.0.0.1:1234/v1"),
+    LOCAL_LLM_MODEL: z.string().default("qwen3.8-27b-gsq-rco"),
+    LOCAL_LLM_PROVIDER: z.enum(['auto', 'lmstudio', 'ollama', 'custom']).default('auto'),
 
     // Bank Integrations
     PLAID_CLIENT_ID: z.string().optional(),

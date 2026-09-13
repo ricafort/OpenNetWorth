@@ -16,8 +16,8 @@ export default function OnboardingTour() {
             target: 'body',
             content: (
                 <div className="text-left">
-                    <h3 className="font-bold text-lg mb-2">Welcome to ClearWorth! 🚀</h3>
-                    <p>Let's take a quick tour to help you get started on your journey to financial freedom.</p>
+                    <h3 className="font-bold text-lg mb-2">Welcome to OpenNetWorth! 🚀</h3>
+                    <p>Your 100% private, on-device financial command center powered by local AI.</p>
                 </div>
             ),
             placement: 'center',

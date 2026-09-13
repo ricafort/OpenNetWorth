@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
             allow: '/',
             disallow: ['/admin/', '/private/'], // Protect admin routes
         },
-        sitemap: 'https://clearworth.wisdomwits.com/sitemap.xml',
+        sitemap: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4000'}/sitemap.xml`,
     };
 }

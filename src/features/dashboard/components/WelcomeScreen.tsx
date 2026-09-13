@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { enableDemoModeFromData } from '@/features/demo/demoMode';
 import { getPublishedTemplates, getTemplateFullData } from '@/lib/domain/templateService';
 import { UserProfile } from '@/types';
-import { PlayCircle, PenLine, ChevronLeft, Loader2, Globe, X } from 'lucide-react';
+import { PlayCircle, PenLine, ChevronLeft, Loader2, Globe, X, Upload } from 'lucide-react';
 import { SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
 
 interface WelcomeScreenProps {
@@ -217,11 +217,11 @@ export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenP
                 </div>
 
                 <div className="space-y-4">
-                    <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
-                        Welcome to ClearWorth
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">
+                        Welcome to OpenNetWorth
                     </h1>
-                    <p className="text-lg text-slate-500 max-w-lg mx-auto">
-                        Your journey to financial clarity starts here. How would you like to begin?
+                    <p className="text-base text-slate-600 max-w-lg mx-auto">
+                        Your private, on-device financial control room. Zero cloud telemetry, powered exclusively by Local LLMs.
                     </p>
                 </div>
 
@@ -234,8 +234,8 @@ export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenP
                             <PlayCircle size={32} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-slate-900">Try Demo Mode</h3>
-                            <p className="text-xs text-slate-500 mt-1">Explore with realistic sample data. Select a profile that fits you.</p>
+                            <h3 className="font-bold text-slate-900">Explore Sample Profiles</h3>
+                            <p className="text-xs text-slate-500 mt-1">Tour realistic personas across life stages. Safe to explore without touching real data.</p>
                         </div>
                     </button>
 
@@ -247,20 +247,39 @@ export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenP
                             <PenLine size={32} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-slate-900">Manual Entry</h3>
-                            <p className="text-xs text-slate-500 mt-1">Start fresh and add your assets manually.</p>
+                            <h3 className="font-bold text-slate-900">Start Fresh Vault</h3>
+                            <p className="text-xs text-slate-500 mt-1">Begin tracking your real assets, debts, and goals right now.</p>
                         </div>
                     </button>
                 </div>
 
-                <p className="text-xs text-slate-400 pt-4">
-                    Data is stored locally on your device. We respect your privacy.
-                </p>
-
-                <div className="pt-2">
-                    <a href="/login" className="text-sm font-medium text-slate-500 hover:text-blue-600 underline">
-                        Existing User? Sign In
-                    </a>
+                <div className="pt-2 flex flex-col items-center gap-2">
+                    <label className="cursor-pointer text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1.5 p-2 rounded-xl hover:bg-blue-50 transition-colors">
+                        <Upload size={14} />
+                        Restore Existing Vault from Backup (.json)
+                        <input
+                            type="file"
+                            accept=".json"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                    const { importData } = require('@/infrastructure/local_driver');
+                                    if (importData(event.target?.result as string)) {
+                                        window.location.reload();
+                                    } else {
+                                        alert('Invalid backup file format.');
+                                    }
+                                };
+                                reader.readAsText(file);
+                            }}
+                        />
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                        🔒 100% Private. All financial records and AI queries stay strictly on your device.
+                    </p>
                 </div>
             </div>
         </div>

@@ -5,10 +5,11 @@ import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useOnboarding } from '@/features/onboarding/context/OnboardingContext';
 import { useProfile } from '@/contexts/ProfileContext';
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, User, Moon, Sun, ChevronDown, RotateCcw, Check, PlayCircle, Settings, Gamepad2, LayoutGrid, Globe } from 'lucide-react';
+import { LogOut, User, Moon, Sun, ChevronDown, RotateCcw, Check, PlayCircle, Settings, Gamepad2, LayoutGrid, Globe, Cpu, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import CurrencySelector from '@/components/ui/CurrencySelector';
+import LocalAiSettingsModal, { getSavedLocalAiConfig } from '@/components/ui/LocalAiSettingsModal';
 import { createClient } from '@/utils/supabase/client';
 
 export default function DashboardHeader() {
@@ -17,7 +18,20 @@ export default function DashboardHeader() {
     const { startTour } = useOnboarding();
     const { updateCurrency, profile } = useProfile();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+    const [isLocalAiOpen, setIsLocalAiOpen] = useState(false);
+    const [aiStatusText, setAiStatusText] = useState('Local AI');
     const menuRef = useRef<HTMLDivElement>(null);
+
+    // Track Local AI status
+    useEffect(() => {
+        const updateAiText = () => {
+            const cfg = getSavedLocalAiConfig();
+            setAiStatusText(cfg.endpoint.includes('1234') ? 'LM Studio' : cfg.endpoint.includes('11434') ? 'Ollama' : 'Local AI');
+        };
+        updateAiText();
+        window.addEventListener('opennetworth_ai_config_updated', updateAiText);
+        return () => window.removeEventListener('opennetworth_ai_config_updated', updateAiText);
+    }, []);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -103,6 +117,17 @@ export default function DashboardHeader() {
                             <Gamepad2 size={20} />
                         </button>
 
+                        {/* Local AI Runner Pill */}
+                        <button
+                            onClick={() => setIsLocalAiOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800 rounded-xl transition-all shadow-sm group"
+                            title="Configure Local LLM Engine (LM Studio / Ollama)"
+                        >
+                            <Cpu size={14} className="text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
+                            <span>{aiStatusText}</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        </button>
+
                         {/* Currency Selector */}
                         <div className="flex items-center gap-2 pl-2 border-l border-border ml-1">
                             <span className="text-sm font-bold text-slate-500 flex items-center gap-1 hidden sm:flex">
@@ -111,9 +136,7 @@ export default function DashboardHeader() {
                             <CurrencySelector
                                 value={baseCurrency}
                                 onChange={(code) => {
-                                    // Use Context Action
                                     updateCurrency(code);
-                                    // No reload needed! React state will propagate.
                                 }}
                             />
                         </div>
@@ -134,10 +157,10 @@ export default function DashboardHeader() {
                                 className="flex items-center gap-2 p-1 pr-3 rounded-full bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all group"
                             >
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-white group-hover:ring-blue-100 transition-all">
-                                    {profile?.email?.substring(0, 2).toUpperCase() || 'GU'}
+                                    ON
                                 </div>
                                 <div className="hidden md:block text-left text-xs mr-1">
-                                    <p className="font-bold text-slate-700 leading-none max-w-[80px] truncate">{profile?.full_name || profile?.email || 'Guest'}</p>
+                                    <p className="font-bold text-slate-700 leading-none max-w-[90px] truncate">{profile?.full_name || 'Local Vault'}</p>
                                 </div>
                                 <ChevronDown size={14} className="text-slate-400 group-hover:text-slate-600" />
                             </button>
@@ -145,43 +168,46 @@ export default function DashboardHeader() {
                             {isUserMenuOpen && (
                                 <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-200">
                                     <div className="p-3 border-b border-slate-50 mb-2">
-                                        <p className="font-bold text-slate-900">{profile?.full_name || profile?.email || 'Guest User'}</p>
-                                        <p className="text-xs text-slate-500 truncate">{profile?.email || 'Not signed in'}</p>
+                                        <p className="font-bold text-slate-900">{profile?.full_name || 'Local Vault Owner'}</p>
+                                        <p className="text-xs text-slate-500 truncate">{profile?.email || '100% On-Device'}</p>
                                         <div className="mt-2 flex items-center gap-2">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${profile?.id === 'local_user' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                                {profile?.id === 'local_user' ? 'Guest Mode' : 'Pro Plan'}
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                                                <ShieldCheck size={11} /> 100% Local Vault
                                             </span>
                                         </div>
                                     </div>
 
-                                    {profile?.id && profile.id !== 'local_user' ? (
-                                        <button
-                                            onClick={async () => {
-                                                const { createClient } = await import('@/utils/supabase/client');
-                                                const supabase = createClient();
-                                                await supabase.auth.signOut();
-                                                window.location.href = '/';
-                                            }}
-                                            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                                        >
-                                            <LogOut size={16} />
-                                            Log Out
-                                        </button>
-                                    ) : (
-                                        <Link
-                                            href="/login"
-                                            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
-                                        >
-                                            <User size={16} />
-                                            Sign In / Sync
-                                        </Link>
-                                    )}
+                                    <Link
+                                        href="/privacy"
+                                        onClick={() => setIsUserMenuOpen(false)}
+                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                                    >
+                                        <ShieldCheck size={16} className="text-emerald-600" />
+                                        Backup & Vault Controls
+                                    </Link>
+
+                                    <button
+                                        onClick={() => {
+                                            setIsUserMenuOpen(false);
+                                            setIsLocalAiOpen(true);
+                                        }}
+                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                                    >
+                                        <Cpu size={16} className="text-blue-600" />
+                                        Local LLM Settings
+                                    </button>
                                 </div>
                             )}
                         </div>
                     </>
                 )}
             </div>
-        </div >
+
+            {/* Local AI Settings Modal */}
+            <LocalAiSettingsModal
+                isOpen={isLocalAiOpen}
+                onClose={() => setIsLocalAiOpen(false)}
+            />
+        </div>
     );
 }

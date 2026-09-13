@@ -1,61 +1,80 @@
+/**
+ * Why this file exists:
+ * Parses freeform natural language user messages into structured actions
+ * for the OpenNetWorth financial dashboard (e.g. "Add a savings account with $5,000"
+ * or "Track my home value at $450,000").
+ *
+ * Tricky logic:
+ * - Local LLMs may vary in JSON formatting consistency across different models
+ *   (e.g., Qwen vs Llama vs Gemma). We strip markdown fences and extract raw JSON.
+ * - If the Local LLM is offline or busy, we fall back to a high-accuracy deterministic
+ *   regex rule parser (`ruleBasedParseIntent`), ensuring that action logging never breaks.
+ *
+ * TODO items:
+ * - Support batch multi-item logging (e.g. "Bought $500 of VTI and paid $200 on student loan").
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
-import { getGeminiModel } from '@/lib/api/gemini';
+import { queryLocalLlm, ruleBasedParseIntent, LocalLlmMessage } from '@/lib/api/localLlm';
 
 export async function POST(req: NextRequest) {
     try {
-        const { message } = await req.json();
+        const { message, localConfig } = await req.json();
 
         if (!message) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
         }
 
-        const model = getGeminiModel();
+        // 1. Try Local LLM parsing first
+        try {
+            const systemPrompt = `You are a financial data parser for OpenNetWorth. Extract structured intent from user messages.
+RETURN ONLY RAW JSON. No explanations, no markdown formatting.
 
-        const systemPrompt = `
-      You are a financial data parser. Your job is to extract structured data from natural language inputs for a Net Worth Dashboard.
-      
-      RETURN JSON ONLY. No markdown formatting.
-      
-      OUTPUT FORMAT:
-      {
-        "action": "add_asset" | "add_liability" | "add_goal" | "log_expense" | null,
-        "type": "Cash" | "Investment" | "Property" | "Vehicle" | "Valuable" | "Mortgage" | "Credit Card" | "Loan" | "Other" | null,
-        "name": string | null,
-        "amount": number | null,
-        "currency": "USD" | "EUR" | "GBP" | "AUD" | "CAD" | "JPY" | "CNY",
-        "confidence": number (0-1)
-      }
+JSON Schema:
+{
+  "action": "add_asset" | "add_liability" | "add_goal" | "log_expense" | null,
+  "type": "cash" | "investment" | "real_estate" | "crypto" | "vehicle" | "mortgage" | "credit_card" | "student_loan" | "auto_loan" | "other" | null,
+  "name": string | null,
+  "amount": number | null,
+  "currency": "USD" | "EUR" | "GBP" | "AUD" | "CAD",
+  "confidence": number (0 to 1)
+}
 
-      RULES:
-      - "add_asset": Adding money, accounts, stocks, homes, cars.
-      - "add_liability": Adding debt, loans, mortgages.
-      - "add_goal": Creating a new financial target/goal (e.g. "save for a house", "pay off debt").
-      - "log_expense": Spending money.
-      - If the user is just asking a question or chatting, set "action" to null and "confidence" to 0.
-      - Default currency is USD if not specified.
-    `;
+Rules:
+- "add_asset": adding cash, savings, stock, investment, crypto, home, car.
+- "add_liability": adding debt, mortgage, loan, credit card balance.
+- "add_goal": setting a savings target or net worth milestone.
+- If just conversational or advice question, set action to null and confidence to 0.`;
 
-        const prompt = `Parse this user command: "${message}"`;
+            const messages: LocalLlmMessage[] = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message }
+            ];
 
-        const result = await model.generateContent([systemPrompt, prompt]);
-        const responseText = result.response.text();
+            const responseText = await queryLocalLlm(messages, {
+                endpoint: localConfig?.endpoint,
+                model: localConfig?.model,
+                temperature: 0.1,
+                maxTokens: 150,
+            });
 
-        // Clean markdown if present (sometimes Gemini adds it)
-        const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-        return NextResponse.json(JSON.parse(cleanedText));
-    } catch (error: any) {
-        console.error('Gemini Parse Error Details:', JSON.stringify(error, null, 2));
-
-        // Extract useful error info
-        let errorMessage = 'Failed to parse intent';
-        let status = 500;
-
-        if (error.message?.includes('429') || error.status === 429) {
-            errorMessage = 'Usage Limit Exceeded (429). Try again later.';
-            status = 429;
+            // Clean markdown code blocks if the local model wrapped in ```json
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (parsed && typeof parsed === 'object') {
+                    return NextResponse.json(parsed);
+                }
+            }
+        } catch (llmErr: any) {
+            console.warn('Local LLM parse failed, falling back to deterministic parser:', llmErr.message);
         }
 
-        return NextResponse.json({ error: errorMessage }, { status });
+        // 2. Deterministic Rule-Based Fallback Parser
+        const ruleParsed = ruleBasedParseIntent(message);
+        return NextResponse.json(ruleParsed);
+    } catch (error: any) {
+        console.error('Action parse error:', error);
+        return NextResponse.json(ruleBasedParseIntent(''), { status: 200 });
     }
 }

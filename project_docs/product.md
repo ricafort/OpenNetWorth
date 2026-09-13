@@ -1,11 +1,11 @@
-# ClearWorth Product Specification
+# OpenNetWorth Product Specification
 
 > [!IMPORTANT]
-> **Primary Objective**: ClearWorth is a personal finance dashboard focused on calculating a user's "Freedom Date" (when passive income > expenses). It aggregates Assets, Liabilities, and Bank Data to provide actionable insights and AI-driven mentorship.
+> **Primary Objective**: OpenNetWorth is an open-source, 100% local-first personal financial manager and wealth dashboard. It operates on-device using private Local Vault storage and connects to Local LLMs (LM Studio on port 1234 or Ollama on port 11434) for zero-cloud AI mentorship and natural language actions.
 
 ## 1. Vision & Roadmap
 
-**Vision**: To be the "Jarvis for Personal Finance" — not just a tracker, but an active strategist that gamifies the journey to financial independence.
+**Vision**: To be the sovereign, private, open-source financial dashboard and assistant that respects data privacy above all else—100% on-device, local LLM-powered.
 
 ### User Journey Map
 
@@ -37,10 +37,11 @@
 -   **Interactive Widgets**: Drag-and-drop grid layout (via `react-grid-layout`) allows users to customize their view.
 -   **Smart Demo System**: Uses a centralized factory pattern to generate realistic mock data (e.g., real prices for MSFT, AAPL) and 5 distinct personas (Student, Family, etc.).
 
-### AI Mentorship ("Wisdom")
--   **Multi-Persona AI**: Users interact with specific archetypes (e.g., "Risk Guardian", "Long-Term Thinker").
--   **Context-Aware Advice**: Mentors **MUST** analyze the user's current financial data (Assets, Liabilities) before providing insights.
--   **Chat Interface**: Specialized UI (`WisdomBanner`, `ChatInterface`) for querying financial wisdom.
+### AI Mentorship & Natural Language Actions ("Wisdom")
+-   **Local LLM Integration**: Connects locally to LM Studio (`localhost:1234`) or Ollama (`localhost:11434`) via unified client and auto-discovery.
+-   **Multi-Persona AI**: Users interact with specific archetypes (e.g., "The Strategist", "The Stoic", "Risk Guardian").
+-   **Context-Aware Advice**: Mentors receive an aggregated on-device snapshot of net worth, leverage ratio, and asset allocation.
+-   **Deterministic Fallbacks**: Offline rule-based heuristic parsing and classical wisdom quotes when local LLM server is unstarted.
 
 ### Time Machine (Beta)
 -   **Historical Snapshots**: Allows users to view their financial state at any previous date.

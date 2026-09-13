@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = 'https://clearworth.wisdomwits.com'; // Replace with actual domain
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4000';
 
     return [
         {

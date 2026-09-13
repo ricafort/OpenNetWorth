@@ -53,20 +53,15 @@ export default function Sidebar() {
                 isMobileOpen ? "translate-x-0" : "-translate-x-full"
             )}>
                 {/* Logo */}
-                <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
-                    <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                        ClearWorth
+                <div className="h-16 flex items-center px-6 border-b border-border shrink-0 justify-between">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xl font-black bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 bg-clip-text text-transparent">
+                            OpenNetWorth
+                        </span>
+                    </div>
+                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800">
+                        Local
                     </span>
-                    {showGodMode && (
-                        <div className="ml-2 flex flex-col items-start leading-none">
-                            <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] font-bold rounded uppercase border border-red-200">
-                                GOD
-                            </span>
-                            <span className="text-[10px] text-muted-foreground font-medium mt-0.5 max-w-[80px] truncate">
-                                {templateName}
-                            </span>
-                        </div>
-                    )}
                 </div>
 
                 {/* Navigation */}
@@ -106,37 +101,22 @@ export default function Sidebar() {
                 <div className="p-4 border-t border-border shrink-0 flex flex-col gap-3">
                     <div className="flex items-center gap-3 mb-1 px-2">
                         <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-blue-100 shrink-0">
-                            {profile?.email?.substring(0, 2).toUpperCase() || 'GU'}
+                            ON
                         </div>
                         <div className="flex flex-col flex-1 min-w-0">
-                            <p className="text-sm font-bold text-slate-700 truncate">{profile?.full_name || profile?.email || 'Guest User'}</p>
-                            <p className="text-[10px] text-slate-500 truncate">{profile?.email || 'Not signed in'}</p>
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{profile?.full_name || 'Local Vault'}</p>
+                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold truncate">🔒 100% On-Device</p>
                         </div>
                     </div>
 
-                    {profile?.id && profile.id !== 'local_user' ? (
-                        <button
-                            onClick={async () => {
-                                const { createClient } = await import('@/utils/supabase/client');
-                                const supabase = createClient();
-                                await supabase.auth.signOut();
-                                window.location.href = '/';
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                            <LogOut size={18} />
-                            Log Out
-                        </button>
-                    ) : (
-                        <Link
-                            href="/login"
-                            onClick={() => setIsMobileOpen(false)}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        >
-                            <User size={18} />
-                            Sign In / Sync
-                        </Link>
-                    )}
+                    <Link
+                        href="/privacy"
+                        onClick={() => setIsMobileOpen(false)}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-muted rounded-lg transition-colors border border-border"
+                    >
+                        <Shield size={16} className="text-emerald-600" />
+                        Backup / Restore Vault
+                    </Link>
 
                     <div className="h-px bg-border my-1" />
 

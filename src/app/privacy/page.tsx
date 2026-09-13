@@ -8,8 +8,8 @@ export default function PrivacyPage() {
     return (
         <div className="max-w-4xl mx-auto space-y-10">
             <div>
-                <h2 className="text-3xl font-black text-foreground tracking-tight">Privacy & Data Control</h2>
-                <p className="text-muted-foreground mt-2 font-medium">You are in full control of your financial data and AI interactions.</p>
+                <h2 className="text-3xl font-black text-foreground tracking-tight">Privacy & Data Sovereignty</h2>
+                <p className="text-muted-foreground mt-2 font-medium">OpenNetWorth is 100% open source and local-first. You maintain absolute ownership of your financial vault and AI interactions.</p>
             </div>
 
             {/* Trust Framework Highlights */}
@@ -19,9 +19,9 @@ export default function PrivacyPage() {
                         <Lock size={20} />
                     </div>
                     <div>
-                        <h4 className="font-bold text-foreground">Privacy-First Design</h4>
+                        <h4 className="font-bold text-foreground">Local Vault Isolation</h4>
                         <p className="text-sm text-muted-foreground mt-1 leading-relaxed font-medium">
-                            We collect only essential data. Your financial details are stored with row-level security. <a href="/trust" className="underline hover:text-blue-500">Read our Trust Promise &rarr;</a>
+                            Your financial records stay on your physical device in Local Storage. No cloud databases required. <a href="/trust" className="underline hover:text-blue-500">Read our Local Privacy Charter &rarr;</a>
                         </p>
                     </div>
                 </div>
@@ -30,9 +30,9 @@ export default function PrivacyPage() {
                         <Shield size={20} />
                     </div>
                     <div>
-                        <h4 className="font-bold text-foreground">No Third-Party Selling</h4>
+                        <h4 className="font-bold text-foreground">Zero Cloud Telemetry</h4>
                         <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                            We never sell your raw financial data to banks, advertisers, or analytics companies.
+                            No third-party trackers, no advertising beacons, and no data sales. Open-source code you can audit anytime.
                         </p>
                     </div>
                 </div>
@@ -42,7 +42,7 @@ export default function PrivacyPage() {
             <section className="space-y-6">
                 <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
                     <FileText size={20} className="text-muted-foreground" />
-                    Data Management
+                    Data Management & Backups
                 </h3>
 
                 <div className="bg-card rounded-2xl border border-border overflow-hidden">
@@ -55,22 +55,21 @@ export default function PrivacyPage() {
             </section>
 
             {/* AI Transparency */}
-            {/* AI Transparency */}
             <section className="p-6 bg-card text-card-foreground rounded-2xl border border-border shadow-sm space-y-4">
                 <div className="flex items-center gap-3">
                     <Shield size={24} className="text-blue-600 dark:text-blue-400" />
-                    <h3 className="text-xl font-bold">AI Transparency Commitment</h3>
+                    <h3 className="text-xl font-bold">Local AI Privacy Commitment</h3>
                 </div>
                 <div className="space-y-4 text-muted-foreground text-sm leading-relaxed">
                     <p>
-                        ClearWorth mentors are AI-simulated personas inspired by publicly available teachings.
-                        They are designed to provide <strong>educational perspectives</strong>, not financial advice.
+                        OpenNetWorth mentors and natural language command parsing run through <strong>Local LLMs</strong> (via LM Studio or Ollama on your computer).
+                        Your financial figures and conversation prompts stay completely on your machine.
                     </p>
                     <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 list-disc pl-5">
-                        <li>AI does not "know" your identity.</li>
-                        <li>Prompts are processed on demand.</li>
-                        <li>No data used for training third-party models.</li>
-                        <li>Logs are ephemeral by default.</li>
+                        <li>100% on-device AI inference via localhost.</li>
+                        <li>No prompt data transmitted to SaaS AI providers by default.</li>
+                        <li>Rule-based deterministic fallbacks when offline.</li>
+                        <li>Full export and erase control over all local data.</li>
                     </ul>
                 </div>
             </section>

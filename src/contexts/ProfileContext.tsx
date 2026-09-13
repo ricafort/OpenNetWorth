@@ -44,22 +44,29 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     const refreshData = async () => {
         setIsLoading(true);
 
-        if (templateId) {
-            // --- SUPABASE MODE (Template/Demo View) ---
-            await loadFromSupabase(templateId);
-        } else {
-            // --- Check for Real User Session ---
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (user) {
-                // --- AUTHENTICATED USER MODE ---
-                await loadFromSupabase(user.id);
+        try {
+            if (templateId) {
+                // --- SUPABASE MODE (Template/Demo View) ---
+                await loadFromSupabase(templateId);
             } else {
-                // --- LOCAL STORAGE MODE (Guest/Anonymous) ---
-                loadFromLocalStorage();
+                // --- Check for Real User Session if Supabase configured ---
+                const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+                const user = data?.user;
+
+                if (user) {
+                    // --- AUTHENTICATED USER MODE ---
+                    await loadFromSupabase(user.id);
+                } else {
+                    // --- LOCAL STORAGE MODE (Default Private On-Device) ---
+                    loadFromLocalStorage();
+                }
             }
+        } catch {
+            // Safe fallback to local storage mode
+            loadFromLocalStorage();
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     };
 
     const handleMigration = async (userId: string) => {
@@ -109,14 +116,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     };
 
     const loadFromLocalStorage = () => {
-        // Mock profile for guests
-        const originId = typeof window !== 'undefined' ? localStorage.getItem('clearworth_demo_origin_id') : null;
+        // Private on-device profile for OpenNetWorth
         const storedSettings = LocalStorage.loadSettings();
 
         setProfile({
             id: 'local_user',
-            email: 'guest@device',
-            full_name: 'Guest User',
+            email: 'local@device',
+            full_name: 'Local Vault Owner',
             privacy_mode: true,
             is_template: false,
             role: 'user',

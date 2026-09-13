@@ -51,7 +51,7 @@ export default function SupportAccessManager({ initialActive, initialExpiresAt }
                         <h4 className="font-bold text-gray-900">Support Access</h4>
                         <p className="text-sm text-gray-500 mt-1 max-w-sm">
                             {active
-                                ? "You have granted temporary access to ClearWorth Support. Admins can view your data until expiry."
+                                ? "You have granted temporary access to OpenNetWorth Support. Admins can view your data until expiry."
                                 : "Admins currently have NO access to your financial data."}
                         </p>
 
