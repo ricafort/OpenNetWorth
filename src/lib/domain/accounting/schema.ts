@@ -94,7 +94,7 @@ export const ACCOUNTING_SCHEMA_DDL = `
     CREATE TABLE IF NOT EXISTS m1_transaction_corrections (
         id TEXT PRIMARY KEY,
         transaction_id TEXT NOT NULL,
-        operation TEXT NOT NULL CHECK (operation IN ('edit', 'void', 'reversal')),
+        operation TEXT NOT NULL CHECK (operation IN ('edit', 'void', 'reversal', 'revaluation_cascade')),
         reason TEXT NOT NULL,
         previous_state TEXT NOT NULL, -- JSON string
         corrected_state TEXT NOT NULL, -- JSON string
@@ -126,6 +126,7 @@ export const ACCOUNTING_SCHEMA_DDL = `
         account_id TEXT NOT NULL,
         valuation_date TEXT NOT NULL,
         target_valuation_cents INTEGER NOT NULL,
+        source TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE,
         FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE

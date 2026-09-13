@@ -454,7 +454,7 @@ export function setAccountOwnership(
     accountId: string,
     allocations: AccountOwnershipInput[]
 ): AccountOwnership[] {
-    const account = db.prepare('SELECT id, name FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    const account = db.prepare('SELECT id, name, entity_id FROM m1_accounts WHERE id = ?').get(accountId) as any;
     if (!account) {
         throw new ValidationError(`Account not found: ${accountId}`);
     }
@@ -497,6 +497,18 @@ export function setAccountOwnership(
     // Floating-point safety: allow tiny round-off up to 100.0001
     if (totalPercentage > 100.0001) {
         throw new ValidationError(`Total ownership percentage cannot exceed 100%, calculated: ${totalPercentage}%.`);
+    }
+
+    // Resubmission Item 6: Reject ambiguous allocations.
+    // If the primary account owner is explicitly listed in the allocations,
+    // the allocations must account for 100% of ownership.
+    // If the primary owner is listed but total < 100%, it is ambiguous whether the remainder
+    // was intended to be retained by the primary owner or unallocated.
+    const primaryEntityInAllocations = allocations.some(a => a.entity_id === account.entity_id);
+    if (primaryEntityInAllocations && totalPercentage < 99.9999) {
+        throw new ValidationError(
+            `Ambiguous ownership allocation: The primary account owner "${account.entity_id}" is explicitly specified, but total allocations sum to ${totalPercentage}% (less than 100%). When the primary owner is explicitly specified, total allocations must equal 100%.`
+        );
     }
 
     const now = new Date().toISOString();

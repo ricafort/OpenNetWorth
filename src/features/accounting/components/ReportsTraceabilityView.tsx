@@ -168,6 +168,7 @@ export const ReportsTraceabilityView: React.FC = () => {
                 view: 'reports',
                 report_type: 'consolidated_net_worth',
                 entity_id: selectedEntityId,
+                scope_type: scopeType,
                 reporting_currency: reportingCurrency
             });
             if (asOfDate) consParams.append('as_of_date', asOfDate);
@@ -718,50 +719,153 @@ export const ReportsTraceabilityView: React.FC = () => {
                         {cashFlowReport ? (
                             <div className="space-y-4 text-xs">
                                 {Object.keys(cashFlowReport.starting_cash_cents_by_currency).map(curr => {
+                                    /**
+                                     * Why this section exists:
+                                     * Assessor Finding 4: Cash Flow Statement must report all 3 standard activity categories
+                                     * (operating, financing, investing) and prominently expose ledger reconciliation status.
+                                     * An unreconciled statement must never be presented as verified.
+                                     * 
+                                     * Tricky logic:
+                                     * - Inflows are additions to liquid cash (+), outflows are reductions (-).
+                                     * - Expense refunds increase liquid cash (operating inflow).
+                                     * - Income reversals decrease liquid cash (operating outflow).
+                                     * - Statement ending cash is compared against independent balance-sheet liquid accounts.
+                                     *   Any divergence is highlighted with a red badge showing the exact discrepancy.
+                                     * 
+                                     * TODO: Add one-click discrepancy diagnostic drawer in Milestone 2.
+                                     */
                                     const startVal = cashFlowReport.starting_cash_cents_by_currency[curr] || 0;
                                     const opIn = cashFlowReport.operating_inflows_cents_by_currency[curr] || 0;
                                     const opOut = cashFlowReport.operating_outflows_cents_by_currency[curr] || 0;
+                                    const netOp = cashFlowReport.net_operating_cents_by_currency?.[curr] ?? (opIn - opOut);
+
+                                    const finIn = cashFlowReport.financing_inflows_cents_by_currency?.[curr] || 0;
                                     const finOut = cashFlowReport.financing_outflows_cents_by_currency[curr] || 0;
+                                    const netFin = cashFlowReport.net_financing_cents_by_currency?.[curr] ?? (finIn - finOut);
+
+                                    const invIn = cashFlowReport.investing_inflows_cents_by_currency?.[curr] || 0;
+                                    const invOut = cashFlowReport.investing_outflows_cents_by_currency?.[curr] || 0;
+                                    const netInv = cashFlowReport.net_investing_cents_by_currency?.[curr] ?? (invIn - invOut);
+
                                     const netChange = cashFlowReport.net_cash_change_cents_by_currency[curr] || 0;
                                     const endVal = cashFlowReport.ending_cash_cents_by_currency[curr] || 0;
+                                    const ledgerClose = cashFlowReport.ledger_closing_cash_cents_by_currency?.[curr] ?? endVal;
+                                    const isReconciled = cashFlowReport.is_reconciled_by_currency?.[curr] ?? (endVal === ledgerClose);
+                                    const discrepancy = cashFlowReport.reconciliation_discrepancy_cents_by_currency?.[curr] || 0;
 
                                     return (
-                                        <div key={curr} className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl space-y-2 border border-slate-200/70 dark:border-slate-700/60">
+                                        <div key={curr} className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl space-y-3 border border-slate-200/70 dark:border-slate-700/60">
+                                            {/* Reconciliation Status Banner */}
+                                            {isReconciled ? (
+                                                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                                                    <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                                                    <span>RECONCILED — Cash movements verified against independent ledger balance</span>
+                                                </div>
+                                            ) : (
+                                                <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-[11px] space-y-1">
+                                                    <div className="flex items-center gap-1.5 font-extrabold text-xs">
+                                                        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+                                                        <span>UNRECONCILED DISCREPANCY: {formatMoney({ amount_cents: discrepancy, currency: curr })}</span>
+                                                    </div>
+                                                    <p className="text-[10px] text-rose-600 dark:text-rose-400">
+                                                        Independent ledger liquid closing cash ({formatMoney({ amount_cents: ledgerClose, currency: curr })}) does not match statement ending cash ({formatMoney({ amount_cents: endVal, currency: curr })}). Do not present as verified.
+                                                    </p>
+                                                </div>
+                                            )}
+
                                             <div className="font-bold text-slate-700 dark:text-slate-300 pb-1 border-b border-slate-200 dark:border-slate-700 flex justify-between">
                                                 <span>Currency: {curr}</span>
                                                 <span>Starting Cash: {formatMoney({ amount_cents: startVal, currency: curr })}</span>
                                             </div>
 
-                                            <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                                                <span className="flex items-center gap-1">
-                                                    <ArrowDownRight className="w-3.5 h-3.5 text-emerald-600" />
-                                                    Operating Cash Inflows
-                                                </span>
-                                                <span className="font-medium text-emerald-600">
-                                                    +{formatMoney({ amount_cents: opIn, currency: curr })}
-                                                </span>
+                                            {/* Operating Activities */}
+                                            <div className="space-y-1 pt-1">
+                                                <div className="text-[10px] uppercase font-bold text-slate-400">Operating Activities</div>
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-2">
+                                                    <span className="flex items-center gap-1">
+                                                        <ArrowDownRight className="w-3.5 h-3.5 text-emerald-600" />
+                                                        Operating Inflows (Revenue, Refunds, Receipts)
+                                                    </span>
+                                                    <span className="font-medium text-emerald-600">
+                                                        +{formatMoney({ amount_cents: opIn, currency: curr })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-2">
+                                                    <span className="flex items-center gap-1">
+                                                        <ArrowUpRight className="w-3.5 h-3.5 text-rose-600" />
+                                                        Operating Outflows (Expenses, Income Reversals)
+                                                    </span>
+                                                    <span className="font-medium text-rose-600">
+                                                        -{formatMoney({ amount_cents: opOut, currency: curr })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 pl-2 pt-0.5">
+                                                    <span>Net Operating Cash Flow</span>
+                                                    <span className={netOp >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                                                        {formatMoney({ amount_cents: netOp, currency: curr })}
+                                                    </span>
+                                                </div>
                                             </div>
 
-                                            <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                                                <span className="flex items-center gap-1">
-                                                    <ArrowUpRight className="w-3.5 h-3.5 text-rose-600" />
-                                                    Operating Cash Outflows
-                                                </span>
-                                                <span className="font-medium text-rose-600">
-                                                    -{formatMoney({ amount_cents: opOut, currency: curr })}
-                                                </span>
+                                            {/* Financing Activities */}
+                                            <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                                <div className="text-[10px] uppercase font-bold text-slate-400">Financing Activities</div>
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-2">
+                                                    <span className="flex items-center gap-1">
+                                                        <ArrowDownRight className="w-3.5 h-3.5 text-blue-600" />
+                                                        Financing Inflows (Loan Drawdowns & Capital Borrowings)
+                                                    </span>
+                                                    <span className="font-medium text-blue-600">
+                                                        +{formatMoney({ amount_cents: finIn, currency: curr })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-2">
+                                                    <span className="flex items-center gap-1">
+                                                        <ArrowUpRight className="w-3.5 h-3.5 text-amber-600" />
+                                                        Financing Outflows (Loan & Card Principal Repayments)
+                                                    </span>
+                                                    <span className="font-medium text-amber-600">
+                                                        -{formatMoney({ amount_cents: finOut, currency: curr })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 pl-2 pt-0.5">
+                                                    <span>Net Financing Cash Flow</span>
+                                                    <span className={netFin >= 0 ? 'text-emerald-600' : 'text-amber-600'}>
+                                                        {formatMoney({ amount_cents: netFin, currency: curr })}
+                                                    </span>
+                                                </div>
                                             </div>
 
-                                            <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                                                <span className="flex items-center gap-1">
-                                                    <ArrowUpRight className="w-3.5 h-3.5 text-amber-600" />
-                                                    Financing Outflows (Loan & Card Repayments)
-                                                </span>
-                                                <span className="font-medium text-amber-600">
-                                                    -{formatMoney({ amount_cents: finOut, currency: curr })}
-                                                </span>
+                                            {/* Investing Activities */}
+                                            <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                                <div className="text-[10px] uppercase font-bold text-slate-400">Investing Activities</div>
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-2">
+                                                    <span className="flex items-center gap-1">
+                                                        <ArrowDownRight className="w-3.5 h-3.5 text-indigo-600" />
+                                                        Investing Inflows (Asset Disposals & Liquidations)
+                                                    </span>
+                                                    <span className="font-medium text-indigo-600">
+                                                        +{formatMoney({ amount_cents: invIn, currency: curr })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400 pl-2">
+                                                    <span className="flex items-center gap-1">
+                                                        <ArrowUpRight className="w-3.5 h-3.5 text-purple-600" />
+                                                        Investing Outflows (Asset Acquisitions & Capex)
+                                                    </span>
+                                                    <span className="font-medium text-purple-600">
+                                                        -{formatMoney({ amount_cents: invOut, currency: curr })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 pl-2 pt-0.5">
+                                                    <span>Net Investing Cash Flow</span>
+                                                    <span className={netInv >= 0 ? 'text-emerald-600' : 'text-purple-600'}>
+                                                        {formatMoney({ amount_cents: netInv, currency: curr })}
+                                                    </span>
+                                                </div>
                                             </div>
 
+                                            {/* Net Cash Change & Reconciliation Verification */}
                                             <div className="flex justify-between font-bold pt-2 border-t border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
                                                 <span>Net Cash Change</span>
                                                 <span className={netChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
@@ -772,6 +876,11 @@ export const ReportsTraceabilityView: React.FC = () => {
                                             <div className="flex justify-between font-extrabold text-sm pt-1 text-slate-900 dark:text-slate-100">
                                                 <span>Ending Liquid Cash</span>
                                                 <span>{formatMoney({ amount_cents: endVal, currency: curr })}</span>
+                                            </div>
+
+                                            <div className="flex justify-between text-xs pt-1 text-slate-500 dark:text-slate-400">
+                                                <span>Ledger Liquid Closing Cash</span>
+                                                <span className="font-mono">{formatMoney({ amount_cents: ledgerClose, currency: curr })}</span>
                                             </div>
                                         </div>
                                     );

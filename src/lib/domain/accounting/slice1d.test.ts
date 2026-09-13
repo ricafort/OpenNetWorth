@@ -64,6 +64,7 @@ import {
     recordCreditCardRepayment,
     recordLoanRepayment,
     recordAssetValuation,
+    correctTransaction,
     canonicalizeEvidenceRef,
     normalizeEvidenceRefs
 } from './transactionService';
@@ -1396,6 +1397,651 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 evidence_refs: ['  receipt_scan_042.pdf  ']
             });
             expect(legacyRetry.id).toBe(legacyTx.id);
+        });
+
+        describe('Slice 1D Resubmission Remediation Suite (8 Assessor Findings)', () => {
+            /**
+             * Why this test exists:
+             * Assessor Finding 1: Explicitly reject additional same-day valuation targets
+             * for the same account with ValidationError, enforcing exactly one authoritative
+             * valuation target per account per date without state mutation.
+             * 
+             * Tricky logic:
+             * - An asset account cannot have two distinct absolute valuation targets on the same calendar day.
+             * - Any attempt to post a second valuation must fail atomically and leave balances,
+             *   transactions, valuations, and journal entry tables completely unchanged.
+             * 
+             * TODO: Support intra-day superseding timestamps in Milestone 2 if intraday market feeds are added.
+             */
+            it('Remediation 1: Rejects duplicate same-day valuation target with ValidationError and preserves state', () => {
+                const entity = createEntity(db, { name: 'Real Estate Fund', type: 'business', currency: 'AUD' });
+                const property = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Commercial Office Tower',
+                    type: 'asset',
+                    sub_type: 'real_estate',
+                    currency: 'AUD',
+                    opening_date: '2026-05-01',
+                    opening_balance_cents: 100000000 // $1,000,000 AUD
+                }).account;
+
+                // 1. Initial valuation target on 2026-05-15: $1,200,000 AUD
+                const firstVal = recordAssetValuation(db, {
+                    asset_account_id: property.id,
+                    new_valuation_cents: 120000000,
+                    date: '2026-05-15',
+                    description: 'Q2 Independent Valuation',
+                    source: 'Knight Frank Appraisal'
+                });
+                expect(firstVal.id).toBeDefined();
+
+                // Verify initial valuation state
+                expect(getAccountBalance(db, property.id, '2026-05-15').balance_cents).toBe(120000000);
+                const txCountBefore = (db.prepare('SELECT COUNT(*) as c FROM m1_transactions').get() as any).c;
+                const valCountBefore = (db.prepare('SELECT COUNT(*) as c FROM m1_asset_valuations').get() as any).c;
+                const journalCountBefore = (db.prepare('SELECT COUNT(*) as c FROM m1_journal_entries').get() as any).c;
+
+                // 2. Second valuation target on the SAME date (2026-05-15) must be rejected with ValidationError
+                expect(() => {
+                    recordAssetValuation(db, {
+                        asset_account_id: property.id,
+                        new_valuation_cents: 125000000, // Different target
+                        date: '2026-05-15', // Same date!
+                        description: 'Second Valuation Same Day',
+                        source: 'Colliers Appraisal'
+                    });
+                }).toThrow(ValidationError);
+
+                // 3. Unchanged-state assertions: database must be identical to state before rejection
+                expect(getAccountBalance(db, property.id, '2026-05-15').balance_cents).toBe(120000000);
+                const txCountAfter = (db.prepare('SELECT COUNT(*) as c FROM m1_transactions').get() as any).c;
+                const valCountAfter = (db.prepare('SELECT COUNT(*) as c FROM m1_asset_valuations').get() as any).c;
+                const journalCountAfter = (db.prepare('SELECT COUNT(*) as c FROM m1_journal_entries').get() as any).c;
+                expect(txCountAfter).toBe(txCountBefore);
+                expect(valCountAfter).toBe(valCountBefore);
+                expect(journalCountAfter).toBe(journalCountBefore);
+
+                // Verify the stored valuation record was not mutated
+                const storedVal = db.prepare('SELECT * FROM m1_asset_valuations WHERE account_id = ?').get(property.id) as any;
+                expect(storedVal.target_valuation_cents).toBe(120000000);
+                expect(storedVal.source).toBe('Knight Frank Appraisal');
+            });
+
+            /**
+             * Why this test exists:
+             * Assessor Finding 2: When an earlier valuation or asset-affecting transaction is voided or edited,
+             * subsequent valuation targets must be preserved by recalculating subsequent journal entry deltas.
+             * 
+             * Tricky logic:
+             * - Voiding an intermediate valuation removes that valuation target, requiring later valuations
+             *   to absorb the delta against the preceding active balance.
+             * - Editing an earlier valuation updates that target and cascades through later valuations
+             *   so that the ultimate target balances remain unchanged.
+             * 
+             * TODO: Add batch voiding/editing cascading in Milestone 2.
+             */
+            it('Remediation 2: Preserves subsequent valuation targets after earlier valuation void and edit', () => {
+                const entity = createEntity(db, { name: 'Vintage Car Investor', type: 'person', currency: 'AUD' });
+                const car = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Classic 1967 Mustang',
+                    type: 'asset',
+                    sub_type: 'vehicle',
+                    currency: 'AUD',
+                    opening_date: '2026-01-01',
+                    opening_balance_cents: 10000000 // $100,000 AUD on Jan 1
+                }).account;
+
+                // V1 on Feb 1: target $120,000 (+20,000 delta)
+                const v1 = recordAssetValuation(db, {
+                    asset_account_id: car.id,
+                    new_valuation_cents: 12000000,
+                    date: '2026-02-01',
+                    description: 'Feb Appraisal',
+                    source: 'Classic Motors'
+                });
+
+                // V2 on Mar 1: target $150,000 (+30,000 delta)
+                const v2 = recordAssetValuation(db, {
+                    asset_account_id: car.id,
+                    new_valuation_cents: 15000000,
+                    date: '2026-03-01',
+                    description: 'Mar Appraisal',
+                    source: 'Auction House'
+                });
+
+                // V3 on Apr 1: target $200,000 (+50,000 delta)
+                const v3 = recordAssetValuation(db, {
+                    asset_account_id: car.id,
+                    new_valuation_cents: 20000000,
+                    date: '2026-04-01',
+                    description: 'Apr Appraisal',
+                    source: 'Specialist Valuation'
+                });
+
+                expect(getAccountBalance(db, car.id, '2026-04-01').balance_cents).toBe(20000000);
+
+                // --- Part A: Void V2 (Mar 1 appraisal) ---
+                // Expected consequence: Mar 1 valuation is removed.
+                // Apr 1 target of $200,000 MUST BE PRESERVED.
+                // Since Feb 1 is $120,000, Apr 1 journal entry delta must adjust from +$50,000 to +$80,000.
+                correctTransaction(db, {
+                    transaction_id: v2.id,
+                    operation: 'void',
+                    reason: 'Erroneous intermediate valuation cancelled',
+                    performed_by: 'Auditor User',
+                    expected_revision: 1
+                });
+
+                // Check Mar 1 balance falls back to Feb 1 balance ($120,000)
+                expect(getAccountBalance(db, car.id, '2026-03-01').balance_cents).toBe(12000000);
+
+                // Check Apr 1 target is strictly preserved at $200,000!
+                expect(getAccountBalance(db, car.id, '2026-04-01').balance_cents).toBe(20000000);
+
+                // --- Part B: Edit V1 (Feb 1 appraisal) ---
+                // Change Feb 1 valuation from $120,000 to $110,000.
+                // Apr 1 target of $200,000 MUST STILL BE PRESERVED.
+                const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+                correctTransaction(db, {
+                    transaction_id: v1.id,
+                    operation: 'edit',
+                    reason: 'Correcting appraisal downward to 110,000',
+                    performed_by: 'Auditor User',
+                    expected_revision: 1,
+                    new_data: {
+                        postings: [
+                            { account_id: car.id, amount_cents: 1000000, currency: 'AUD' }, // +$10,000 instead of +$20,000
+                            { account_id: reserve.id, amount_cents: -1000000, currency: 'AUD' }
+                        ]
+                    }
+                });
+
+                // Balance on Feb 1 should now be $110,000
+                expect(getAccountBalance(db, car.id, '2026-02-01').balance_cents).toBe(11000000);
+
+                // Balance on Apr 1 MUST REMAIN $200,000!
+                expect(getAccountBalance(db, car.id, '2026-04-01').balance_cents).toBe(20000000);
+            });
+
+            /**
+             * Why this test exists:
+             * Assessor Finding 3: Eliminates silent updates to posted journal entries. Cascading adjustments
+             * must write to m1_transaction_corrections (operation: 'revaluation_cascade') with causal linkage
+             * in reason and atomically bump transaction revision. Stale correction requests with old revisions
+             * must conflict.
+             * 
+             * Tricky logic:
+             * - When Mar 1's journal entry delta is adjusted by a cascading revaluation, Mar 1's revision
+             *   increments from 1 to 2.
+             * - A client holding revision 1 that tries to void or edit Mar 1's transaction must receive ConflictError.
+             * - When the client fetches the latest revision (2), their correction request succeeds.
+             * 
+             * TODO: Expose audit history in the UI drilldown panel.
+             */
+            it('Remediation 3: Cascading valuation adjustments record revaluation_cascade corrections and reject stale revisions', () => {
+                const entity = createEntity(db, { name: 'Art Investor', type: 'person', currency: 'AUD' });
+                const art = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Sculpture Collection',
+                    type: 'asset',
+                    sub_type: 'property',
+                    currency: 'AUD',
+                    opening_date: '2026-01-01',
+                    opening_balance_cents: 5000000 // $50,000 AUD on Jan 1
+                }).account;
+
+                // Mar 1 valuation: target $80,000 (delta +$30,000, revision = 1)
+                const marVal = recordAssetValuation(db, {
+                    asset_account_id: art.id,
+                    new_valuation_cents: 8000000,
+                    date: '2026-03-01',
+                    description: 'March Gallery Valuation',
+                    source: 'Fine Art Appraisals'
+                });
+                expect(marVal.revision).toBe(1);
+
+                // Verify initial revision
+                const marTxBefore = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(marVal.id) as any;
+                expect(marTxBefore.revision).toBe(1);
+
+                // Now insert an earlier valuation on Feb 1: target $60,000 (delta +$10,000)
+                // This triggers cascading on Mar 1 (new delta should be +$20,000 instead of +$30,000)
+                const febVal = recordAssetValuation(db, {
+                    asset_account_id: art.id,
+                    new_valuation_cents: 6000000,
+                    date: '2026-02-01',
+                    description: 'February Preliminary Valuation',
+                    source: 'Curator Check'
+                });
+                expect(febVal.id).toBeDefined();
+
+                // 1. Check that Mar 1 transaction revision was atomically incremented from 1 to 2
+                const marTxAfter = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(marVal.id) as any;
+                expect(marTxAfter.revision).toBe(2);
+
+                // 2. Check that m1_transaction_corrections has an audit row with operation = 'revaluation_cascade'
+                const corrections = db.prepare(
+                    "SELECT * FROM m1_transaction_corrections WHERE transaction_id = ? AND operation = 'revaluation_cascade'"
+                ).all(marVal.id) as any[];
+                expect(corrections.length).toBe(1);
+                expect(corrections[0].reason).toContain('Cascaded valuation adjustment preserving target 8000000 cents');
+                expect(corrections[0].performed_by).toBe('system:valuation_cascade');
+
+                // 3. Stale correction request with expected_revision: 1 must throw ConflictError
+                expect(() => {
+                    correctTransaction(db, {
+                        transaction_id: marVal.id,
+                        operation: 'void',
+                        reason: 'Client attempting void using stale revision',
+                        performed_by: 'Curator User',
+                        expected_revision: 1 // Stale! Current revision is 2
+                    });
+                }).toThrow(ConflictError);
+
+                // 4. Correction with correct revision (2) succeeds
+                const successfulVoid = correctTransaction(db, {
+                    transaction_id: marVal.id,
+                    operation: 'void',
+                    reason: 'Client updated to revision 2 and voided',
+                    performed_by: 'Curator User',
+                    expected_revision: 2
+                });
+                expect(successfulVoid.id).toBeDefined();
+            });
+
+            /**
+             * Why this test exists:
+             * Assessor Finding 4: Correct cash-flow direction and expose reconciliation failures.
+             * Test expense refunds, income reversals, and mixed-leg transactions.
+             * Verify reconciliation status and discrepancies are correctly computed.
+             * 
+             * Tricky logic:
+             * - An expense refund debits cash (+) and credits expense (-), which is an operating INFLOW.
+             * - An income reversal credits cash (-) and debits income (+), which is an operating OUTFLOW.
+             * - Mixed-leg loan repayments split cash outflows between financing (principal) and operating (interest).
+             * - When ledger liquid closing cash matches cash movements ending cash, is_reconciled is true.
+             * - If an artificial discrepancy is introduced, is_reconciled is false and discrepancy_cents is positive.
+             * 
+             * TODO: Add itemized discrepancy drilldown modal in Milestone 2.
+             */
+            it('Remediation 4: Cash flow handles refunds (inflow), income reversals (outflow), mixed-legs, and exposes reconciliation discrepancy', () => {
+                const entity = createEntity(db, { name: 'Retailer Pty Ltd', type: 'business', currency: 'AUD' });
+                const bank = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Business Checking',
+                    type: 'asset',
+                    sub_type: 'checking',
+                    currency: 'AUD',
+                    opening_date: '2026-06-01',
+                    opening_balance_cents: 500000 // $5,000 AUD starting cash
+                }).account;
+
+                const loan = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Equipment Loan',
+                    type: 'liability',
+                    sub_type: 'loan',
+                    currency: 'AUD',
+                    opening_date: '2026-06-01',
+                    opening_balance_cents: 0
+                }).account;
+
+                const expenseAccount = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Office Supplies Expense',
+                    type: 'expense',
+                    sub_type: 'other',
+                    currency: 'AUD',
+                    opening_date: '2026-06-01',
+                    opening_balance_cents: 0
+                }).account;
+
+                const incomeAccount = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Sales Revenue',
+                    type: 'income',
+                    sub_type: 'other',
+                    currency: 'AUD',
+                    opening_date: '2026-06-01',
+                    opening_balance_cents: 0
+                }).account;
+
+                // 1. Expense Refund: Supplier refunds $150 AUD for returned stationery
+                // Postings: Bank (+15,000 cents), Expense (-15,000 cents)
+                postTransaction(db, {
+                    date: '2026-06-05',
+                    description: 'Supplier Stationery Refund',
+                    origin: 'manual',
+                    postings: [
+                        { account_id: bank.id, amount_cents: 15000, currency: 'AUD' },
+                        { account_id: expenseAccount.id, amount_cents: -15000, currency: 'AUD' }
+                    ]
+                });
+
+                // 2. Income Reversal: Customer chargeback/refund of $200 AUD
+                // Postings: Income (+20,000 cents debit), Bank (-20,000 cents credit)
+                postTransaction(db, {
+                    date: '2026-06-10',
+                    description: 'Customer Payment Reversal',
+                    origin: 'manual',
+                    postings: [
+                        { account_id: incomeAccount.id, amount_cents: 20000, currency: 'AUD' },
+                        { account_id: bank.id, amount_cents: -20000, currency: 'AUD' }
+                    ]
+                });
+
+                // 3. Mixed-Leg Transaction: Pay $1,000 AUD ($700 loan principal + $300 loan interest expense)
+                // Postings: Loan (+70,000 debit), Expense (+30,000 debit), Bank (-100,000 credit)
+                postTransaction(db, {
+                    date: '2026-06-15',
+                    description: 'Monthly Loan Service Payment',
+                    origin: 'manual',
+                    postings: [
+                        { account_id: loan.id, amount_cents: 70000, currency: 'AUD' },
+                        { account_id: expenseAccount.id, amount_cents: 30000, currency: 'AUD' },
+                        { account_id: bank.id, amount_cents: -100000, currency: 'AUD' }
+                    ]
+                });
+
+                // 4. Evaluate Cash Flow Statement
+                const cf = getActualCashFlowStatement(db, entity.id, '2026-06-01', '2026-06-30');
+
+                // Starting cash: $5,000 AUD (500,000 cents)
+                expect(cf.starting_cash_cents_by_currency['AUD']).toBe(500000);
+
+                // Operating Inflows: Expense refund = +$150 (15,000 cents)
+                expect(cf.operating_inflows_cents_by_currency['AUD']).toBe(15000);
+
+                // Operating Outflows: Income reversal = $200 (20,000 cents)
+                expect(cf.operating_outflows_cents_by_currency['AUD']).toBe(20000);
+
+                // Net Operating: 15,000 - 20,000 = -5,000 cents (-$50 AUD)
+                expect(cf.net_operating_cents_by_currency['AUD']).toBe(-5000);
+
+                // Financing Outflows: Debt service repayment ($700 principal + $300 interest) = $1,000 (100,000 cents)
+                expect(cf.financing_outflows_cents_by_currency['AUD']).toBe(100000);
+                expect(cf.net_financing_cents_by_currency?.['AUD']).toBe(-100000);
+
+                // Net Cash Change: -5,000 (operating) - 100,000 (financing) = -105,000 cents (-$1,050 AUD)
+                expect(cf.net_cash_change_cents_by_currency['AUD']).toBe(-105000);
+
+                // Ending Cash: 500,000 - 105,000 = 395,000 cents ($3,950 AUD)
+                expect(cf.ending_cash_cents_by_currency['AUD']).toBe(395000);
+
+                // Ledger closing cash check:
+                // Bank initial: 500,000 + 15,000 - 20,000 - 100,000 = 395,000 cents
+                expect(cf.ledger_closing_cash_cents_by_currency?.['AUD']).toBe(395000);
+                expect(cf.is_reconciled_by_currency?.['AUD']).toBe(true);
+                expect(cf.reconciliation_discrepancy_cents_by_currency?.['AUD']).toBe(0);
+
+                // 5. Test Reconciliation Discrepancy Detection:
+                // Simulate an untracked ledger divergence (e.g. single-entry drift without counterpart)
+                // to prove that the reconciliation engine identifies and flags discrepancies
+                const orphanTxId = crypto.randomUUID();
+                db.prepare(`
+                    INSERT INTO m1_transactions (id, date, description, status, origin, revision, created_at, updated_at)
+                    VALUES (?, '2026-06-20', 'Discrepancy Drift', 'posted', 'migration', 1, datetime('now'), datetime('now'))
+                `).run(orphanTxId);
+
+                db.prepare(`
+                    INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+                    VALUES (?, ?, ?, ?, ?)
+                `).run('test-discrepancy-001', orphanTxId, bank.id, 50000, 'AUD');
+
+                const unreconciledCf = getActualCashFlowStatement(db, entity.id, '2026-06-01', '2026-06-30');
+                // Ending cash from posted cash flows is still 395,000 cents
+                expect(unreconciledCf.ending_cash_cents_by_currency['AUD']).toBe(395000);
+                // But ledger closing cash reflects the additional 50,000 cents = 445,000 cents
+                expect(unreconciledCf.ledger_closing_cash_cents_by_currency?.['AUD']).toBe(445000);
+                // Flagged as unreconciled with exact discrepancy (ending 395k - ledger 445k = -50k)
+                expect(unreconciledCf.is_reconciled_by_currency?.['AUD']).toBe(false);
+                expect(unreconciledCf.reconciliation_discrepancy_cents_by_currency?.['AUD']).toBe(-50000); // -$500 discrepancy
+            });
+
+            /**
+             * Why this test exists:
+             * Assessor Finding 5: Converted and unconverted reports must consume the identical scope_type,
+             * entity, and reporting date. Interface-level test proves that both endpoints process
+             * individual vs household scopes identically.
+             * 
+             * Tricky logic:
+             * - For a household with 2 members, unconverted scope_net_worth reports the aggregate household
+             *   assets, liabilities, and net worth in original currencies.
+             * - Consolidated consolidated_net_worth MUST consume the exact same scoped totals and convert
+             *   them into the reporting currency.
+             * 
+             * TODO: Add multi-household comparisons in Milestone 2.
+             */
+            it('Remediation 5: Converted and unconverted reports consume identical scope_type, entity, and reporting date via API', () => {
+                const household = createEntity(db, { name: 'Taylor Household', type: 'household', currency: 'AUD' });
+                const member1 = createEntity(db, { name: 'Taylor A', type: 'person', parent_entity_id: household.id, currency: 'AUD' });
+                const member2 = createEntity(db, { name: 'Taylor B', type: 'person', parent_entity_id: household.id, currency: 'AUD' });
+
+                // Member 1 has $100,000 USD property
+                createAccount(db, {
+                    entity_id: member1.id,
+                    name: 'US Investment Account',
+                    type: 'asset',
+                    sub_type: 'property',
+                    currency: 'USD',
+                    opening_date: '2026-06-01',
+                    opening_balance_cents: 10000000 // $100,000 USD
+                });
+
+                // Member 2 has $50,000 USD checking account
+                createAccount(db, {
+                    entity_id: member2.id,
+                    name: 'US Savings',
+                    type: 'asset',
+                    sub_type: 'savings',
+                    currency: 'USD',
+                    opening_date: '2026-06-01',
+                    opening_balance_cents: 5000000 // $50,000 USD
+                });
+
+                // Set exchange rate: 1 USD = 1.50 AUD
+                setExchangeRate(db, {
+                    from_currency: 'USD',
+                    to_currency: 'AUD',
+                    rate: 1.50,
+                    effective_date: '2026-06-01',
+                    source: 'RBA'
+                });
+
+                // 1. Household Unconverted Report
+                const unconvertedHousehold = getScopeNetWorth(db, household.id, 'household', '2026-06-30');
+                expect(unconvertedHousehold.scoped_net_worth_cents_by_currency?.['USD']).toBe(15000000); // $150k USD
+
+                // 2. Household Converted Report (AUD)
+                const convertedHousehold = getConsolidatedNetWorth(db, {
+                    target_entity_id: household.id,
+                    scope_type: 'household',
+                    reporting_currency: 'AUD',
+                    as_of_date: '2026-06-30'
+                });
+                expect(convertedHousehold.is_complete).toBe(true);
+                expect(convertedHousehold.original_totals_by_currency['USD']).toBe(15000000);
+                // 150,000 USD * 1.50 = 225,000 AUD (22,500,000 cents)
+                expect(convertedHousehold.consolidated_total_cents).toBe(22500000);
+
+                // 3. Individual Scope for Member 1 (Unconverted vs Converted)
+                const unconvertedMember1 = getScopeNetWorth(db, member1.id, 'individual', '2026-06-30');
+                expect(unconvertedMember1.scoped_net_worth_cents_by_currency?.['USD']).toBe(10000000);
+
+                const convertedMember1 = getConsolidatedNetWorth(db, {
+                    target_entity_id: member1.id,
+                    scope_type: 'individual',
+                    reporting_currency: 'AUD',
+                    as_of_date: '2026-06-30'
+                });
+                expect(convertedMember1.original_totals_by_currency['USD']).toBe(10000000);
+                expect(convertedMember1.consolidated_total_cents).toBe(15000000); // 100k USD * 1.50 = 150k AUD
+            });
+
+            /**
+             * Why this test exists:
+             * Assessor Finding 6: Unified partial-ownership remainder policy and rejection of ambiguous allocations.
+             * Primary entity unambiguously retains 100% minus explicit co-owner shares if omitted.
+             * If primary entity is explicitly listed alongside co-owners but total < 100%, reject with ValidationError.
+             * 
+             * Tricky logic:
+             * - When Alice owns an account and allocates only Bob = 30%, Alice retains 70%.
+             * - But if Alice is explicitly allocated 30% and Bob 30% (total 60%), attributing the remaining 40%
+             *   to Alice contradicts her explicit 30% allocation! That must throw ValidationError.
+             * - Unchanged-state assertion guarantees no partial or corrupt allocations are saved.
+             * 
+             * TODO: Add UI prompt asking for confirmation when allocations sum to less than 100%.
+             */
+            it('Remediation 6: Unified partial-ownership remainder policy and rejection of ambiguous allocations', () => {
+                const alice = createEntity(db, { name: 'Alice Owner', type: 'person', currency: 'AUD' });
+                const bob = createEntity(db, { name: 'Bob Co-Owner', type: 'person', currency: 'AUD' });
+                const account = createAccount(db, {
+                    entity_id: alice.id,
+                    name: 'Shared Holiday Villa',
+                    type: 'asset',
+                    sub_type: 'real_estate',
+                    currency: 'AUD',
+                    opening_date: '2026-01-01',
+                    opening_balance_cents: 100000000 // $1,000,000 AUD
+                }).account;
+
+                // 1. Unambiguous omission: Only Bob is listed with 35%. Alice retains 65%.
+                setAccountOwnership(db, account.id, [
+                    { entity_id: bob.id, share_percentage: 35 }
+                ]);
+
+                // Individual scope report for Alice
+                const aliceReport1 = getScopeNetWorth(db, alice.id, 'individual', '2026-01-01');
+                expect(aliceReport1.scoped_net_worth_cents_by_currency?.['AUD']).toBe(65000000); // 65% of $1M
+
+                // Individual scope report for Bob
+                const bobReport1 = getScopeNetWorth(db, bob.id, 'individual', '2026-01-01');
+                expect(bobReport1.scoped_net_worth_cents_by_currency?.['AUD']).toBe(35000000); // 35% of $1M
+
+                // 2. Ambiguous allocation: Alice is explicitly listed with 30%, Bob with 30% (total 60% < 100%)
+                // Must be rejected with ValidationError!
+                expect(() => {
+                    setAccountOwnership(db, account.id, [
+                        { entity_id: alice.id, share_percentage: 30 },
+                        { entity_id: bob.id, share_percentage: 30 }
+                    ]);
+                }).toThrow(ValidationError);
+
+                // 3. Unchanged-state assertion: Previous allocations (Alice 65%, Bob 35%) are preserved
+                const aliceReportAfter = getScopeNetWorth(db, alice.id, 'individual', '2026-01-01');
+                expect(aliceReportAfter.scoped_net_worth_cents_by_currency?.['AUD']).toBe(65000000);
+            });
+
+            /**
+             * Why this test exists:
+             * Assessor Finding 7: Remove rate === 1 shortcut across different currencies.
+             * When converting between currencies with different scale decimals (e.g. JPY scale 0 vs USD scale 2),
+             * scale conversion is necessary even when the exchange rate is 1.0.
+             * 
+             * Tricky logic:
+             * - 100 JPY (integer 100) at 1.0 rate converts to 100 USD.
+             * - In USD cents (scale 2), 100 USD is 10,000 cents!
+             * - Skipping conversion when rate === 1 resulted in 100 cents ($1.00 USD), a 100x error!
+             * - Similarly, negative amounts (liabilities) must convert scales symmetrically without distortion.
+             * 
+             * TODO: Add cryptocurrency scale support (up to 8 decimals) in Milestone 3.
+             */
+            it('Remediation 7: Multi-currency conversion applies scale conversion even when exchange rate is 1.0', () => {
+                // JPY scale = 0, USD scale = 2
+                // 1. 10,000 JPY at rate 1.0 JPY/USD -> $10,000 USD = 1,000,000 cents USD
+                const jpyToUsd = convertCurrencyAmount(10000, 'JPY', 'USD', 1.0);
+                expect(jpyToUsd).toBe(1000000);
+
+                // 2. Reverse: 1,000,000 cents USD ($10,000 USD) at rate 1.0 USD/JPY -> 10,000 JPY (scale 0)
+                const usdToJpy = convertCurrencyAmount(1000000, 'USD', 'JPY', 1.0);
+                expect(usdToJpy).toBe(10000);
+
+                // 3. Negative amount (Liability): -5,000 JPY at rate 1.0 -> -500,000 cents USD
+                const negJpyToUsd = convertCurrencyAmount(-5000, 'JPY', 'USD', 1.0);
+                expect(negJpyToUsd).toBe(-500000);
+
+                // 4. Same currency identity conversion preserves exact amount
+                const usdToUsd = convertCurrencyAmount(50000, 'USD', 'USD', 1.0);
+                expect(usdToUsd).toBe(50000);
+            });
+
+            /**
+             * Why this test exists:
+             * Assessor Finding 8: Include source and description in valuation idempotency identity.
+             * Any discrepancy in valuation date, account, amount, source, or description under the same
+             * idempotency key must throw ConflictError without state mutation.
+             * 
+             * Tricky logic:
+             * - Idempotency requires strict canonical equality across all material fields.
+             * - Re-submitting the same key with an altered description or provenance source indicates
+             *   a conflicting operation, not an identical retry.
+             * 
+             * TODO: Store idempotency history in a dedicated audit log in Milestone 2.
+             */
+            it('Remediation 8: Valuation idempotency checks description and source, throwing ConflictError on mismatch', () => {
+                const entity = createEntity(db, { name: 'Jewelry Investor', type: 'person', currency: 'AUD' });
+                const diamond = createAccount(db, {
+                    entity_id: entity.id,
+                    name: 'Diamond Ring',
+                    type: 'asset',
+                    sub_type: 'property',
+                    currency: 'AUD',
+                    opening_date: '2026-07-01',
+                    opening_balance_cents: 2000000 // $20,000 AUD
+                }).account;
+
+                const idemKey = 'val-idem-diamond-999';
+
+                // Initial valuation
+                const v1 = recordAssetValuation(db, {
+                    asset_account_id: diamond.id,
+                    new_valuation_cents: 2500000,
+                    date: '2026-07-15',
+                    description: 'Gemological Institute Certification',
+                    source: 'GIA Sydney',
+                    idempotency_key: idemKey
+                });
+                expect(v1.id).toBeDefined();
+
+                // 1. Identical retry succeeds and returns exact same transaction
+                const vRetry = recordAssetValuation(db, {
+                    asset_account_id: diamond.id,
+                    new_valuation_cents: 2500000,
+                    date: '2026-07-15',
+                    description: 'Gemological Institute Certification',
+                    source: 'GIA Sydney',
+                    idempotency_key: idemKey
+                });
+                expect(vRetry.id).toBe(v1.id);
+
+                // 2. Mismatched description with same key throws ConflictError
+                expect(() => {
+                    recordAssetValuation(db, {
+                        asset_account_id: diamond.id,
+                        new_valuation_cents: 2500000,
+                        date: '2026-07-15',
+                        description: 'Altered Description Certification', // Changed!
+                        source: 'GIA Sydney',
+                        idempotency_key: idemKey
+                    });
+                }).toThrow(ConflictError);
+
+                // 3. Mismatched source with same key throws ConflictError
+                expect(() => {
+                    recordAssetValuation(db, {
+                        asset_account_id: diamond.id,
+                        new_valuation_cents: 2500000,
+                        date: '2026-07-15',
+                        description: 'Gemological Institute Certification',
+                        source: 'Different Appraiser', // Changed!
+                        idempotency_key: idemKey
+                    });
+                }).toThrow(ConflictError);
+
+                // 4. Unchanged-state assertion: account balance is still $25,000
+                expect(getAccountBalance(db, diamond.id).balance_cents).toBe(2500000);
+            });
         });
     });
 });

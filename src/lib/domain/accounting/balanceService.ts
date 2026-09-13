@@ -518,7 +518,9 @@ export function convertCurrencyAmount(
 ): number {
     const fromUpper = fromCurrency.toUpperCase();
     const toUpper = toCurrency.toUpperCase();
-    if (fromUpper === toUpper || rate === 1.0) {
+    // Resubmission Item 7: Remove rate === 1.0 shortcut across different currencies.
+    // Currency scale conversion remains necessary even at a 1.0 exchange rate.
+    if (fromUpper === toUpper) {
         return amountMinorUnits;
     }
     if (amountMinorUnits === 0) {
@@ -668,6 +670,41 @@ export interface GetScopeNetWorthInput {
  *   * Collects all accounts belonging to member entities or jointly owned by member entities.
  *   * De-duplicates by account_id so each account is counted exactly once at 100%.
  */
+/**
+ * Resolves the attributed ownership share percentage for an entity on an account,
+ * adhering to the unified partial-ownership / remainder policy (Resubmission Item 6).
+ * 
+ * Policy:
+ * 1. If an account has no joint ownership records (ownerships.length === 0):
+ *    The primary account owner (acc.entity_id) owns 100%. All other entities own 0%.
+ * 2. If an account has joint ownership records:
+ *    - If entityId has an explicit allocation record, return that share percentage.
+ *    - If entityId is the primary account owner (acc.entity_id === entityId) and has no explicit record:
+ *      The primary owner retains 100% minus the sum of explicit allocations granted to others.
+ *    - Otherwise, return 0%.
+ */
+export function getAttributedEntityShare(
+    ownerships: Array<{ entity_id: string; share_percentage: number }>,
+    primaryEntityId: string,
+    targetEntityId: string
+): number {
+    if (!ownerships || ownerships.length === 0) {
+        return targetEntityId === primaryEntityId ? 100 : 0;
+    }
+    const explicit = ownerships.find(o => o.entity_id === targetEntityId);
+    if (explicit) {
+        return explicit.share_percentage;
+    }
+    if (targetEntityId === primaryEntityId) {
+        const allocatedToOthers = ownerships.reduce((sum, o) => sum + o.share_percentage, 0);
+        return Math.max(0, 100 - allocatedToOthers);
+    }
+    return 0;
+}
+
+/**
+ * Calculates scope-aware net worth with joint ownership allocation (M1-CALC-01, M1-CALC-02, Scenario T7).
+ */
 export function getScopeNetWorth(
     db: Database.Database,
     targetEntityIdOrInput: string | GetScopeNetWorthInput,
@@ -708,30 +745,15 @@ export function getScopeNetWorth(
             const grossBalance = balResult.balance_cents;
             const curr = acc.currency.toUpperCase();
 
-            // Check ownership allocations
+            // Check ownership allocations using unified policy (Resubmission Item 6)
             const ownerships = db.prepare(`
                 SELECT entity_id, share_percentage FROM m1_account_ownership WHERE account_id = ?
             `).all(acc.id) as Array<{ entity_id: string; share_percentage: number }>;
 
-            let sharePercentage = 100;
-            let isJoint = false;
-
-            if (ownerships.length > 0) {
-                isJoint = true;
-                const myOwnership = ownerships.find(o => o.entity_id === targetEntity.id);
-                if (myOwnership) {
-                    sharePercentage = myOwnership.share_percentage;
-                } else if (acc.entity_id === targetEntity.id) {
-                    // Primary owner but other entities have shares
-                    const otherTotal = ownerships.reduce((sum, o) => sum + o.share_percentage, 0);
-                    sharePercentage = Math.max(0, 100 - otherTotal);
-                } else {
-                    sharePercentage = 0;
-                }
-            }
-
+            const sharePercentage = getAttributedEntityShare(ownerships, acc.entity_id, targetEntity.id);
             if (sharePercentage <= 0) continue;
 
+            const isJoint = ownerships.length > 0;
             const attributedBalance = Math.round(grossBalance * (sharePercentage / 100));
 
             items.push({
@@ -788,11 +810,11 @@ export function getScopeNetWorth(
             calculation_version: CALCULATION_ENGINE_VERSION
         };
     } else {
-        // Household / Consolidated Scope
+        // Household Scope:
+        // Aggregate all members of the household entity (including itself and children)
         const members = listEntityMembers(db, targetEntity.id);
         const memberIds = members.map(m => m.id);
 
-        // Fetch all unique accounts belonging to any household member or co-owned by a member
         const placeholders = memberIds.map(() => '?').join(',');
         const accounts = db.prepare(`
             SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency
@@ -813,35 +835,15 @@ export function getScopeNetWorth(
             const grossBalance = balResult.balance_cents;
             const curr = acc.currency.toUpperCase();
 
-            // Assessor Finding 2: Deduplicate accounts, then sum ONLY the ownership
-            // attributable to entities within the selected household.
-            // External owners' shares must be strictly excluded!
+            // Resubmission Item 6: Household share is strictly the sum of the attributed shares
+            // of its members using the unified policy.
             const ownerships = db.prepare(`
                 SELECT entity_id, share_percentage FROM m1_account_ownership WHERE account_id = ?
             `).all(acc.id) as Array<{ entity_id: string; share_percentage: number }>;
 
-            const memberSet = new Set(memberIds);
             let householdShare = 0;
-            const isJoint = ownerships.length > 0;
-
-            if (ownerships.length === 0) {
-                // No split records: if primary entity is in the household, 100% belongs to household
-                if (memberSet.has(acc.entity_id)) {
-                    householdShare = 100;
-                }
-            } else {
-                // Sum all explicit shares owned by household members
-                for (const o of ownerships) {
-                    if (memberSet.has(o.entity_id)) {
-                        householdShare += o.share_percentage;
-                    }
-                }
-                // If the primary entity is in the household, add any unallocated retained share
-                if (memberSet.has(acc.entity_id)) {
-                    const totalAllocated = ownerships.reduce((sum, o) => sum + o.share_percentage, 0);
-                    const retained = Math.max(0, 100 - totalAllocated);
-                    householdShare += retained;
-                }
+            for (const memberId of memberIds) {
+                householdShare += getAttributedEntityShare(ownerships, acc.entity_id, memberId);
             }
 
             // Clamp to [0, 100]
@@ -850,6 +852,7 @@ export function getScopeNetWorth(
             // If household owns 0% of this account, exclude from report
             if (householdShare <= 0) continue;
 
+            const isJoint = ownerships.length > 0;
             const attributedBalance = Math.round(grossBalance * (householdShare / 100));
 
             items.push({
@@ -1103,44 +1106,58 @@ export function getActualCashFlowStatement(
             const portion = totalNonCashWeight > 0 ? Math.round(Math.abs(cashAmount) * (weight / totalNonCashWeight)) : Math.abs(cashAmount);
             let legActivity: CashFlowActivityType = 'operating';
 
-            if (c.account_type === 'income') {
-                legActivity = 'operating';
-                operatingInflows[curr] = (operatingInflows[curr] || 0) + portion;
-            } else if (c.account_type === 'expense') {
-                if (hasLiabilityRepayment) {
-                    // Loan interest/fees paid as part of a debt service repayment transaction are classified as financing
+            // Cash-Flow Direction & Leg Classification (Resubmission Item 4)
+            // cashAmount > 0 => Inflow to liquid cash
+            // cashAmount < 0 => Outflow from liquid cash
+            if (cashAmount > 0) {
+                // INFLOW TO CASH
+                if (c.account_type === 'income') {
+                    // Normal earned revenue received in cash
+                    legActivity = 'operating';
+                    operatingInflows[curr] = (operatingInflows[curr] || 0) + portion;
+                } else if (c.account_type === 'expense') {
+                    // Expense Refund (credited expense with cash debited)
+                    legActivity = 'operating';
+                    operatingInflows[curr] = (operatingInflows[curr] || 0) + portion;
+                } else if (c.account_type === 'liability') {
+                    // Borrowing proceeds (e.g. loan disbursement deposited into bank)
                     legActivity = 'financing';
-                    financingOutflows[curr] = (financingOutflows[curr] || 0) + portion;
-                } else {
+                    financingInflows[curr] = (financingInflows[curr] || 0) + portion;
+                } else if (c.account_type === 'equity') {
+                    // Owner capital contribution deposited into bank
+                    legActivity = 'financing';
+                    financingInflows[curr] = (financingInflows[curr] || 0) + portion;
+                } else if (c.account_type === 'asset') {
+                    // Capital asset sale proceeds deposited into bank
+                    legActivity = 'investing';
+                    investingInflows[curr] = (investingInflows[curr] || 0) + portion;
+                }
+            } else {
+                // OUTFLOW FROM CASH (cashAmount < 0)
+                if (c.account_type === 'expense') {
+                    if (hasLiabilityRepayment) {
+                        // Loan interest/fees paid as part of a debt service repayment transaction
+                        legActivity = 'financing';
+                        financingOutflows[curr] = (financingOutflows[curr] || 0) + portion;
+                    } else {
+                        legActivity = 'operating';
+                        operatingOutflows[curr] = (operatingOutflows[curr] || 0) + portion;
+                    }
+                } else if (c.account_type === 'income') {
+                    // Income Reversal (debited income with cash refunded/paid out)
                     legActivity = 'operating';
                     operatingOutflows[curr] = (operatingOutflows[curr] || 0) + portion;
-                }
-            } else if (c.account_type === 'liability') {
-                legActivity = 'financing';
-                if (c.amount_cents < 0) {
-                    // Credit Liability -> Borrowing / Loan Proceeds (Financing Inflow)
-                    financingInflows[curr] = (financingInflows[curr] || 0) + portion;
-                } else {
-                    // Debit Liability -> Debt Repayment / CC Settlement (Financing Outflow)
+                } else if (c.account_type === 'liability') {
+                    // Debt principal repayment / CC balance settlement
+                    legActivity = 'financing';
                     financingOutflows[curr] = (financingOutflows[curr] || 0) + portion;
-                }
-            } else if (c.account_type === 'equity') {
-                legActivity = 'financing';
-                if (c.amount_cents < 0) {
-                    // Credit Equity -> Owner Capital Contribution (Financing Inflow)
-                    financingInflows[curr] = (financingInflows[curr] || 0) + portion;
-                } else {
-                    // Debit Equity -> Owner Drawings / Distributions (Financing Outflow)
+                } else if (c.account_type === 'equity') {
+                    // Owner drawings / distributions paid in cash
+                    legActivity = 'financing';
                     financingOutflows[curr] = (financingOutflows[curr] || 0) + portion;
-                }
-            } else if (c.account_type === 'asset') {
-                // Non-cash asset: Investing activity
-                legActivity = 'investing';
-                if (c.amount_cents < 0) {
-                    // Credit Non-Cash Asset -> Asset Sale Proceeds (Investing Inflow)
-                    investingInflows[curr] = (investingInflows[curr] || 0) + portion;
-                } else {
-                    // Debit Non-Cash Asset -> Capital Asset Purchase (Investing Outflow)
+                } else if (c.account_type === 'asset') {
+                    // Capital asset purchase / capex paid in cash
+                    legActivity = 'investing';
                     investingOutflows[curr] = (investingOutflows[curr] || 0) + portion;
                 }
             }
@@ -1212,16 +1229,18 @@ export function getActualCashFlowStatement(
         const netChange = netOp + netFin + netInv;
         netCashChange[curr] = netChange;
 
+        // Ending Cash represents Cash Flow Statement reported ending cash: Starting + Net Change
         const computedEnd = start + netChange;
+        endingCash[curr] = computedEnd;
         const ledgerEnd = ledgerClosingCash[curr] ?? computedEnd;
-        endingCash[curr] = ledgerEnd; // True ledger closing cash
 
-        const diff = ledgerEnd - computedEnd;
+        // Reconciliation: Compare reported ending cash with double-entry ledger closing cash
+        const diff = computedEnd - ledgerEnd;
         discrepancies[curr] = diff;
         isReconciled[curr] = (diff === 0);
 
         formattedNetChange[curr] = formatMoney({ amount_cents: netChange, currency: curr });
-        formattedEndingCash[curr] = formatMoney({ amount_cents: ledgerEnd, currency: curr });
+        formattedEndingCash[curr] = formatMoney({ amount_cents: computedEnd, currency: curr });
     }
 
     return {

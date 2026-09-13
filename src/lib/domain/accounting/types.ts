@@ -244,6 +244,7 @@ export interface AssetValuationRecord {
     account_id: string;
     valuation_date: string;
     target_valuation_cents: number;
+    source?: string | null;
     created_at: string;
 }
 
@@ -293,7 +294,7 @@ export function validateTransactionBalance(postings: Posting[]): { isValid: bool
 export interface TransactionCorrection {
     id: string;
     transaction_id: string;
-    operation: 'edit' | 'void' | 'reversal';
+    operation: 'edit' | 'void' | 'reversal' | 'revaluation_cascade';
     reason: string;
     previous_state: string; // JSON snapshot of transaction + postings
     corrected_state: string; // JSON snapshot of new transaction + postings

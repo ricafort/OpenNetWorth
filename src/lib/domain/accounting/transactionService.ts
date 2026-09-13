@@ -45,7 +45,7 @@ import {
     assertValidMoneyCents,
     validateTransactionBalance
 } from './types';
-import { ConflictError, ValidationError, getEntity } from './accountService';
+import { ConflictError, ValidationError, createAccount, getEntity } from './accountService';
 
 export interface PostTransactionInput {
     id?: string;
@@ -1100,22 +1100,21 @@ export function recordLoanRepayment(db: Database.Database, input: RecordLoanRepa
 export function cascadeAssetValuations(
     db: Database.Database,
     accountId: string,
-    afterDate: string
+    afterDate: string,
+    causalTxId?: string
 ): void {
     const laterValuations = db.prepare(`
-        SELECT v.id, v.transaction_id, v.valuation_date, v.target_valuation_cents, t.date, t.created_at
+        SELECT v.id, v.transaction_id, v.valuation_date, v.target_valuation_cents,
+               t.date, t.created_at, t.revision, t.description, t.payee_or_payer,
+               t.status, t.origin, t.idempotency_key, t.evidence_refs
         FROM m1_asset_valuations v
         JOIN m1_transactions t ON v.transaction_id = t.id
-        WHERE v.account_id = ? AND v.valuation_date > ? AND t.status = 'posted'
+        WHERE v.account_id = ? AND v.valuation_date >= ? AND t.status = 'posted'
+          AND (? IS NULL OR v.transaction_id != ?)
         ORDER BY v.valuation_date ASC, v.created_at ASC
-    `).all(accountId, afterDate) as Array<{
-        id: string;
-        transaction_id: string;
-        valuation_date: string;
-        target_valuation_cents: number;
-        date: string;
-        created_at: string;
-    }>;
+    `).all(accountId, afterDate, causalTxId || null, causalTxId || null) as any[];
+
+    const now = new Date().toISOString();
 
     for (const lv of laterValuations) {
         // Calculate cumulative balance of accountId immediately prior to lv.transaction_id
@@ -1132,23 +1131,113 @@ export function cascadeAssetValuations(
         const priorBalanceCents = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
         const newDelta = lv.target_valuation_cents - priorBalanceCents;
 
-        // Update the postings of lv.transaction_id
-        const postings = db.prepare(`
-            SELECT j.id, j.account_id, a.type
+        // Fetch current postings of lv.transaction_id
+        const currentPostings = db.prepare(`
+            SELECT j.id, j.transaction_id, j.account_id, j.amount_cents, j.currency, j.memo, a.type
             FROM m1_journal_entries j
             JOIN m1_accounts a ON j.account_id = a.id
             WHERE j.transaction_id = ?
-        `).all(lv.transaction_id) as Array<{ id: string; account_id: string; type: string }>;
+        `).all(lv.transaction_id) as any[];
 
-        const assetPosting = postings.find(p => p.account_id === accountId);
-        const equityPosting = postings.find(p => p.type === 'equity');
+        const assetPosting = currentPostings.find(p => p.account_id === accountId);
+        const equityPosting = currentPostings.find(p => p.type === 'equity');
 
-        if (assetPosting) {
-            db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(newDelta, assetPosting.id);
+        if (!assetPosting || !equityPosting) continue;
+
+        // If delta is already correct, no mutation needed
+        if (assetPosting.amount_cents === newDelta) continue;
+
+        // Capture previous state snapshot before mutation (Resubmission Item 3)
+        const previousSnapshot = JSON.stringify({
+            transaction: {
+                id: lv.transaction_id,
+                date: lv.date,
+                description: lv.description,
+                payee_or_payer: lv.payee_or_payer,
+                status: lv.status,
+                origin: lv.origin,
+                idempotency_key: lv.idempotency_key,
+                evidence_refs: lv.evidence_refs ? JSON.parse(lv.evidence_refs) : null,
+                revision: lv.revision,
+                created_at: lv.created_at
+            },
+            postings: currentPostings.map(p => ({
+                id: p.id,
+                transaction_id: p.transaction_id,
+                account_id: p.account_id,
+                amount_cents: p.amount_cents,
+                currency: p.currency,
+                memo: p.memo
+            }))
+        });
+
+        // Update postings to new required delta
+        db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(newDelta, assetPosting.id);
+        db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(-newDelta, equityPosting.id);
+
+        // Atomically bump transaction revision and updated_at
+        const newRevision = lv.revision + 1;
+        const res = db.prepare(`
+            UPDATE m1_transactions
+            SET revision = revision + 1, updated_at = ?
+            WHERE id = ? AND revision = ?
+        `).run(now, lv.transaction_id, lv.revision);
+
+        if (res.changes === 0) {
+            throw new ConflictError(`Optimistic lock failure while cascading valuation for transaction ${lv.transaction_id}.`);
         }
-        if (equityPosting) {
-            db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(-newDelta, equityPosting.id);
-        }
+
+        // Capture corrected state snapshot
+        const updatedPostings = currentPostings.map(p => {
+            if (p.id === assetPosting.id) return { ...p, amount_cents: newDelta };
+            if (p.id === equityPosting.id) return { ...p, amount_cents: -newDelta };
+            return p;
+        });
+
+        const correctedSnapshot = JSON.stringify({
+            transaction: {
+                id: lv.transaction_id,
+                date: lv.date,
+                description: lv.description,
+                payee_or_payer: lv.payee_or_payer,
+                status: lv.status,
+                origin: lv.origin,
+                idempotency_key: lv.idempotency_key,
+                evidence_refs: lv.evidence_refs ? JSON.parse(lv.evidence_refs) : null,
+                revision: newRevision,
+                created_at: lv.created_at,
+                updated_at: now
+            },
+            postings: updatedPostings.map(p => ({
+                id: p.id,
+                transaction_id: p.transaction_id,
+                account_id: p.account_id,
+                amount_cents: p.amount_cents,
+                currency: p.currency,
+                memo: p.memo
+            }))
+        });
+
+        // Record audit trail in m1_transaction_corrections with causal linkage
+        const correctionId = crypto.randomUUID();
+        const reason = causalTxId
+            ? `Cascaded valuation adjustment preserving target ${lv.target_valuation_cents} cents following transaction ${causalTxId}`
+            : `Cascaded valuation adjustment preserving target ${lv.target_valuation_cents} cents`;
+
+        db.prepare(`
+            INSERT INTO m1_transaction_corrections (
+                id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            correctionId,
+            lv.transaction_id,
+            'revaluation_cascade',
+            reason,
+            previousSnapshot,
+            correctedSnapshot,
+            'system:valuation_cascade',
+            now
+        );
     }
 }
 
@@ -1163,14 +1252,17 @@ export function cascadeAssetValuations(
  * Instead, it posts between the Asset account and an Unrealized Valuation Reserve Equity account.
  * 
  * Tricky logic:
- * - Idempotency Pre-Check (Assessor Finding 6): Checks the idempotency key against original request
- *   before calculating any delta. Identical retries return existing record; changed details conflict without mutation.
+ * - Idempotency Pre-Check (Assessor Findings 6 & 8): Checks idempotency key against original request
+ *   including description and source before calculating any delta.
+ *   Identical retries return existing record; changed details conflict without mutation.
+ * - Same-Day Valuation Enforcement (Resubmission Item 1):
+ *   Explicitly rejects multiple same-day valuation targets for the same account with ValidationError.
  * - Deterministic delta computation:
  *   Calculates the asset's cumulative balance before `valDate` (excluding valuations on or after `valDate`).
  *   Delta = new_valuation_cents - priorBalance.
- * - Valuation Target Cascading (Assessor Finding 5):
- *   Records target in m1_asset_valuations. If this is a backdated valuation, cascades through subsequent
- *   valuations to adjust their deltas, preserving subsequent recorded valuation targets.
+ * - Revision-Safe Valuation Cascading (Resubmission Item 3):
+ *   Records target in m1_asset_valuations. Cascades through subsequent valuations to preserve targets
+ *   with auditable snapshots in m1_transaction_corrections and bumped revisions.
  * 
  * TODO: Support automated depreciation schedules in Milestone 2.
  */
@@ -1202,7 +1294,7 @@ export function recordAssetValuation(
             throw new ValidationError(`Asset account "${assetAccount.name}" belongs to entity "${assetAccount.entity_id}", not "${input.entity_id}".`);
         }
 
-        // 1. Idempotency Pre-Check before calculating delta (Assessor Finding 6)
+        // 1. Idempotency Pre-Check before calculating delta (Assessor Findings 6 & 8)
         if (input.idempotency_key) {
             const existingTx = db.prepare('SELECT * FROM m1_transactions WHERE idempotency_key = ?').get(input.idempotency_key) as any;
             if (existingTx) {
@@ -1213,10 +1305,21 @@ export function recordAssetValuation(
                 const isAccountMatch = existingVal ? existingVal.account_id === assetAccount.id : existingPostings.some(p => p.account_id === assetAccount.id);
                 const isValuationMatch = existingVal ? existingVal.target_valuation_cents === input.new_valuation_cents : true;
 
+                // Description identity match (Resubmission Item 8)
+                const sourceDesc = input.source ? ` (${input.source.trim()})` : '';
+                const expectedDesc = input.description ? input.description.trim() : `Valuation Adjustment - ${assetAccount.name}${sourceDesc}`;
+                const isDescMatch = existingTx.description === expectedDesc;
+
+                // Source identity match (Resubmission Item 8)
+                const expectedSource = input.source ? input.source.trim() : null;
+                const existingSource = existingVal?.source ?? existingTx.payee_or_payer ?? null;
+                const isSourceMatch = existingSource === expectedSource;
+
+                // Evidence identity match (Assessor Finding 7)
                 const existingEvidence = existingTx.evidence_refs ? JSON.parse(existingTx.evidence_refs) : [];
                 const isEvidenceMatch = normalizeEvidenceRefs(existingEvidence) === normalizeEvidenceRefs(input.evidence_refs);
 
-                if (isDateMatch && isAccountMatch && isValuationMatch && isEvidenceMatch) {
+                if (isDateMatch && isAccountMatch && isValuationMatch && isDescMatch && isSourceMatch && isEvidenceMatch) {
                     return {
                         id: existingTx.id,
                         date: existingTx.date,
@@ -1238,43 +1341,103 @@ export function recordAssetValuation(
                             memo: p.memo
                         }))
                     };
-                } else {
-                    throw new ConflictError(
-                        `Idempotency conflict: A valuation transaction with idempotency key "${input.idempotency_key}" already exists with different target valuation or details.`
-                    );
                 }
+
+                throw new ConflictError(
+                    `Idempotency conflict: transaction already exists with idempotency key '${input.idempotency_key}' but different details (description, source, date, account, valuation amount, or evidence).`
+                );
             }
         }
 
-        // 2. Calculate balance prior to this valuation date
+        // 2. Same-Day Valuation Enforcement (Resubmission Item 1)
+        // Explicitly reject multiple same-day valuation targets for the same account.
+        const existingSameDayVal = db.prepare(`
+            SELECT v.id, v.transaction_id, v.target_valuation_cents
+            FROM m1_asset_valuations v
+            JOIN m1_transactions t ON v.transaction_id = t.id
+            WHERE v.account_id = ? AND v.valuation_date = ? AND t.status = 'posted'
+        `).get(assetAccount.id, valDate) as any;
+
+        if (existingSameDayVal) {
+            throw new ValidationError(
+                `An asset valuation target already exists for account "${assetAccount.name}" on date "${valDate}". Multiple same-day valuations are not supported. Use edit or void to modify existing valuations.`
+            );
+        }
+
+        // 3. Ensure an Unrealized Valuation Reserve account exists for this entity in the same currency
+        let equityAccount = db.prepare(`
+            SELECT id, name FROM m1_accounts
+            WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve' AND currency = ?
+        `).get(entityId, assetAccount.currency) as any;
+
+        if (!equityAccount) {
+            const reserveAcc = createAccount(db, {
+                entity_id: entityId,
+                name: `Unrealized Valuation Reserve (${assetAccount.currency})`,
+                type: 'equity',
+                sub_type: 'valuation_reserve',
+                currency: assetAccount.currency
+            });
+            equityAccount = reserveAcc.account;
+        }
+
+        // 4. Calculate cumulative balance prior to valDate (excluding valuations on or after valDate)
         const priorRows = db.prepare(`
             SELECT j.amount_cents
             FROM m1_journal_entries j
             JOIN m1_transactions t ON j.transaction_id = t.id
-            WHERE j.account_id = ? AND t.status = 'posted'
+            WHERE j.account_id = ?
+              AND t.status = 'posted'
               AND (t.date < ? OR (t.date = ? AND t.id NOT IN (SELECT transaction_id FROM m1_asset_valuations WHERE account_id = ?)))
         `).all(assetAccount.id, valDate, valDate, assetAccount.id) as Array<{ amount_cents: number }>;
 
         const priorBalanceCents = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
         const deltaCents = input.new_valuation_cents - priorBalanceCents;
 
-        const laterValuationsCount = (db.prepare(`
-            SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date > ?
-        `).get(assetAccount.id, valDate) as { cnt: number }).cnt;
+        const currency = assetAccount.currency.toUpperCase();
+        const postings: Array<{ account_id: string; amount_cents: number; currency: CurrencyCode; memo?: string }> = [];
 
-        if (deltaCents === 0 && laterValuationsCount === 0) {
-            throw new ValidationError(`New valuation matches the existing balance (${input.new_valuation_cents} cents). No adjustment needed.`);
+        if (deltaCents === 0) {
+            // Check if there are subsequent valuations to cascade even if delta is 0
+            const subsequentCount = (db.prepare(`
+                SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date > ?
+            `).get(assetAccount.id, valDate) as any).cnt;
+
+            if (subsequentCount === 0) {
+                // Return no-op transaction if balance already exactly equals target
+                const existingRecent = db.prepare(`
+                    SELECT t.* FROM m1_transactions t
+                    JOIN m1_journal_entries j ON t.id = j.transaction_id
+                    WHERE j.account_id = ? AND t.status = 'posted' AND t.date <= ?
+                    ORDER BY t.date DESC, t.created_at DESC LIMIT 1
+                `).get(assetAccount.id, valDate) as any;
+
+                if (existingRecent) {
+                    const postRows = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingRecent.id) as any[];
+                    return {
+                        id: existingRecent.id,
+                        date: existingRecent.date,
+                        description: existingRecent.description,
+                        payee_or_payer: existingRecent.payee_or_payer,
+                        status: existingRecent.status,
+                        origin: existingRecent.origin,
+                        idempotency_key: existingRecent.idempotency_key,
+                        evidence_refs: existingRecent.evidence_refs ? JSON.parse(existingRecent.evidence_refs) : null,
+                        revision: existingRecent.revision,
+                        created_at: existingRecent.created_at,
+                        updated_at: existingRecent.updated_at,
+                        postings: postRows.map(p => ({
+                            id: p.id,
+                            transaction_id: p.transaction_id,
+                            account_id: p.account_id,
+                            amount_cents: p.amount_cents,
+                            currency: p.currency,
+                            memo: p.memo
+                        }))
+                    };
+                }
+            }
         }
-
-        const currency = assetAccount.currency;
-        const equityAccount = ensureValuationEquityAccount(db, entityId, currency);
-
-        const postings: Array<{
-            account_id: string;
-            amount_cents: number;
-            currency: CurrencyCode;
-            memo?: string | null;
-        }> = [];
 
         if (deltaCents >= 0) {
             // Valuation Gain: Debit Asset (+), Credit Valuation Equity (-)
@@ -1306,29 +1469,29 @@ export function recordAssetValuation(
             });
         }
 
-        const sourceDesc = input.source ? ` (${input.source})` : '';
-        const desc = input.description || `Valuation Adjustment - ${assetAccount.name}${sourceDesc}`;
+        const sourceDesc = input.source ? ` (${input.source.trim()})` : '';
+        const desc = input.description ? input.description.trim() : `Valuation Adjustment - ${assetAccount.name}${sourceDesc}`;
 
         const postedTx = postTransaction(db, {
             date: valDate,
             description: desc,
-            payee_or_payer: input.source || null,
+            payee_or_payer: input.source ? input.source.trim() : null,
             origin: 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,
             postings
         });
 
-        // 3. Record Target Valuation Anchor in m1_asset_valuations
+        // 5. Record Target Valuation Anchor in m1_asset_valuations
         const valId = `val-${postedTx.id}`;
         const now = new Date().toISOString();
         db.prepare(`
-            INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(valId, postedTx.id, assetAccount.id, valDate, input.new_valuation_cents, now);
+            INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(valId, postedTx.id, assetAccount.id, valDate, input.new_valuation_cents, input.source ? input.source.trim() : null, now);
 
-        // 4. Cascade target preservation to any subsequent valuations
-        cascadeAssetValuations(db, assetAccount.id, valDate);
+        // 6. Cascade target preservation to any subsequent valuations
+        cascadeAssetValuations(db, assetAccount.id, valDate, postedTx.id);
 
         return postedTx;
     });
@@ -1385,6 +1548,21 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
 
             if (res.changes === 0) {
                 throw new ConflictError(`Optimistic lock failure while voiding transaction ${input.transaction_id}.`);
+            }
+
+            // Valuation target preservation on void (Resubmission Item 2)
+            const valRow = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
+            if (valRow) {
+                db.prepare('DELETE FROM m1_asset_valuations WHERE transaction_id = ?').run(input.transaction_id);
+                cascadeAssetValuations(db, valRow.account_id, valRow.valuation_date, input.transaction_id);
+            } else {
+                // If any non-valuation posting was on an asset account with subsequent valuations, cascade them
+                for (const p of previousPostings) {
+                    const hasLater = (db.prepare('SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date >= ?').get(p.account_id, tx.date) as any).cnt;
+                    if (hasLater > 0) {
+                        cascadeAssetValuations(db, p.account_id, tx.date, input.transaction_id);
+                    }
+                }
             }
 
             correctedSnapshot = JSON.stringify({
@@ -1484,6 +1662,24 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
 
             if (res.changes === 0) {
                 throw new ConflictError(`Optimistic lock failure while editing transaction ${input.transaction_id}.`);
+            }
+
+            // Valuation target preservation on edit (Resubmission Item 2)
+            const valRow = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
+            if (valRow) {
+                if (newDate !== valRow.valuation_date) {
+                    db.prepare('UPDATE m1_asset_valuations SET valuation_date = ? WHERE id = ?').run(newDate, valRow.id);
+                }
+                const minDate = newDate < valRow.valuation_date ? newDate : valRow.valuation_date;
+                cascadeAssetValuations(db, valRow.account_id, minDate, input.transaction_id);
+            } else {
+                for (const p of updatedPostings) {
+                    const minDate = newDate < tx.date ? newDate : tx.date;
+                    const hasLater = (db.prepare('SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date >= ?').get(p.account_id, minDate) as any).cnt;
+                    if (hasLater > 0) {
+                        cascadeAssetValuations(db, p.account_id, minDate, input.transaction_id);
+                    }
+                }
             }
 
             correctedSnapshot = JSON.stringify({
