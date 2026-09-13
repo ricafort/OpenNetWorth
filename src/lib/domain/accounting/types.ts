@@ -222,6 +222,31 @@ export interface Transaction {
     updated_at: string;
 }
 
+/**
+ * Record representing an absolute valuation target for an asset account at a specific date.
+ * 
+ * Why this exists:
+ * Assessor Finding 5: When non-cash asset valuations are recorded, users provide the absolute value
+ * of the asset as of that date. Storing this target valuation allows the system to recalculate
+ * intermediate journal entry deltas when earlier valuations or transactions are inserted,
+ * preventing historical regression where later valuations get artificially inflated.
+ * 
+ * Tricky logic:
+ * - When backdated valuations are inserted, subsequent valuation transactions are cascaded
+ *   so their journal entries are updated to `target_valuation_cents - priorBalance`, strictly
+ *   preserving the recorded target.
+ * 
+ * TODO: Support automated index / market price valuations in Milestone 2.
+ */
+export interface AssetValuationRecord {
+    id: string;
+    transaction_id: string;
+    account_id: string;
+    valuation_date: string;
+    target_valuation_cents: number;
+    created_at: string;
+}
+
 export interface Posting {
     id: string;
     transaction_id: string;
@@ -360,9 +385,15 @@ export interface ScopeNetWorthResult {
 
 /**
  * Multi-Currency Consolidated Net Worth with Completeness Verification (M1-CALC-03, T8)
+ * 
+ * Why this exists:
+ * Reports personal net worth consolidated into a target reporting currency.
+ * Consumes the exact ownership-scoped totals from getScopeNetWorth to guarantee consistency.
  */
 export interface ConsolidatedNetWorthResult {
     reporting_currency: CurrencyCode;
+    scope_type?: ScopeType;
+    target_entity_id?: string;
     is_complete: boolean;
     missing_rates: Array<{ from: CurrencyCode; to: CurrencyCode; date: string }>;
     consolidated_total_cents?: number | null;
@@ -398,6 +429,7 @@ export interface CashFlowItem {
  * Why this exists:
  * Strictly separates liquid cash asset movements from accrual revenue and cost recognition.
  * Credit card purchases are not cash flows; debt repayments and cash settlements are.
+ * Independently reconciles reported closing cash with double-entry ledger closing cash.
  */
 export interface CashFlowStatementResult {
     entity_id: string;
@@ -406,15 +438,24 @@ export interface CashFlowStatementResult {
     operating_inflows_cents_by_currency: Record<CurrencyCode, number>;
     operating_outflows_cents_by_currency: Record<CurrencyCode, number>;
     net_operating_cents_by_currency: Record<CurrencyCode, number>;
+    financing_inflows_cents_by_currency?: Record<CurrencyCode, number>;
     financing_outflows_cents_by_currency: Record<CurrencyCode, number>;
+    net_financing_cents_by_currency?: Record<CurrencyCode, number>;
+    investing_inflows_cents_by_currency?: Record<CurrencyCode, number>;
+    investing_outflows_cents_by_currency?: Record<CurrencyCode, number>;
+    net_investing_cents_by_currency?: Record<CurrencyCode, number>;
     net_cash_change_cents_by_currency: Record<CurrencyCode, number>;
     starting_cash_cents_by_currency: Record<CurrencyCode, number>;
     ending_cash_cents_by_currency: Record<CurrencyCode, number>;
+    ledger_closing_cash_cents_by_currency?: Record<CurrencyCode, number>;
+    is_reconciled_by_currency?: Record<CurrencyCode, boolean>;
+    reconciliation_discrepancy_cents_by_currency?: Record<CurrencyCode, number>;
     formatted_net_cash_change_by_currency: Record<CurrencyCode, string>;
     formatted_ending_cash_by_currency: Record<CurrencyCode, string>;
     items: CashFlowItem[];
     calculation_version: string;
 }
+
 
 /**
  * Chronological Ledger Drill-Down with Running Balance & Evidence Provenance (M1-EVID-01, M1-EVID-02)

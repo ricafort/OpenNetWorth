@@ -53,7 +53,8 @@ import {
     getScopeNetWorth,
     getConsolidatedNetWorth,
     setExchangeRate,
-    getExchangeRate
+    getExchangeRate,
+    convertCurrencyAmount
 } from './balanceService';
 import {
     postTransaction,
@@ -62,7 +63,9 @@ import {
     recordTransfer,
     recordCreditCardRepayment,
     recordLoanRepayment,
-    recordAssetValuation
+    recordAssetValuation,
+    canonicalizeEvidenceRef,
+    normalizeEvidenceRefs
 } from './transactionService';
 import { formatMoney } from './types';
 import { GET as accountingGet, POST as accountingPost } from '@/app/api/accounting/route';
@@ -800,4 +803,600 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
             expect(repData.report.scoped_net_worth_cents_by_currency['AUD']).toBe(55000000);
         });
     });
+
+    describe('7. Assessor Remediation Regression Tests (Findings 1 - 7)', () => {
+        it('Finding 1: Currency Conversion Scale & Explicit Rounding (JPY <-> AUD)', () => {
+            // Scale arithmetic: JPY scale = 0, AUD scale = 2
+            // AUD -> JPY: 1050 cents AUD ($10.50) at rate 95.5 JPY/AUD -> 10.50 * 95.5 = 1002.75 -> 1003 JPY
+            const audToJpy = convertCurrencyAmount(1050, 'AUD', 'JPY', 95.5);
+            expect(audToJpy).toBe(1003);
+
+            // AUD Liability -> JPY: -1050 cents AUD -> -1003 JPY (preserves sign)
+            const audLiabToJpy = convertCurrencyAmount(-1050, 'AUD', 'JPY', 95.5);
+            expect(audLiabToJpy).toBe(-1003);
+
+            // JPY -> AUD: 10,000 JPY at rate 0.0104712 AUD/JPY -> 10,000 * 0.0104712 = 104.712 AUD -> 10471 cents AUD
+            const jpyToAud = convertCurrencyAmount(10000, 'JPY', 'AUD', 0.0104712);
+            expect(jpyToAud).toBe(10471);
+
+            // JPY Liability -> AUD: -10,000 JPY -> -10471 cents AUD
+            const jpyLiabToAud = convertCurrencyAmount(-10000, 'JPY', 'AUD', 0.0104712);
+            expect(jpyLiabToAud).toBe(-10471);
+
+            // Explicit rounding boundary tests:
+            // 100 JPY at rate 0.010049 -> 100.49 cents -> 100 cents
+            expect(convertCurrencyAmount(100, 'JPY', 'AUD', 0.010049)).toBe(100);
+            // 100 JPY at rate 0.010050 -> 100.50 cents -> 101 cents (half-up)
+            expect(convertCurrencyAmount(100, 'JPY', 'AUD', 0.010050)).toBe(101);
+            // 100 JPY at rate 0.010051 -> 100.51 cents -> 101 cents
+            expect(convertCurrencyAmount(100, 'JPY', 'AUD', 0.010051)).toBe(101);
+
+            // In-memory DB verification with JPY and AUD accounts:
+            const entity = createEntity(db, { name: 'Kenji Tanaka', type: 'person', currency: 'JPY' });
+            createAccount(db, {
+                entity_id: entity.id,
+                name: 'Tokyo Bank',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'JPY',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 1000000 // 1,000,000 JPY
+            });
+            createAccount(db, {
+                entity_id: entity.id,
+                name: 'Tokyo Card',
+                type: 'liability',
+                sub_type: 'credit_card',
+                currency: 'JPY',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 200000 // 200,000 JPY liability
+            });
+
+            // Net worth in JPY: 1,000,000 - 200,000 = 800,000 JPY
+            setExchangeRate(db, {
+                from_currency: 'JPY',
+                to_currency: 'AUD',
+                rate: 0.0105, // 1 JPY = 0.0105 AUD
+                effective_date: '2026-06-30',
+                source: 'RBA Official'
+            });
+
+            const consReport = getConsolidatedNetWorth(db, entity.id, 'AUD', '2026-06-30');
+            expect(consReport.is_complete).toBe(true);
+            // 800,000 JPY * 0.0105 = 8,400 AUD = 840,000 cents AUD
+            expect(consReport.consolidated_total_cents).toBe(840000);
+        });
+
+        it('Finding 2: Household Ownership Attribution & External Owner Exclusion', () => {
+            const household = createEntity(db, { name: 'Walker Household', type: 'household', currency: 'AUD' });
+            const alice = createEntity(db, { name: 'Alice Walker', type: 'person', parent_entity_id: household.id, currency: 'AUD' });
+            const bob = createEntity(db, { name: 'Bob Walker', type: 'person', parent_entity_id: household.id, currency: 'AUD' });
+            const charlieOutsider = createEntity(db, { name: 'Charlie Outsider', type: 'person', currency: 'AUD' });
+
+            // Account 1: Internal 50/50 joint asset (Alice 50%, Bob 50%)
+            const familyCar = createAccount(db, {
+                entity_id: alice.id,
+                name: 'Family SUV',
+                type: 'asset',
+                sub_type: 'vehicle',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 6000000 // $60,000 AUD
+            }).account;
+            setAccountOwnership(db, familyCar.id, [
+                { entity_id: alice.id, share_percentage: 50 },
+                { entity_id: bob.id, share_percentage: 50 }
+            ]);
+
+            // Account 2: Member / Outsider 50/50 joint asset (Alice 50%, Charlie 50%)
+            const holidayCabin = createAccount(db, {
+                entity_id: alice.id,
+                name: 'Holiday Cabin',
+                type: 'asset',
+                sub_type: 'real_estate',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 40000000 // $400,000 AUD
+            }).account;
+            setAccountOwnership(db, holidayCabin.id, [
+                { entity_id: alice.id, share_percentage: 50 },
+                { entity_id: charlieOutsider.id, share_percentage: 50 }
+            ]);
+
+            // Account 3: Outsider-only asset (Charlie 100%)
+            createAccount(db, {
+                entity_id: charlieOutsider.id,
+                name: 'Charlie Boat',
+                type: 'asset',
+                sub_type: 'vehicle',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 10000000 // $100,000 AUD
+            });
+
+            // Evaluate Household Scope
+            const hhReport = getScopeNetWorth(db, household.id, 'household', '2026-01-01');
+
+            // 1. Family SUV: 100% in household (Alice 50% + Bob 50% = 100%) -> $60,000
+            const suvItem = hhReport.items.find(i => i.account_id === familyCar.id);
+            expect(suvItem).toBeDefined();
+            expect(suvItem?.ownership_share_percentage).toBe(100);
+            expect(suvItem?.attributed_balance_cents).toBe(6000000);
+
+            // 2. Holiday Cabin: Only 50% in household (Alice 50%; Charlie 50% strictly excluded) -> $200,000
+            const cabinItem = hhReport.items.find(i => i.account_id === holidayCabin.id);
+            expect(cabinItem).toBeDefined();
+            expect(cabinItem?.ownership_share_percentage).toBe(50);
+            expect(cabinItem?.attributed_balance_cents).toBe(20000000);
+
+            // 3. Charlie Boat: NOT in household report
+            expect(hhReport.items.find(i => i.account_name === 'Charlie Boat')).toBeUndefined();
+
+            // Total Household Assets: $60,000 + $200,000 = $260,000 (26,000,000 cents), NOT $460,000
+            expect(hhReport.scoped_assets_cents_by_currency?.['AUD']).toBe(26000000);
+            expect(hhReport.scoped_net_worth_cents_by_currency?.['AUD']).toBe(26000000);
+        });
+
+        it('Finding 3: Consistent Report Scope in Converted Net Worth', () => {
+            const alice = createEntity(db, { name: 'Alice Co-Owner', type: 'person', currency: 'AUD' });
+            const partner = createEntity(db, { name: 'Outside Partner', type: 'person', currency: 'AUD' });
+
+            const commercialProperty = createAccount(db, {
+                entity_id: alice.id,
+                name: 'Office Building',
+                type: 'asset',
+                sub_type: 'real_estate',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 100000000 // $1,000,000 AUD gross
+            }).account;
+
+            // Alice owns 40%, Partner owns 60%
+            setAccountOwnership(db, commercialProperty.id, [
+                { entity_id: alice.id, share_percentage: 40 },
+                { entity_id: partner.id, share_percentage: 60 }
+            ]);
+
+            // 1. Unconverted Scoped Net Worth for Alice: 40% of $1,000,000 = $400,000 AUD (40,000,000 cents)
+            const scopedReport = getScopeNetWorth(db, alice.id, 'individual', '2026-01-01');
+            expect(scopedReport.scoped_net_worth_cents_by_currency?.['AUD']).toBe(40000000);
+
+            // 2. Identity-Currency Converted Net Worth (AUD -> AUD):
+            // MUST consume the scoped total and preserve $400,000 AUD (NOT $1,000,000)
+            const identityConsolidated = getConsolidatedNetWorth(db, {
+                target_entity_id: alice.id,
+                reporting_currency: 'AUD',
+                scope_type: 'individual',
+                as_of_date: '2026-01-01'
+            });
+            expect(identityConsolidated.is_complete).toBe(true);
+            expect(identityConsolidated.consolidated_total_cents).toBe(40000000);
+            expect(identityConsolidated.original_totals_by_currency['AUD']).toBe(40000000);
+
+            // 3. Cross-Currency Converted Net Worth (AUD -> USD):
+            setExchangeRate(db, {
+                from_currency: 'AUD',
+                to_currency: 'USD',
+                rate: 0.65,
+                effective_date: '2026-01-01',
+                source: 'Forex'
+            });
+
+            const usdConsolidated = getConsolidatedNetWorth(db, {
+                target_entity_id: alice.id,
+                reporting_currency: 'USD',
+                scope_type: 'individual',
+                as_of_date: '2026-01-01'
+            });
+            // 40,000,000 cents AUD * 0.65 = 26,000,000 cents USD ($260,000 USD)
+            expect(usdConsolidated.is_complete).toBe(true);
+            expect(usdConsolidated.consolidated_total_cents).toBe(26000000);
+        });
+
+        it('Finding 4: Actual Cash Flow Reconciliation with Double-Entry Ledger', () => {
+            const business = createEntity(db, { name: 'Acme Holdings', type: 'business', currency: 'AUD' });
+            const bank = createAccount(db, {
+                entity_id: business.id,
+                name: 'Operating Bank',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 1000000 // $10,000 AUD starting cash
+            }).account;
+
+            const savings = createAccount(db, {
+                entity_id: business.id,
+                name: 'Reserve Savings',
+                type: 'asset',
+                sub_type: 'savings',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 0
+            }).account;
+
+            const loan = createAccount(db, {
+                entity_id: business.id,
+                name: 'Bank Term Loan',
+                type: 'liability',
+                sub_type: 'loan',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 0
+            }).account;
+
+            const equity = createAccount(db, {
+                entity_id: business.id,
+                name: 'Contributed Capital',
+                type: 'equity',
+                sub_type: 'valuation_reserve',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 0
+            }).account;
+
+            const equipment = createAccount(db, {
+                entity_id: business.id,
+                name: 'Office Equipment',
+                type: 'asset',
+                sub_type: 'property',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 0
+            }).account;
+
+            // 1. Financing Inflow: Borrow $5,000 AUD from bank loan (Liability credit)
+            postTransaction(db, {
+                date: '2026-01-05',
+                description: 'Loan Drawdown Proceeds',
+                origin: 'manual',
+                postings: [
+                    { account_id: bank.id, amount_cents: 500000, currency: 'AUD' },
+                    { account_id: loan.id, amount_cents: -500000, currency: 'AUD' }
+                ]
+            });
+
+            // 2. Financing Inflow: Owner injects $2,000 AUD capital (Equity credit)
+            postTransaction(db, {
+                date: '2026-01-08',
+                description: 'Owner Equity Injection',
+                origin: 'manual',
+                postings: [
+                    { account_id: bank.id, amount_cents: 200000, currency: 'AUD' },
+                    { account_id: equity.id, amount_cents: -200000, currency: 'AUD' }
+                ]
+            });
+
+            // 3. Investing Outflow: Purchase equipment for $1,500 AUD (Asset debit)
+            postTransaction(db, {
+                date: '2026-01-12',
+                description: 'Server Equipment Purchase',
+                origin: 'manual',
+                postings: [
+                    { account_id: equipment.id, amount_cents: 150000, currency: 'AUD' },
+                    { account_id: bank.id, amount_cents: -150000, currency: 'AUD' }
+                ]
+            });
+
+            // 4. Investing Inflow: Sell old equipment for $800 AUD (Asset credit)
+            postTransaction(db, {
+                date: '2026-01-15',
+                description: 'Old Equipment Salvage Sale',
+                origin: 'manual',
+                postings: [
+                    { account_id: bank.id, amount_cents: 80000, currency: 'AUD' },
+                    { account_id: equipment.id, amount_cents: -80000, currency: 'AUD' }
+                ]
+            });
+
+            // 5. Internal Transfer: Transfer $1,000 AUD from Checking to Savings
+            recordTransfer(db, {
+                from_account_id: bank.id,
+                to_account_id: savings.id,
+                amount_cents: 100000,
+                date: '2026-01-18',
+                description: 'Liquidity Reserve Transfer'
+            });
+
+            // 6. Operating Outflow: $400 AUD office utility bill
+            recordExpense(db, {
+                entity_id: business.id,
+                payment_account_id: bank.id,
+                amount_cents: 40000,
+                date: '2026-01-20',
+                description: 'Electric Utility Bill'
+            });
+
+            // 7. Operating Inflow: $3,000 AUD client consulting revenue
+            recordIncome(db, {
+                entity_id: business.id,
+                bank_account_id: bank.id,
+                amount_cents: 300000,
+                date: '2026-01-25',
+                description: 'Client Consulting Services'
+            });
+
+            // 8. Mixed-Leg Debt Repayment: Pay $1,000 AUD ($800 loan principal + $200 loan interest)
+            recordLoanRepayment(db, {
+                bank_account_id: bank.id,
+                loan_account_id: loan.id,
+                principal_cents: 80000,
+                interest_cents: 20000,
+                date: '2026-01-28',
+                description: 'Monthly Loan Payment'
+            });
+
+            // Evaluate Actual Cash Flow Statement
+            const cashFlow = getActualCashFlowStatement(db, business.id, '2026-01-01', '2026-01-31');
+
+            // Starting Cash: $10,000 AUD (1,000,000 cents)
+            expect(cashFlow.starting_cash_cents_by_currency['AUD']).toBe(1000000);
+
+            // Operating: Inflow $3,000 (300,000), Outflow $400 (40,000) -> Net +$2,600 (260,000)
+            expect(cashFlow.operating_inflows_cents_by_currency['AUD']).toBe(300000);
+            expect(cashFlow.operating_outflows_cents_by_currency['AUD']).toBe(40000);
+            expect(cashFlow.net_operating_cents_by_currency['AUD']).toBe(260000);
+
+            // Financing: Inflows $7,000 ($5k loan + $2k equity), Outflows $1,000 (loan service) -> Net +$6,000 (600,000)
+            expect(cashFlow.financing_inflows_cents_by_currency?.['AUD']).toBe(700000);
+            expect(cashFlow.financing_outflows_cents_by_currency['AUD']).toBe(100000);
+            expect(cashFlow.net_financing_cents_by_currency?.['AUD']).toBe(600000);
+
+            // Investing: Inflow $800 (80,000), Outflow $1,500 (150,000) -> Net -$700 (-70,000)
+            expect(cashFlow.investing_inflows_cents_by_currency?.['AUD']).toBe(80000);
+            expect(cashFlow.investing_outflows_cents_by_currency?.['AUD']).toBe(150000);
+            expect(cashFlow.net_investing_cents_by_currency?.['AUD']).toBe(-70000);
+
+            // Net Cash Change: +2,600 + 6,000 - 700 = +$7,900 (790,000 cents)
+            expect(cashFlow.net_cash_change_cents_by_currency['AUD']).toBe(790000);
+
+            // Expected Ending Cash: Starting $10,000 + Change $7,900 = $17,900 (1,790,000 cents)
+            expect(cashFlow.ending_cash_cents_by_currency['AUD']).toBe(1790000);
+
+            // Independent Ledger Verification:
+            // Bank balance: 10,000 + 5,000 + 2,000 - 1,500 + 800 - 1,000 - 400 + 3,000 - 1,000 = 16,900
+            // Savings balance: +1,000
+            // Total liquid closing cash in ledger = 17,900!
+            expect(cashFlow.ledger_closing_cash_cents_by_currency?.['AUD']).toBe(1790000);
+            expect(cashFlow.is_reconciled_by_currency?.['AUD']).toBe(true);
+            expect(cashFlow.reconciliation_discrepancy_cents_by_currency?.['AUD']).toBe(0);
+        });
+
+        it('Finding 5: Historical Valuation Correctness & Target Preservation Regression', () => {
+            const entity = createEntity(db, { name: 'Property Investor', type: 'person', currency: 'AUD' });
+            const asset = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Investment Property',
+                type: 'asset',
+                sub_type: 'real_estate',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 100000 // 100,000 cents on Jan 1
+            }).account;
+
+            expect(getAccountBalance(db, asset.id, '2026-01-01').balance_cents).toBe(100000);
+
+            // 1. Later valuation on March 1, 2026: target 120,000 cents
+            const laterTx = recordAssetValuation(db, {
+                asset_account_id: asset.id,
+                new_valuation_cents: 120000,
+                date: '2026-03-01',
+                description: 'March Appraisal'
+            });
+            expect(laterTx.id).toBeDefined();
+
+            // At this point, balance on March 1 is 120,000
+            expect(getAccountBalance(db, asset.id, '2026-03-01').balance_cents).toBe(120000);
+
+            // 2. Insert earlier backdated valuation on February 1, 2026: target 110,000 cents
+            const earlierTx = recordAssetValuation(db, {
+                asset_account_id: asset.id,
+                new_valuation_cents: 110000,
+                date: '2026-02-01',
+                description: 'February Appraisal'
+            });
+            expect(earlierTx.id).toBeDefined();
+
+            // Regression Check:
+            // Value on Feb 1 must be 110,000
+            expect(getAccountBalance(db, asset.id, '2026-02-01').balance_cents).toBe(110000);
+
+            // Value on March 1 MUST BE PRESERVED AT 120,000 (NOT 130,000!)
+            const marchBalance = getAccountBalance(db, asset.id, '2026-03-01').balance_cents;
+            expect(marchBalance).toBe(120000);
+
+            // Total net worth on March 1 reflects the preserved target 120,000
+            const nwMarch = getEntityNetWorth(db, entity.id, '2026-03-01');
+            expect(nwMarch.net_worth_cents_by_currency['AUD']).toBe(120000);
+
+            // Total unrealized reserve as of March 1 is exactly 20,000 cents
+            const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+            expect(getAccountBalance(db, reserve.id, '2026-03-01').balance_cents).toBe(20000);
+        });
+
+        it('Finding 6: Valuation Idempotency Retries and Conflicts', () => {
+            const entity = createEntity(db, { name: 'Art Collector', type: 'person', currency: 'AUD' });
+            const painting = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Oil Painting',
+                type: 'asset',
+                sub_type: 'property',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 300000 // $3,000 AUD
+            }).account;
+
+            const idemKey = 'val-idem-collector-001';
+
+            // Initial valuation
+            const tx1 = recordAssetValuation(db, {
+                asset_account_id: painting.id,
+                new_valuation_cents: 500000, // $5,000 AUD
+                date: '2026-04-01',
+                description: 'Gallery Appraisal',
+                idempotency_key: idemKey
+            });
+            expect(tx1.id).toBeDefined();
+            expect(getAccountBalance(db, painting.id).balance_cents).toBe(500000);
+
+            // 1. Identical retry returns existing transaction without calculating a bogus new delta
+            const tx2 = recordAssetValuation(db, {
+                asset_account_id: painting.id,
+                new_valuation_cents: 500000,
+                date: '2026-04-01',
+                description: 'Gallery Appraisal',
+                idempotency_key: idemKey
+            });
+            expect(tx2.id).toBe(tx1.id);
+            expect(getAccountBalance(db, painting.id).balance_cents).toBe(500000);
+
+            // Total transactions in DB remains exactly 2 (opening balance + 1 valuation)
+            const txCount = (db.prepare("SELECT COUNT(*) as cnt FROM m1_transactions WHERE origin = 'manual'").get() as any).cnt;
+            expect(txCount).toBe(1);
+
+            // 2. Changed request using the same key throws ConflictError without mutating DB
+            expect(() => {
+                recordAssetValuation(db, {
+                    asset_account_id: painting.id,
+                    new_valuation_cents: 600000, // Changed target valuation
+                    date: '2026-04-01',
+                    description: 'Gallery Appraisal',
+                    idempotency_key: idemKey
+                });
+            }).toThrow(ConflictError);
+
+            // Account balance remains $5,000
+            expect(getAccountBalance(db, painting.id).balance_cents).toBe(500000);
+        });
+
+        it('Finding 7: Structured Evidence Identity & Field-Level Conflict Detection', () => {
+            const entity = createEntity(db, { name: 'Audit Firm', type: 'business', currency: 'AUD' });
+            const bank = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Trust Account',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'AUD',
+                opening_date: '2026-01-01',
+                opening_balance_cents: 1000000
+            }).account;
+
+            const structuredRefA = {
+                document_id: 'doc-invoice-101',
+                content_hash: 'sha256-abcdef1234567890',
+                page: 4,
+                bounding_box: [50, 100, 450, 600] as [number, number, number, number],
+                label: 'Invoice Header'
+            };
+
+            const idemKey = 'idem-evidence-001';
+
+            const tx = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 50000,
+                date: '2026-02-15',
+                description: 'Audit Retainer',
+                idempotency_key: idemKey,
+                evidence_refs: [structuredRefA]
+            });
+            expect(tx.id).toBeDefined();
+
+            // 1. Identical retry with permuted object keys succeeds (canonical matching)
+            const permutedRef = {
+                page: 4,
+                label: 'Invoice Header',
+                bounding_box: [50, 100, 450, 600] as [number, number, number, number],
+                document_id: 'doc-invoice-101',
+                content_hash: 'sha256-abcdef1234567890'
+            };
+            const retrySame = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 50000,
+                date: '2026-02-15',
+                description: 'Audit Retainer',
+                idempotency_key: idemKey,
+                evidence_refs: [permutedRef]
+            });
+            expect(retrySame.id).toBe(tx.id);
+
+            // 2. Modifying document_id triggers ConflictError
+            expect(() => {
+                recordIncome(db, {
+                    entity_id: entity.id,
+                    bank_account_id: bank.id,
+                    amount_cents: 50000,
+                    date: '2026-02-15',
+                    description: 'Audit Retainer',
+                    idempotency_key: idemKey,
+                    evidence_refs: [{ ...structuredRefA, document_id: 'doc-invoice-999' }]
+                });
+            }).toThrow(ConflictError);
+
+            // 3. Modifying content_hash triggers ConflictError
+            expect(() => {
+                recordIncome(db, {
+                    entity_id: entity.id,
+                    bank_account_id: bank.id,
+                    amount_cents: 50000,
+                    date: '2026-02-15',
+                    description: 'Audit Retainer',
+                    idempotency_key: idemKey,
+                    evidence_refs: [{ ...structuredRefA, content_hash: 'sha256-tampered-hash' }]
+                });
+            }).toThrow(ConflictError);
+
+            // 4. Modifying page triggers ConflictError
+            expect(() => {
+                recordIncome(db, {
+                    entity_id: entity.id,
+                    bank_account_id: bank.id,
+                    amount_cents: 50000,
+                    date: '2026-02-15',
+                    description: 'Audit Retainer',
+                    idempotency_key: idemKey,
+                    evidence_refs: [{ ...structuredRefA, page: 5 }]
+                });
+            }).toThrow(ConflictError);
+
+            // 5. Modifying bounding_box triggers ConflictError
+            expect(() => {
+                recordIncome(db, {
+                    entity_id: entity.id,
+                    bank_account_id: bank.id,
+                    amount_cents: 50000,
+                    date: '2026-02-15',
+                    description: 'Audit Retainer',
+                    idempotency_key: idemKey,
+                    evidence_refs: [{ ...structuredRefA, bounding_box: [50, 100, 450, 700] }]
+                });
+            }).toThrow(ConflictError);
+
+            // 6. Explicit support for legacy string references
+            const legacyTx = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 25000,
+                date: '2026-02-16',
+                description: 'Legacy Ref Income',
+                idempotency_key: 'idem-legacy-001',
+                evidence_refs: ['receipt_scan_042.pdf']
+            });
+            expect(legacyTx.id).toBeDefined();
+
+            // Retry with legacy string matches
+            const legacyRetry = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 25000,
+                date: '2026-02-16',
+                description: 'Legacy Ref Income',
+                idempotency_key: 'idem-legacy-001',
+                evidence_refs: ['  receipt_scan_042.pdf  ']
+            });
+            expect(legacyRetry.id).toBe(legacyTx.id);
+        });
+    });
 });
+

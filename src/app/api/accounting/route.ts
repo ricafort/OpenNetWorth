@@ -120,10 +120,11 @@ export async function GET(request: Request) {
             if (reportType === 'consolidated_net_worth') {
                 const targetEntityId = entityId || url.searchParams.get('scope_id');
                 const reportingCurrency = url.searchParams.get('reporting_currency') || 'AUD';
+                const scopeType = (url.searchParams.get('scope_type') || 'individual') as ScopeType;
                 if (!targetEntityId) {
                     return NextResponse.json({ error: 'Missing required parameter: entity_id' }, { status: 400 });
                 }
-                const report = getConsolidatedNetWorth(db, targetEntityId, reportingCurrency, asOfDate);
+                const report = getConsolidatedNetWorth(db, targetEntityId, reportingCurrency, asOfDate, scopeType);
                 return NextResponse.json({ success: true, report });
             }
 

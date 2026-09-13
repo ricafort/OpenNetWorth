@@ -366,12 +366,65 @@ function normalizeString(val?: string | null): string {
 }
 
 /**
+ * Canonicalizes an individual evidence reference (M1-EVID-01, M1-EVID-02).
+ * 
+ * Why this exists:
+ * Assessor Finding 7: Structured evidence references must be canonically validated and compared.
+ * Do NOT stringify objects with String(object) which degrades to "[object Object]".
+ * Changes to document_id, content_hash, page, or bounding_box must produce distinct canonical identities.
+ * Explicitly preserves support for legacy string references.
+ * 
+ * Tricky logic:
+ * - For strings: normalized as { type: 'legacy', ref: trimmedString }.
+ * - For objects: extracts and validates document_id, content_hash, page, and bounding_box (normalizing bbox alias).
+ *   Produces canonical JSON with sorted keys so key order differences don't cause false conflicts.
+ * 
+ * TODO: Integrate direct PDF viewport jump links in Slice 1G document viewer.
+ */
+export function canonicalizeEvidenceRef(ref: any): string {
+    if (ref === null || ref === undefined) return '';
+    if (typeof ref === 'string') {
+        const trimmed = ref.trim();
+        return trimmed ? JSON.stringify({ ref: trimmed, type: 'legacy' }) : '';
+    }
+    if (typeof ref === 'object') {
+        const docId = String(ref.document_id ?? ref.documentId ?? '').trim();
+        const hash = String(ref.content_hash ?? ref.contentHash ?? '').trim();
+        const page = typeof ref.page === 'number' && Number.isFinite(ref.page)
+            ? ref.page
+            : (ref.page ? Number(ref.page) : null);
+        
+        // Normalize bounding_box or bbox [x0, y0, x1, y1]
+        let bbox: [number, number, number, number] | null = null;
+        const rawBbox = ref.bounding_box || ref.bbox;
+        if (Array.isArray(rawBbox) && rawBbox.length === 4 && rawBbox.every(n => typeof n === 'number' && Number.isFinite(n))) {
+            bbox = [rawBbox[0], rawBbox[1], rawBbox[2], rawBbox[3]];
+        }
+
+        const tableOrCell = ref.table_or_cell_ref ? String(ref.table_or_cell_ref).trim() : null;
+        const label = ref.label ? String(ref.label).trim() : null;
+
+        return JSON.stringify({
+            bounding_box: bbox,
+            content_hash: hash,
+            document_id: docId,
+            label: label || null,
+            page: page,
+            table_or_cell_ref: tableOrCell || null,
+            type: 'structured'
+        });
+    }
+    return '';
+}
+
+/**
  * Normalizes evidence references by trimming, filtering empty, deduplicating, sorting, and JSON stringifying.
  */
-function normalizeEvidenceRefs(refs?: string[] | null): string {
+export function normalizeEvidenceRefs(refs?: any[] | null): string {
     if (!refs || !Array.isArray(refs)) return '[]';
-    const cleaned = Array.from(new Set(refs.map(r => String(r).trim()).filter(Boolean))).sort();
-    return JSON.stringify(cleaned);
+    const canonicalList = refs.map(r => canonicalizeEvidenceRef(r)).filter(Boolean);
+    const uniqueSorted = Array.from(new Set(canonicalList)).sort();
+    return JSON.stringify(uniqueSorted);
 }
 
 /**
@@ -1029,6 +1082,98 @@ export function recordLoanRepayment(db: Database.Database, input: RecordLoanRepa
  * 
  * TODO: Support automated depreciation schedules in Milestone 2.
  */
+/**
+ * Cascades target valuation preservation for subsequent valuation transactions (M1-FLOW-06, T6).
+ * 
+ * Why this exists:
+ * Assessor Finding 5: When an earlier valuation is inserted (e.g. Feb 1 valuation of 110k between
+ * Opening 100k and Mar 1 valuation of 120k), subsequent valuations must adjust their deltas so
+ * their recorded absolute valuation targets are strictly preserved (Mar 1 remains 120k, not 130k).
+ * 
+ * Tricky logic:
+ * Iterates through all subsequent recorded valuations for the account in chronological order.
+ * For each, computes the cumulative balance before its transaction, re-calculates the required delta
+ * to reach its target_valuation_cents, and updates the asset and equity reserve postings.
+ * 
+ * TODO: Support automated indexation and impairment rules in Milestone 2.
+ */
+export function cascadeAssetValuations(
+    db: Database.Database,
+    accountId: string,
+    afterDate: string
+): void {
+    const laterValuations = db.prepare(`
+        SELECT v.id, v.transaction_id, v.valuation_date, v.target_valuation_cents, t.date, t.created_at
+        FROM m1_asset_valuations v
+        JOIN m1_transactions t ON v.transaction_id = t.id
+        WHERE v.account_id = ? AND v.valuation_date > ? AND t.status = 'posted'
+        ORDER BY v.valuation_date ASC, v.created_at ASC
+    `).all(accountId, afterDate) as Array<{
+        id: string;
+        transaction_id: string;
+        valuation_date: string;
+        target_valuation_cents: number;
+        date: string;
+        created_at: string;
+    }>;
+
+    for (const lv of laterValuations) {
+        // Calculate cumulative balance of accountId immediately prior to lv.transaction_id
+        const priorRows = db.prepare(`
+            SELECT j.amount_cents
+            FROM m1_journal_entries j
+            JOIN m1_transactions t ON j.transaction_id = t.id
+            WHERE j.account_id = ?
+              AND t.status = 'posted'
+              AND j.transaction_id != ?
+              AND (t.date < ? OR (t.date = ? AND t.created_at < ?))
+        `).all(accountId, lv.transaction_id, lv.date, lv.date, lv.created_at) as Array<{ amount_cents: number }>;
+
+        const priorBalanceCents = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
+        const newDelta = lv.target_valuation_cents - priorBalanceCents;
+
+        // Update the postings of lv.transaction_id
+        const postings = db.prepare(`
+            SELECT j.id, j.account_id, a.type
+            FROM m1_journal_entries j
+            JOIN m1_accounts a ON j.account_id = a.id
+            WHERE j.transaction_id = ?
+        `).all(lv.transaction_id) as Array<{ id: string; account_id: string; type: string }>;
+
+        const assetPosting = postings.find(p => p.account_id === accountId);
+        const equityPosting = postings.find(p => p.type === 'equity');
+
+        if (assetPosting) {
+            db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(newDelta, assetPosting.id);
+        }
+        if (equityPosting) {
+            db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(-newDelta, equityPosting.id);
+        }
+    }
+}
+
+/**
+ * Records a dated valuation adjustment for a non-cash asset (M1-FLOW-06, T6).
+ * 
+ * Why this exists:
+ * Non-cash assets (e.g. real estate, vehicles, private stock) experience valuation changes over time.
+ * Accounting principles and Acceptance Scenario T6 dictate that an upward valuation must NOT:
+ * - Increase cash or bank account balances.
+ * - Appear as operating cash income or revenue.
+ * Instead, it posts between the Asset account and an Unrealized Valuation Reserve Equity account.
+ * 
+ * Tricky logic:
+ * - Idempotency Pre-Check (Assessor Finding 6): Checks the idempotency key against original request
+ *   before calculating any delta. Identical retries return existing record; changed details conflict without mutation.
+ * - Deterministic delta computation:
+ *   Calculates the asset's cumulative balance before `valDate` (excluding valuations on or after `valDate`).
+ *   Delta = new_valuation_cents - priorBalance.
+ * - Valuation Target Cascading (Assessor Finding 5):
+ *   Records target in m1_asset_valuations. If this is a backdated valuation, cascades through subsequent
+ *   valuations to adjust their deltas, preserving subsequent recorded valuation targets.
+ * 
+ * TODO: Support automated depreciation schedules in Milestone 2.
+ */
 export function recordAssetValuation(
     db: Database.Database,
     input: RecordAssetValuationInput
@@ -1057,18 +1202,67 @@ export function recordAssetValuation(
             throw new ValidationError(`Asset account "${assetAccount.name}" belongs to entity "${assetAccount.entity_id}", not "${input.entity_id}".`);
         }
 
-        // Calculate current balance as of valuation date
-        const rows = db.prepare(`
+        // 1. Idempotency Pre-Check before calculating delta (Assessor Finding 6)
+        if (input.idempotency_key) {
+            const existingTx = db.prepare('SELECT * FROM m1_transactions WHERE idempotency_key = ?').get(input.idempotency_key) as any;
+            if (existingTx) {
+                const existingVal = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(existingTx.id) as any;
+                const existingPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingTx.id) as any[];
+
+                const isDateMatch = existingTx.date === valDate;
+                const isAccountMatch = existingVal ? existingVal.account_id === assetAccount.id : existingPostings.some(p => p.account_id === assetAccount.id);
+                const isValuationMatch = existingVal ? existingVal.target_valuation_cents === input.new_valuation_cents : true;
+
+                const existingEvidence = existingTx.evidence_refs ? JSON.parse(existingTx.evidence_refs) : [];
+                const isEvidenceMatch = normalizeEvidenceRefs(existingEvidence) === normalizeEvidenceRefs(input.evidence_refs);
+
+                if (isDateMatch && isAccountMatch && isValuationMatch && isEvidenceMatch) {
+                    return {
+                        id: existingTx.id,
+                        date: existingTx.date,
+                        description: existingTx.description,
+                        payee_or_payer: existingTx.payee_or_payer,
+                        status: existingTx.status,
+                        origin: existingTx.origin,
+                        idempotency_key: existingTx.idempotency_key,
+                        evidence_refs: existingTx.evidence_refs ? JSON.parse(existingTx.evidence_refs) : null,
+                        revision: existingTx.revision,
+                        created_at: existingTx.created_at,
+                        updated_at: existingTx.updated_at,
+                        postings: existingPostings.map(p => ({
+                            id: p.id,
+                            transaction_id: p.transaction_id,
+                            account_id: p.account_id,
+                            amount_cents: p.amount_cents,
+                            currency: p.currency,
+                            memo: p.memo
+                        }))
+                    };
+                } else {
+                    throw new ConflictError(
+                        `Idempotency conflict: A valuation transaction with idempotency key "${input.idempotency_key}" already exists with different target valuation or details.`
+                    );
+                }
+            }
+        }
+
+        // 2. Calculate balance prior to this valuation date
+        const priorRows = db.prepare(`
             SELECT j.amount_cents
             FROM m1_journal_entries j
             JOIN m1_transactions t ON j.transaction_id = t.id
-            WHERE j.account_id = ? AND t.date <= ? AND t.status = 'posted'
-        `).all(assetAccount.id, valDate) as { amount_cents: number }[];
+            WHERE j.account_id = ? AND t.status = 'posted'
+              AND (t.date < ? OR (t.date = ? AND t.id NOT IN (SELECT transaction_id FROM m1_asset_valuations WHERE account_id = ?)))
+        `).all(assetAccount.id, valDate, valDate, assetAccount.id) as Array<{ amount_cents: number }>;
 
-        const currentBalanceCents = rows.reduce((sum, r) => sum + r.amount_cents, 0);
-        const deltaCents = input.new_valuation_cents - currentBalanceCents;
+        const priorBalanceCents = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
+        const deltaCents = input.new_valuation_cents - priorBalanceCents;
 
-        if (deltaCents === 0) {
+        const laterValuationsCount = (db.prepare(`
+            SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date > ?
+        `).get(assetAccount.id, valDate) as { cnt: number }).cnt;
+
+        if (deltaCents === 0 && laterValuationsCount === 0) {
             throw new ValidationError(`New valuation matches the existing balance (${input.new_valuation_cents} cents). No adjustment needed.`);
         }
 
@@ -1082,7 +1276,7 @@ export function recordAssetValuation(
             memo?: string | null;
         }> = [];
 
-        if (deltaCents > 0) {
+        if (deltaCents >= 0) {
             // Valuation Gain: Debit Asset (+), Credit Valuation Equity (-)
             postings.push({
                 account_id: assetAccount.id,
@@ -1115,7 +1309,7 @@ export function recordAssetValuation(
         const sourceDesc = input.source ? ` (${input.source})` : '';
         const desc = input.description || `Valuation Adjustment - ${assetAccount.name}${sourceDesc}`;
 
-        return postTransaction(db, {
+        const postedTx = postTransaction(db, {
             date: valDate,
             description: desc,
             payee_or_payer: input.source || null,
@@ -1124,6 +1318,19 @@ export function recordAssetValuation(
             evidence_refs: input.evidence_refs,
             postings
         });
+
+        // 3. Record Target Valuation Anchor in m1_asset_valuations
+        const valId = `val-${postedTx.id}`;
+        const now = new Date().toISOString();
+        db.prepare(`
+            INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(valId, postedTx.id, assetAccount.id, valDate, input.new_valuation_cents, now);
+
+        // 4. Cascade target preservation to any subsequent valuations
+        cascadeAssetValuations(db, assetAccount.id, valDate);
+
+        return postedTx;
     });
 
     return runAtomic();

@@ -115,6 +115,22 @@ export const ACCOUNTING_SCHEMA_DDL = `
         UNIQUE(from_currency, to_currency, effective_date)
     );
 
+    -- Asset Valuations (Slice 1D: Historical Valuation Target Tracking & Cascading)
+    -- Why this table exists:
+    -- Preserves the absolute target valuation for non-cash assets across time.
+    -- When earlier or backdated valuations are inserted, subsequent valuation transactions
+    -- can be cascaded so that later valuation targets are strictly preserved (M1-FLOW-06, T6).
+    CREATE TABLE IF NOT EXISTS m1_asset_valuations (
+        id TEXT PRIMARY KEY,
+        transaction_id TEXT NOT NULL UNIQUE,
+        account_id TEXT NOT NULL,
+        valuation_date TEXT NOT NULL,
+        target_valuation_cents INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE,
+        FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
+    );
+
     -- Indices for high performance ledger and report queries
     CREATE INDEX IF NOT EXISTS idx_m1_journal_entries_account ON m1_journal_entries(account_id);
     CREATE INDEX IF NOT EXISTS idx_m1_journal_entries_tx ON m1_journal_entries(transaction_id);
@@ -123,6 +139,7 @@ export const ACCOUNTING_SCHEMA_DDL = `
     CREATE INDEX IF NOT EXISTS idx_m1_account_ownership_acc ON m1_account_ownership(account_id);
     CREATE INDEX IF NOT EXISTS idx_m1_account_ownership_ent ON m1_account_ownership(entity_id);
     CREATE INDEX IF NOT EXISTS idx_m1_exchange_rates_lookup ON m1_exchange_rates(from_currency, to_currency, effective_date);
+    CREATE INDEX IF NOT EXISTS idx_m1_asset_valuations_acc_date ON m1_asset_valuations(account_id, valuation_date);
 `;
 
 /**
