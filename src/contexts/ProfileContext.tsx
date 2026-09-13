@@ -158,10 +158,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
                 refreshData(); // Re-fetch true state
             }
         } else {
-            // Guest or Demo -> LocalStorage
+            // Guest or Demo -> LocalStorage + SQLite
             const settings = LocalStorage.loadSettings();
             settings.baseCurrency = code;
-            LocalStorage.saveSettings(settings);
+            await LocalStorage.saveSettings(settings);
 
             // If strictly Guest, we are done (optimistic update holds).
             // If Demo, we probably shouldn't be here (Demo is read-only usually, or local override)

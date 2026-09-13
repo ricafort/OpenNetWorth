@@ -36,9 +36,9 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
         }
     }, [isOpen]);
 
-    const handleSave = () => {
-        saveSettings(settings);
-        saveFreedomSettings(freedomSettings);
+    const handleSave = async () => {
+        await saveSettings(settings);
+        await saveFreedomSettings(freedomSettings);
         if (onSave) onSave(settings);
         onClose();
     };

@@ -17,9 +17,15 @@ import {
     saveFreedomSettings,
     loadCashFlow,
     saveCashFlow,
+    loadSettings,
+    saveSettings,
+    loadNetWorthHistory,
+    saveNetWorthHistory,
+    updateDebtRecurringTransaction,
+    initVaultSync,
     BackupArchive
 } from '@/infrastructure/local_driver';
-import { POST as vaultPost } from '@/app/api/vault/route';
+import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
 import { getDb } from '@/infrastructure/sqlite/db';
 
 /**
@@ -473,5 +479,229 @@ describe('Milestone 0 Remediation Acceptance Tests (Findings 1, 2, 5, 7)', () =>
 
         const remainingSettings = db.prepare("SELECT * FROM settings").all();
         expect(remainingSettings).toHaveLength(0);
+    });
+});
+
+describe('Milestone 0 Final Blocker Acceptance Tests (Findings 1, 2, 3, 4, 5)', () => {
+    it('Finding 1: saveSettings, saveNetWorthHistory, and updateDebtRecurringTransaction persist durably to SQLite', async () => {
+        const db = getDb();
+
+        // 1. Test saveSettings durability
+        (global as any).fetch = vi.fn().mockImplementation(async (url: string, init: any) => {
+            const req = new Request(`http://localhost:3000${url}`, init);
+            return vaultPost(req);
+        });
+
+        await saveSettings({ baseCurrency: 'AUD', theme: 'stealth', checkInFrequency: 'monthly' });
+        const settingRow = db.prepare("SELECT value FROM settings WHERE key = 'baseCurrency'").get() as { value: string };
+        expect(settingRow).toBeDefined();
+        expect(settingRow.value).toBe('AUD');
+
+        const profileRow = db.prepare("SELECT currency_code FROM profiles WHERE id = 'local_user'").get() as { currency_code: string };
+        expect(profileRow.currency_code).toBe('AUD');
+
+        // 2. Test net worth history durability
+        const snapshot = {
+            id: 'snap-persist-1',
+            date: '2026-06-01',
+            totalAssets: 80000,
+            totalLiabilities: 20000,
+            netWorth: 60000
+        };
+        await persistScopedRecord('history', snapshot);
+
+        const historyRow = db.prepare("SELECT * FROM net_worth_history WHERE date = '2026-06-01'").get() as any;
+        expect(historyRow).toBeDefined();
+        expect(historyRow.net_worth).toBe(60000);
+        expect(historyRow.total_assets).toBe(80000);
+
+        // 3. Test debt accelerator recurring update durability
+        await updateDebtRecurringTransaction(650);
+        const recurringRow = db.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+        expect(recurringRow).toBeDefined();
+        expect(recurringRow.amount).toBe(650);
+        expect(recurringRow.is_active).toBe(1);
+    });
+
+    it('Finding 2: Initial migration failure (HTTP 500) preserves browser data and does NOT set migration flag', async () => {
+        const testAsset = { id: 'browser-asset-1', name: 'Preserved Browser Asset', type: 'cash', value: 5000 };
+        saveAssets([testAsset as any]);
+
+        // Simulate SQLite having GET response but failing on migration POST commit
+        (global as any).fetch = vi.fn().mockImplementation(async (url: string, init?: any) => {
+            if (!init || init.method === 'GET') {
+                return {
+                    ok: true,
+                    json: async () => ({ vault: { assets: [], liabilities: [], goals: [], recurring: [], history: [], cashFlow: [], settings: {} } })
+                };
+            }
+            // Fail POST commit
+            return {
+                ok: false,
+                status: 500,
+                json: async () => ({ error: 'Simulated server error' })
+            };
+        });
+
+        // Run boot sync
+        await initVaultSync();
+
+        // Migration flag must NOT be true
+        expect((global as any).localStorage.getItem('opennetworth_vault_migrated_v1')).toBeNull();
+        // Error flag should be recorded
+        expect((global as any).localStorage.getItem('opennetworth_migration_error')).toContain('500');
+        // Source data in localStorage must be preserved
+        const assetsAfterFailedMigration = loadAssets();
+        expect(assetsAfterFailedMigration).toHaveLength(1);
+        expect(assetsAfterFailedMigration[0].name).toBe('Preserved Browser Asset');
+    });
+
+    it('Finding 3: Migration inventories and merges browser-only data (cash flow) when SQLite already contains data (asset)', async () => {
+        const db = getDb();
+        // Clear tables
+        db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
+        db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+
+        // 1. Seed SQLite with 1 asset and 0 cash flow
+        db.prepare(`
+            INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, last_updated)
+            VALUES ('sqlite-asset-1', 'local_user', 'Existing SQLite Gold', 'precious_metals', 15000, 1, 'USD', 0, datetime('now'))
+        `).run();
+
+        // 2. Set browser storage with 0 assets, but 1 browser-only cash flow record
+        (global as any).localStorage.clear();
+        saveCashFlow([{ id: 'browser-cf-1', month: '2026-07', income: 7500, expenses: 3200 }]);
+
+        // 3. Connect fetch to live route handlers
+        (global as any).fetch = vi.fn().mockImplementation(async (url: string, init?: any) => {
+            const req = new Request(`http://localhost:3000${url}`, init);
+            if (!init || init.method === 'GET') {
+                return vaultGet(req);
+            }
+            return vaultPost(req);
+        });
+
+        // Run migration sync
+        await initVaultSync();
+
+        // Migration must succeed
+        expect((global as any).localStorage.getItem('opennetworth_vault_migrated_v1')).toBe('true');
+        // Recovery backup must exist
+        expect((global as any).localStorage.getItem('opennetworth_migration_recovery_v1')).toBeDefined();
+
+        // Both records must be preserved in SQLite
+        const assetsInDb = db.prepare("SELECT * FROM assets WHERE user_id = 'local_user'").all();
+        expect(assetsInDb).toHaveLength(1);
+        expect((assetsInDb[0] as any).name).toBe('Existing SQLite Gold');
+
+        const cashFlowInDb = db.prepare("SELECT * FROM cash_flow_history WHERE user_id = 'local_user'").all();
+        expect(cashFlowInDb).toHaveLength(1);
+        expect((cashFlowInDb[0] as any).month).toBe('2026-07');
+        expect((cashFlowInDb[0] as any).income).toBe(7500);
+
+        // Active collection in localStorage must retain both
+        expect(loadAssets()).toHaveLength(1);
+        expect(loadCashFlow()).toHaveLength(1);
+        expect(loadCashFlow()[0].month).toBe('2026-07');
+    });
+
+    it('Finding 4: Logging existing cash-flow month reuses SQLite ID and returning/caching that ID allows clean deletion', async () => {
+        const db = getDb();
+        db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+
+        // 1. Seed existing month row with specific original ID
+        const ORIGINAL_ID = 'cf-orig-uuid-1234';
+        db.prepare(`
+            INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+            VALUES (?, 'local_user', '2026-09', 4000, 2000, 'USD')
+        `).run(ORIGINAL_ID);
+
+        // 2. Submit form with a different/new ID for the same month
+        const req = new Request('http://localhost:3000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'scoped_save',
+                entity: 'cashFlow',
+                item: {
+                    id: 'new-temporary-ui-id',
+                    month: '2026-09',
+                    income: 4500,
+                    expenses: 2100
+                }
+            })
+        });
+
+        const saveRes = await vaultPost(req);
+        expect(saveRes.status).toBe(200);
+        const saveData = await saveRes.json();
+
+        // Authoritative returned record MUST retain ORIGINAL_ID
+        expect(saveData.item.id).toBe(ORIGINAL_ID);
+        expect(saveData.item.income).toBe(4500);
+
+        // 3. Now delete using the returned ID
+        const deleteReq = new Request('http://localhost:3000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'scoped_delete',
+                entity: 'cashFlow',
+                id: saveData.item.id
+            })
+        });
+
+        const deleteRes = await vaultPost(deleteReq);
+        expect(deleteRes.status).toBe(200);
+
+        // Verify SQLite database no longer contains the record
+        const remaining = db.prepare("SELECT * FROM cash_flow_history WHERE month = '2026-09'").all();
+        expect(remaining).toHaveLength(0);
+    });
+
+    it('Finding 5: Incomplete bulk_restore payload is rejected with HTTP 400 and preserves existing records', async () => {
+        const db = getDb();
+        // Seed an asset that must survive incomplete restore attempts
+        db.prepare(`
+            INSERT OR REPLACE INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, last_updated)
+            VALUES ('preserved-asset', 'local_user', 'Surviving House', 'real_estate', 750000, 0, 'USD', 0, datetime('now'))
+        `).run();
+
+        // 1. Incomplete request with only { action: "bulk_restore" }
+        const reqEmpty = new Request('http://localhost:3000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'bulk_restore' })
+        });
+        const resEmpty = await vaultPost(reqEmpty);
+        expect(resEmpty.status).toBe(400);
+        const dataEmpty = await resEmpty.json();
+        expect(dataEmpty.error).toContain('is required and must be an array');
+
+        // Verify asset was NOT wiped
+        const surviving1 = db.prepare("SELECT * FROM assets WHERE id = 'preserved-asset'").get();
+        expect(surviving1).toBeDefined();
+
+        // 2. Incomplete request missing cashFlow collection
+        const reqMissingCashFlow = new Request('http://localhost:3000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'bulk_restore',
+                assets: [],
+                liabilities: [],
+                goals: [],
+                recurring: [],
+                history: []
+                // cashFlow missing
+            })
+        });
+        const resMissing = await vaultPost(reqMissingCashFlow);
+        expect(resMissing.status).toBe(400);
+        expect((await resMissing.json()).error).toContain('cashFlow');
+
+        // Verify asset was still NOT wiped
+        const surviving2 = db.prepare("SELECT * FROM assets WHERE id = 'preserved-asset'").get();
+        expect(surviving2).toBeDefined();
     });
 });

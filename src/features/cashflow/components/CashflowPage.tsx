@@ -93,16 +93,26 @@ export const CashflowPage = () => { // Named export
             return;
         }
 
+        /**
+         * Why this exists (Finding 4):
+         * Reuse existing month ID if logging an already-existing month, preventing ID desync
+         * between SQLite and the UI/local cache.
+         */
+        const existingForMonth = entries.find(e => e.month === month);
+        const entryId = editingId || existingForMonth?.id || `cf-${month}`;
+
         const newEntry: CashFlowEntry = {
-            id: editingId || `cf-${month}`,
+            id: entryId,
             month,
             income,
             expenses
         };
 
         try {
-            await persistScopedRecord('cashFlow', newEntry);
-            const updatedEntries = loadCashFlow().sort((a, b) => a.month.localeCompare(b.month));
+            const saved = await persistScopedRecord('cashFlow', newEntry);
+            const persistedEntry = (saved as any)?.item || saved || newEntry;
+            const currentEntries = loadCashFlow().filter(e => e.id !== persistedEntry.id && e.month !== persistedEntry.month);
+            const updatedEntries = [...currentEntries, persistedEntry].sort((a, b) => a.month.localeCompare(b.month));
             setEntries(updatedEntries);
             setIsAdding(false);
             setEditingId(null);

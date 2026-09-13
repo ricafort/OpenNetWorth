@@ -149,7 +149,7 @@ export async function POST(request: Request) {
 
         // --- SCOPED SINGLE-RECORD OPERATIONS (DATA-05) ---
         if (action === 'scoped_save') {
-            if (!entity || !item || !item.id) {
+            if (!entity || !item || (!item.id && entity !== 'settings' && entity !== 'cashFlow' && entity !== 'history')) {
                 return NextResponse.json({ error: 'Missing entity, item, or item ID for scoped save' }, { status: 400 });
             }
 
@@ -289,6 +289,18 @@ export async function POST(request: Request) {
                 const income = parseFiniteNumber(item.income, 'Income', { allowNegative: false, required: true });
                 const expenses = parseFiniteNumber(item.expenses, 'Expenses', { allowNegative: false, required: true });
 
+                /**
+                 * Why this exists (Finding 4):
+                 * Ensures cash flow record IDs never disagree between UI, localStorage, and SQLite.
+                 * If a month was previously logged, we query and reuse its existing SQLite row ID.
+                 * Tricky logic: In SQLite ON CONFLICT(user_id, month), updating a row does not change
+                 * its primary key id. If we assigned a new id in the payload, the DB row kept its old id.
+                 * By fetching the existing id upfront (or generating one only for new months), the UI
+                 * and DB remain in exact 1-to-1 sync.
+                 */
+                const existing = db.prepare("SELECT * FROM cash_flow_history WHERE user_id = 'local_user' AND month = ?").get(month) as any;
+                const finalId = existing?.id || item.id || crypto.randomUUID();
+
                 const stmt = db.prepare(`
                     INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
@@ -298,14 +310,106 @@ export async function POST(request: Request) {
                         currency = excluded.currency
                 `);
                 stmt.run({
-                    id: item.id || crypto.randomUUID(),
+                    id: finalId,
                     user_id: 'local_user',
                     month,
                     income,
                     expenses,
                     currency: item.currency || 'USD'
                 });
-                return NextResponse.json({ success: true, item: { ...item, month, income, expenses } });
+
+                // Return the authoritative persisted record from the database
+                const persisted = db.prepare("SELECT * FROM cash_flow_history WHERE user_id = 'local_user' AND month = ?").get(month) as any;
+                return NextResponse.json({
+                    success: true,
+                    item: {
+                        id: persisted.id,
+                        month: persisted.month,
+                        income: persisted.income,
+                        expenses: persisted.expenses,
+                        currency: persisted.currency
+                    }
+                });
+            }
+
+            if (entity === 'history') {
+                /**
+                 * Why this exists (Finding 1):
+                 * Provides durable SQLite persistence for net worth snapshots added/edited in HistoryEditor.
+                 */
+                const total_assets = parseFiniteNumber(item.totalAssets ?? item.total_assets, 'Total assets', { allowNegative: false, required: true });
+                const total_liabilities = parseFiniteNumber(item.totalLiabilities ?? item.total_liabilities, 'Total liabilities', { allowNegative: false, required: true });
+                const net_worth = parseFiniteNumber(item.netWorth ?? item.net_worth, 'Net worth', { allowNegative: true, required: true });
+                const date = item.date;
+                if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                    return NextResponse.json({ error: 'History snapshot date must be YYYY-MM-DD' }, { status: 400 });
+                }
+
+                const existing = db.prepare("SELECT id FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as { id: string } | undefined;
+                const finalId = existing?.id || item.id || crypto.randomUUID();
+
+                const stmt = db.prepare(`
+                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
+                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
+                    ON CONFLICT(user_id, date) DO UPDATE SET
+                        total_assets = excluded.total_assets,
+                        total_liabilities = excluded.total_liabilities,
+                        net_worth = excluded.net_worth
+                `);
+                stmt.run({
+                    id: finalId,
+                    user_id: 'local_user',
+                    date,
+                    total_assets,
+                    total_liabilities,
+                    net_worth
+                });
+
+                const persisted = db.prepare("SELECT * FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as any;
+                return NextResponse.json({
+                    success: true,
+                    item: {
+                        id: persisted.id,
+                        date: persisted.date,
+                        totalAssets: persisted.total_assets,
+                        totalLiabilities: persisted.total_liabilities,
+                        netWorth: persisted.net_worth
+                    }
+                });
+            }
+
+            if (entity === 'settings') {
+                /**
+                 * Why this exists (Finding 1):
+                 * Persists user settings (currency, theme, check-in frequency, freedom settings) directly to SQLite
+                 * so preferences survive browser reloads and startup synchronization.
+                 */
+                if (!item || typeof item !== 'object') {
+                    return NextResponse.json({ error: 'Settings payload must be an object' }, { status: 400 });
+                }
+
+                const upsertSetting = db.prepare(`
+                    INSERT INTO settings (key, value)
+                    VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                `);
+
+                if (item.key && item.value !== undefined) {
+                    upsertSetting.run(item.key, typeof item.value === 'string' ? item.value : JSON.stringify(item.value));
+                    if (item.key === 'baseCurrency' || (item.key === 'userSettings' && item.value?.baseCurrency)) {
+                        const currency = item.key === 'baseCurrency' ? item.value : item.value.baseCurrency;
+                        db.prepare("UPDATE profiles SET currency_code = ? WHERE id = 'local_user'").run(currency);
+                    }
+                } else {
+                    upsertSetting.run('userSettings', JSON.stringify(item));
+                    for (const [k, v] of Object.entries(item)) {
+                        upsertSetting.run(k, typeof v === 'string' ? v : JSON.stringify(v));
+                    }
+                    if (item.baseCurrency) {
+                        db.prepare("UPDATE profiles SET currency_code = ? WHERE id = 'local_user'").run(item.baseCurrency);
+                    }
+                }
+                return NextResponse.json({ success: true, item });
             }
 
             return NextResponse.json({ error: `Unsupported entity for scoped save: ${entity}` }, { status: 400 });
@@ -321,13 +425,26 @@ export async function POST(request: Request) {
                 liabilities: 'liabilities',
                 goals: 'goals',
                 recurring: 'recurring_transactions',
-                cashFlow: 'cash_flow_history'
+                cashFlow: 'cash_flow_history',
+                history: 'net_worth_history'
             };
             const table = tableMap[entity];
             if (!table) {
                 return NextResponse.json({ error: `Unsupported entity for delete: ${entity}` }, { status: 400 });
             }
-            db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+
+            let result;
+            if (entity === 'cashFlow') {
+                result = db.prepare("DELETE FROM cash_flow_history WHERE id = ? OR month = ?").run(id, id);
+            } else if (entity === 'history') {
+                result = db.prepare("DELETE FROM net_worth_history WHERE id = ? OR date = ?").run(id, id);
+            } else {
+                result = db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+            }
+
+            if (result.changes === 0) {
+                return NextResponse.json({ error: `Record not found for delete in ${entity} with id: ${id}` }, { status: 404 });
+            }
             return NextResponse.json({ success: true, deletedId: id });
         }
 
@@ -349,6 +466,60 @@ export async function POST(request: Request) {
         // --- BULK RESTORE OR BULK SYNCHRONIZATION ---
         const { assets, liabilities, goals, recurring, history, cashFlow, settings, profile } = body;
         const isBulkRestore = action === 'bulk_restore';
+
+        /**
+         * Why this exists (Finding 5):
+         * Protects against incomplete destructive restore requests.
+         * The server must independently validate that all 6 core collections are present
+         * and formatted as arrays, and pre-validate record data integrity BEFORE executing
+         * any table deletions.
+         */
+        if (isBulkRestore) {
+            const requiredCollections = ['assets', 'liabilities', 'goals', 'recurring', 'history', 'cashFlow'];
+            for (const col of requiredCollections) {
+                if (!Array.isArray(body[col])) {
+                    return NextResponse.json({
+                        error: `Invalid restore payload: collection "${col}" is required and must be an array`
+                    }, { status: 400 });
+                }
+            }
+
+            if (settings !== undefined && (typeof settings !== 'object' || settings === null || Array.isArray(settings))) {
+                return NextResponse.json({
+                    error: 'Invalid restore payload: settings must be an object'
+                }, { status: 400 });
+            }
+
+            // Pre-validate all items before beginning any database transaction or deletion
+            for (const a of assets) {
+                parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
+                if (a.interest_rate !== undefined && a.interest_rate !== null) {
+                    parseFiniteNumber(a.interest_rate, `Asset "${a.name || a.id}" interest rate`, { allowNegative: true, required: false });
+                }
+            }
+            for (const l of liabilities) {
+                parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
+                if (l.interest_rate !== undefined && l.interest_rate !== null) {
+                    parseFiniteNumber(l.interest_rate, `Liability "${l.name || l.id}" interest rate`, { allowNegative: true, required: false });
+                }
+            }
+            for (const g of goals) {
+                parseFiniteNumber(g.target_amount, `Goal "${g.name || g.id}" target amount`, { allowNegative: false, required: true });
+            }
+            for (const r of recurring) {
+                parseFiniteNumber(r.amount, `Recurring item "${r.name || r.id}" amount`, { allowNegative: false, required: true });
+            }
+            for (const h of history) {
+                parseFiniteNumber(h.totalAssets ?? h.total_assets, `History record total assets`, { allowNegative: false, required: true });
+                parseFiniteNumber(h.totalLiabilities ?? h.total_liabilities, `History record total liabilities`, { allowNegative: false, required: true });
+                parseFiniteNumber(h.netWorth ?? h.net_worth, `History record net worth`, { allowNegative: true, required: true });
+            }
+            for (const cf of cashFlow) {
+                validateMonth(cf.month);
+                parseFiniteNumber(cf.income, `Cash flow entry income`, { allowNegative: false, required: true });
+                parseFiniteNumber(cf.expenses, `Cash flow entry expenses`, { allowNegative: false, required: true });
+            }
+        }
 
         const syncTransaction = db.transaction(() => {
             // In a bulk restore, wipe existing records first to guarantee clean atomic replacement (TRUST-11)

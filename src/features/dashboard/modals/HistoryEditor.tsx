@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Save, Wand2 } from 'lucide-react';
-import { loadNetWorthHistory, saveNetWorthHistory, generateMockHistory } from '@/infrastructure/local_driver';
+import { loadNetWorthHistory, saveNetWorthHistory, generateMockHistory, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 import { NetWorthSnapshot } from '@/types';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
@@ -25,17 +25,19 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
 
     useEffect(() => {
         if (isOpen) {
-            setHistory(loadNetWorthHistory().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            // Load and sort desc by date
+            const loaded = loadNetWorthHistory();
+            setHistory(loaded.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         }
     }, [isOpen]);
 
-    const handleAdd = () => {
-        if (!newDate || !newAssets || !newLiabilities) return;
+    const handleAdd = async () => {
+        if (!newDate || !newAssets) return;
 
-        // Inputs are in baseCurrency, convert to USD for storage
-        const assetsBase = Number(newAssets);
-        const liabilitiesBase = Number(newLiabilities);
+        const assetsBase = parseFloat(newAssets);
+        const liabilitiesBase = parseFloat(newLiabilities || '0');
 
+        // Snapshots in DB are assumed USD base for normalization (or convert to USD)
         const assetsUSD = convertAmount(assetsBase, baseCurrency, 'USD');
         const liabilitiesUSD = convertAmount(liabilitiesBase, baseCurrency, 'USD');
 
@@ -49,21 +51,33 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
 
         const updated = [...history, newEntry].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setHistory(updated);
-        saveNetWorthHistory(updated);
+        try {
+            await persistScopedRecord('history', newEntry);
+        } catch (err) {
+            console.error('Failed to persist history snapshot to SQLite:', err);
+        }
 
         // Reset form
         setNewAssets('');
         setNewLiabilities('');
-        // Keep date? Maybe clear it.
         setNewDate('');
 
         onSave();
     };
 
-    const handleDelete = (dateToDelete: string) => {
+    const handleDelete = async (dateToDelete: string) => {
+        const itemToDelete = history.find(h => h.date === dateToDelete);
         const updated = history.filter(h => h.date !== dateToDelete);
         setHistory(updated);
-        saveNetWorthHistory(updated);
+        try {
+            if (itemToDelete?.id) {
+                await deleteScopedRecord('history', itemToDelete.id);
+            } else {
+                await deleteScopedRecord('history', dateToDelete);
+            }
+        } catch (err) {
+            console.error('Failed to delete history snapshot from SQLite:', err);
+        }
         onSave();
     };
 
