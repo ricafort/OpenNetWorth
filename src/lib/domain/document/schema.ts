@@ -25,7 +25,24 @@ export const DOCUMENT_SCHEMA_DDL = `
         mime_type TEXT NOT NULL,
         byte_size INTEGER NOT NULL,
         storage_path TEXT,
+        raw_content TEXT, -- Stored raw file text/content for offline durability
         created_at TEXT NOT NULL
+    );
+
+    -- Reusable Bank CSV Column Mappings (Slice 1E)
+    CREATE TABLE IF NOT EXISTS m1_csv_mappings (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        header_signature TEXT NOT NULL, -- Canonical pipe-separated header list for auto-matching
+        date_column TEXT NOT NULL,
+        date_format TEXT NOT NULL DEFAULT 'YYYY-MM-DD',
+        description_column TEXT NOT NULL,
+        amount_mode TEXT NOT NULL DEFAULT 'single_amount' CHECK (amount_mode IN ('single_amount', 'debit_credit')),
+        amount_column TEXT,
+        debit_column TEXT,
+        credit_column TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     );
 
     -- Durable Preparation & Background Jobs
@@ -68,15 +85,50 @@ export const DOCUMENT_SCHEMA_DDL = `
 
     -- Indices
     CREATE INDEX IF NOT EXISTS idx_m1_documents_hash ON m1_documents(content_hash);
+    CREATE INDEX IF NOT EXISTS idx_m1_csv_mappings_sig ON m1_csv_mappings(header_signature);
     CREATE INDEX IF NOT EXISTS idx_m1_proposals_doc ON m1_proposals(document_id);
     CREATE INDEX IF NOT EXISTS idx_m1_proposals_status ON m1_proposals(review_status);
     CREATE INDEX IF NOT EXISTS idx_m1_document_jobs_state ON m1_document_jobs(state);
 `;
 
 /**
- * Initializes the Milestone 1 document processing schema on a SQLite database.
+ * Applies transactional migrations to the document schema for existing databases.
+ * 
+ * Why this exists:
+ * When upgrading existing databases that already have `m1_documents` created without
+ * `raw_content` or without `m1_csv_mappings`, this ensures safe, non-destructive migration.
+ * 
+ * Tricky logic:
+ * Checks table column definitions using `PRAGMA table_info` before attempting `ALTER TABLE`.
+ * Runs inside a transaction to guarantee atomicity.
+ * 
+ * TODO: Add schema version table tracking if future document migrations require multi-step data transformations.
+ */
+export function migrateDocumentSchema(db: Database.Database): void {
+    const runMigration = db.transaction(() => {
+        // 1. Check if m1_documents table exists and needs raw_content column
+        const docTableExists = (db.prepare(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_documents'"
+        ).get() as any).cnt > 0;
+
+        if (docTableExists) {
+            const columns = db.prepare("PRAGMA table_info(m1_documents)").all() as Array<{ name: string }>;
+            const hasRawContent = columns.some(c => c.name === 'raw_content');
+            if (!hasRawContent) {
+                db.prepare("ALTER TABLE m1_documents ADD COLUMN raw_content TEXT").run();
+            }
+        }
+    });
+
+    runMigration();
+}
+
+/**
+ * Initializes the Milestone 1 document processing schema on a SQLite database,
+ * and applies any pending migrations idempotently.
  */
 export function initDocumentSchema(db: Database.Database): void {
     db.pragma('foreign_keys = ON');
     db.exec(DOCUMENT_SCHEMA_DDL);
+    migrateDocumentSchema(db);
 }

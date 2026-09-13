@@ -99,3 +99,107 @@ export interface HealthFinding {
     document_id?: string;
     proposal_id?: string;
 }
+
+// ============================================================================
+// Slice 1E: Reusable Bank CSV Mapping Profiles & Parsed Contracts
+// ============================================================================
+
+export type CsvDateFormat = 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY';
+export type CsvAmountMode = 'single_amount' | 'debit_credit';
+
+/**
+ * Reusable column mapping profile for Bank CSV imports.
+ * 
+ * Why this exists:
+ * Users import statements from the same bank repeatedly. Storing the column mapping
+ * keyed to a canonical header signature enables zero-friction repeated imports without
+ * re-specifying column mappings every time.
+ * 
+ * Tricky logic:
+ * - In 'single_amount' mode: positive numbers represent inflows (deposits/credits),
+ *   negative numbers represent outflows (debits/withdrawals).
+ * - In 'debit_credit' mode: separate columns specify debit and credit amounts.
+ * 
+ * TODO: Add regex support for automated description cleanups (e.g. stripping POS store IDs).
+ */
+export interface CsvMappingProfile {
+    id: string;
+    name: string;
+    header_signature: string; // Canonical signature (sorted lowercase column names)
+    date_column: string;
+    date_format: CsvDateFormat;
+    description_column: string;
+    amount_mode: CsvAmountMode;
+    amount_column?: string | null;
+    debit_column?: string | null;
+    credit_column?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+/**
+ * Structure of an individual parsed CSV row before conversion into a proposal.
+ * 
+ * Why this exists:
+ * Separates raw text parsing from financial proposal generation so validation
+ * errors can be flagged with exact row numbers and original line snippets.
+ * 
+ * Tricky logic:
+ * - If date or amount cannot be parsed, amount_cents or date is null and validation_findings
+ *   contains an error-level finding. Unsupported rows remain unresolved; never guess missing amounts.
+ * 
+ * TODO: Support multi-currency CSVs where original currency is indicated in a separate column.
+ */
+export interface ParsedCsvRow {
+    row_number: number; // 1-based index (including or relative to header)
+    raw_snippet: string; // Exact text snippet of the line for immutable evidence linking
+    date: string | null; // Canonical YYYY-MM-DD date if valid, or null
+    raw_date: string;
+    description: string;
+    amount_cents: number | null; // Signed integer cents: positive = inflow, negative = outflow
+    raw_amount: string;
+    event_type: FinancialEventType;
+    validation_findings: ValidationFinding[];
+}
+
+/**
+ * Summary result of parsing a CSV file with a given mapping profile.
+ */
+export interface CsvParseResult {
+    headers: string[];
+    header_signature: string;
+    matched_mapping?: CsvMappingProfile | null;
+    rows: ParsedCsvRow[];
+    total_rows: number;
+    valid_rows: number;
+    error_rows: number;
+}
+
+/**
+ * Input payload for ingesting a bank CSV document.
+ */
+export interface IngestCsvInput {
+    filename: string;
+    raw_content: string;
+    mapping: CsvMappingProfile;
+    target_account_id: string; // Target liquid asset/bank account
+    default_category?: string; // Optional default expense category
+    entity_id?: string; // Target sovereign entity
+}
+
+/**
+ * Input payload for batch approving proposals.
+ */
+export interface BatchApproveProposalsInput {
+    document_id: string;
+    target_account_id: string;
+    entity_id: string;
+    items: Array<{
+        proposal_id: string;
+        category?: string; // e.g. 'groceries', 'utilities', 'salary', 'transfer'
+        counterparty?: string;
+        description?: string;
+        transfer_account_id?: string; // If event_type is transfer
+    }>;
+}
+

@@ -16,13 +16,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ShieldCheck, BookOpen, Layers, DollarSign, PieChart } from 'lucide-react';
+import { ShieldCheck, BookOpen, Layers, DollarSign, PieChart, Inbox } from 'lucide-react';
 import { AccountManagementView } from './AccountManagementView';
 import { DailyEventsView } from './DailyEventsView';
 import { ReportsTraceabilityView } from './ReportsTraceabilityView';
+import { DocumentInboxView } from './DocumentInboxView';
 
 export const AccountingPage: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'events' | 'accounts' | 'reports'>('events');
+    const [activeTab, setActiveTab] = useState<'events' | 'accounts' | 'reports' | 'inbox'>('events');
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -69,6 +70,13 @@ export const AccountingPage: React.FC = () => {
                         <PieChart className="w-4 h-4" />
                         <span>Reports & Traceability</span>
                     </button>
+                    <button
+                        onClick={() => setActiveTab('inbox')}
+                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition ${activeTab === 'inbox' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+                    >
+                        <Inbox className="w-4 h-4" />
+                        <span>Document Inbox & Imports</span>
+                    </button>
                 </div>
             </div>
 
@@ -76,6 +84,7 @@ export const AccountingPage: React.FC = () => {
             {activeTab === 'events' && <DailyEventsView />}
             {activeTab === 'accounts' && <AccountManagementView />}
             {activeTab === 'reports' && <ReportsTraceabilityView />}
+            {activeTab === 'inbox' && <DocumentInboxView />}
         </div>
     );
 };
