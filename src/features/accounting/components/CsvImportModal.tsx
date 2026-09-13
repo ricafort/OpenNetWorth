@@ -197,13 +197,19 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
         creditColumn
     ]);
 
+    // Selected account currency for parsing preview (Slice 1E follow-up)
+    const selectedAccount = useMemo(() => {
+        return accounts.find(a => a.id === targetAccountId);
+    }, [accounts, targetAccountId]);
+    const selectedCurrency = selectedAccount?.currency || 'USD';
+
     // Live preview of parsed rows (up to 5 rows)
     const previewResult = useMemo(() => {
         if (!rawContent || headers.length === 0 || !dateColumn || !descriptionColumn) {
             return null;
         }
-        return parseCsvWithMapping(rawContent, activeMapping);
-    }, [rawContent, headers, dateColumn, descriptionColumn, activeMapping]);
+        return parseCsvWithMapping(rawContent, activeMapping, selectedCurrency);
+    }, [rawContent, headers, dateColumn, descriptionColumn, activeMapping, selectedCurrency]);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];

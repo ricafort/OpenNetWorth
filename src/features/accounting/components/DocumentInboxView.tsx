@@ -30,6 +30,7 @@ import {
     Bookmark
 } from 'lucide-react';
 import { CsvImportModal } from './CsvImportModal';
+import { PdfImportModal } from './PdfImportModal';
 import { ProposalReviewTable } from './ProposalReviewTable';
 import { Account, Entity } from '@/lib/domain/accounting/types';
 
@@ -51,6 +52,7 @@ export const DocumentInboxView: React.FC = () => {
     const [entities, setEntities] = useState<Entity[]>([]);
     const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -147,13 +149,22 @@ export const DocumentInboxView: React.FC = () => {
                         </p>
                     </div>
 
-                    <button
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
-                    >
-                        <Upload className="w-4 h-4" />
-                        <span>Import Bank CSV</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setIsPdfModalOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                        >
+                            <FileText className="w-4 h-4 text-indigo-400" />
+                            <span>Import PDF Invoice</span>
+                        </button>
+                        <button
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                        >
+                            <Upload className="w-4 h-4" />
+                            <span>Import Bank CSV</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Metric Cards */}
@@ -322,6 +333,18 @@ export const DocumentInboxView: React.FC = () => {
             <CsvImportModal
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
+                accounts={accounts}
+                entities={entities}
+                onImportSuccess={newDocId => {
+                    loadData();
+                    setSelectedDocumentId(newDocId);
+                }}
+            />
+
+            {/* Import PDF Invoice Modal */}
+            <PdfImportModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
                 accounts={accounts}
                 entities={entities}
                 onImportSuccess={newDocId => {

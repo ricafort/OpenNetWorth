@@ -16,7 +16,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
-import { approveProposals, getDocumentProposals } from '@/lib/domain/document/documentInboxService';
+import { approveProposals, getDocumentProposals, updateProposalReview } from '@/lib/domain/document/documentInboxService';
 import { BatchApproveProposalsInput } from '@/lib/domain/document/types';
 
 export async function GET(request: Request) {
@@ -71,3 +71,35 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: err.message || 'Failed to approve proposals.' }, { status: 400 });
     }
 }
+
+export async function PATCH(request: Request) {
+    try {
+        const db = getDb();
+        initAccountingSchema(db);
+
+        const body = await request.json();
+        const { proposal_id, event_date, counterparty, description, amount_cents, original_currency, account_id, suggested_category, review_status } = body;
+
+        if (!proposal_id || typeof proposal_id !== 'string') {
+            return NextResponse.json({ error: 'Missing required field: proposal_id' }, { status: 400 });
+        }
+
+        const updated = updateProposalReview(db, {
+            proposal_id,
+            event_date,
+            counterparty,
+            description,
+            amount_cents,
+            original_currency,
+            account_id,
+            suggested_category,
+            review_status
+        });
+
+        return NextResponse.json({ success: true, proposal: updated });
+    } catch (err: any) {
+        console.error('Failed to update proposal:', err);
+        return NextResponse.json({ error: err.message || 'Failed to update proposal.' }, { status: 500 });
+    }
+}
+

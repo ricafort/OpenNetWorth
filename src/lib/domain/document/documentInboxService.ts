@@ -30,10 +30,12 @@ import {
     EvidenceReference,
     ExtractedFinancialProposal,
     IngestCsvInput,
+    IngestPdfInput,
     ProposalReviewStatus,
     ValidationFinding
 } from './types';
 import { computeHeaderSignature, parseCsvWithMapping } from './csvParserService';
+import { extractInvoiceFromPdf } from './openTaxAdapter';
 import {
     ensureExpenseAccount,
     ensureIncomeAccount,
@@ -572,12 +574,16 @@ export function approveProposals(
             const category = (item.category || rawProp.suggested_category || 'living_expense') as AccountSubType;
             const absAmount = Math.abs(rawProp.amount_cents);
 
-            if (absAmount === 0) {
-                throw new Error(`Cannot post transaction for proposal "${item.proposal_id}" with zero amount.`);
+            // Requirement 4 (Slice 1F): Explicit payment confirmation required before recording an expense for invoice proposals
+            const isInvoiceDoc = doc.mime_type === 'application/pdf' || (rawProp.evidence_json && rawProp.evidence_json.includes('opentax'));
+            if (isInvoiceDoc && rawProp.event_type === 'expense' && item.payment_confirmed !== true) {
+                throw new Error(
+                    `Cannot approve proposal "${item.proposal_id}": payment must be explicitly confirmed before recording an expense.`
+                );
             }
 
             // Deterministic idempotency key
-            const idempotencyKey = `csv:${doc.content_hash}:prop:${rawProp.id}`;
+            const idempotencyKey = `doc:${doc.content_hash}:prop:${rawProp.id}`;
 
             let txResult;
 
@@ -741,3 +747,384 @@ export function reprocessDocumentWithMapping(
         entity_id: input.entity_id
     });
 }
+
+/**
+ * Retrieves an individual proposal by ID with parsed JSON fields.
+ * 
+ * Why this exists:
+ * Provides a single retrieval point for proposal inspection and post-update verification.
+ */
+export function getProposalById(
+    db: Database.Database,
+    proposalId: string
+): ExtractedFinancialProposal | null {
+    const r = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get(proposalId) as any;
+    if (!r) return null;
+
+    return {
+        id: r.id,
+        document_id: r.document_id,
+        entity_id: r.entity_id,
+        account_id: r.account_id,
+        event_date: r.event_date,
+        document_period: r.document_period,
+        original_currency: r.original_currency,
+        amount_cents: r.amount_cents,
+        counterparty: r.counterparty,
+        description: r.description,
+        event_type: r.event_type,
+        suggested_category: r.suggested_category,
+        evidence: JSON.parse(r.evidence_json),
+        extraction_version: r.extraction_version,
+        validation_findings: r.validation_findings ? JSON.parse(r.validation_findings) : [],
+        review_status: r.review_status,
+        related_proposal_ids: r.related_proposal_ids ? JSON.parse(r.related_proposal_ids) : [],
+        created_at: r.created_at,
+        updated_at: r.updated_at
+    };
+}
+
+/**
+ * Updates reviewed fields on a provisional proposal before approval.
+ * 
+ * Why this exists:
+ * Allows the user to correct uncertain fields (e.g. supplier, date, amount, category, account)
+ * before approving the proposal into the ledger (Slice 1F Requirement 3).
+ * 
+ * Tricky logic:
+ * - Rejects updates on proposals with review_status === 'approved' to preserve audit integrity.
+ * - Updates review_status to 'modified' unless an explicit review_status is provided.
+ * 
+ * TODO: Add field-level audit history tracking who changed which field and when.
+ */
+export function updateProposalReview(
+    db: Database.Database,
+    input: {
+        proposal_id: string;
+        event_date?: string;
+        counterparty?: string;
+        description?: string;
+        amount_cents?: number;
+        original_currency?: CurrencyCode;
+        account_id?: string;
+        suggested_category?: string;
+        review_status?: ProposalReviewStatus;
+    }
+): ExtractedFinancialProposal {
+    const existing = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get(input.proposal_id) as any;
+    if (!existing) {
+        throw new Error(`Proposal not found: ${input.proposal_id}`);
+    }
+    if (existing.review_status === 'approved') {
+        throw new Error(`Cannot modify proposal "${input.proposal_id}" because it has already been approved into the ledger.`);
+    }
+
+    const now = new Date().toISOString();
+    const eventDate = input.event_date !== undefined ? input.event_date : existing.event_date;
+    const counterparty = input.counterparty !== undefined ? input.counterparty : existing.counterparty;
+    const description = input.description !== undefined ? input.description : existing.description;
+    const amountCents = input.amount_cents !== undefined ? input.amount_cents : existing.amount_cents;
+    const currency = input.original_currency !== undefined ? input.original_currency : existing.original_currency;
+    const accountId = input.account_id !== undefined ? input.account_id : existing.account_id;
+    const category = input.suggested_category !== undefined ? input.suggested_category : existing.suggested_category;
+    const status = input.review_status !== undefined ? input.review_status : 'modified';
+
+    db.prepare(`
+        UPDATE m1_proposals
+        SET event_date = ?,
+            counterparty = ?,
+            description = ?,
+            amount_cents = ?,
+            original_currency = ?,
+            account_id = ?,
+            suggested_category = ?,
+            review_status = ?,
+            updated_at = ?
+        WHERE id = ?
+    `).run(
+        eventDate,
+        counterparty,
+        description,
+        amountCents,
+        currency,
+        accountId,
+        category,
+        status,
+        now,
+        input.proposal_id
+    );
+
+    return getProposalById(db, input.proposal_id)!;
+}
+
+/**
+ * Ingests a text-based invoice/receipt PDF document using OpenTax-AU's reader (Slice 1F).
+ * 
+ * Why this exists:
+ * Turns a supported text-based PDF invoice or receipt into reviewable, source-linked
+ * financial proposals in OpenNetWorth's inbox without direct ledger mutations.
+ * 
+ * Tricky logic:
+ * - Content hash uniqueness: Computes SHA-256 hash on PDF bytes to detect reimports.
+ * - Non-destructive reimport: If a document with the same content hash was already
+ *   ingested and has approved proposals, preserves the approved proposals untouched
+ *   and flags `already_approved: true`.
+ * - Safe layout rejection: If the PDF does not match the supported single-item/supplies
+ *   layout (or missing totals/supplier), creates an unreviewed proposal with amount_cents: 0
+ *   and error finding UNSUPPORTED_LAYOUT. Never guesses amounts!
+ * - Category matching: Assigns suggested_category (e.g. 'office_supplies') and links
+ *   the original file bytes in `m1_documents.raw_content` as base64 for offline durability.
+ * 
+ * TODO: Support multi-page rental statements and bank statement PDFs in Slice 1G.
+ */
+export async function ingestPdfDocument(
+    db: Database.Database,
+    input: IngestPdfInput
+): Promise<{
+    document: DocumentMetadata;
+    proposals: ExtractedFinancialProposal[];
+    already_approved?: boolean;
+    supported: boolean;
+}> {
+    // 1. Resolve buffer and content hash
+    let buffer: Buffer;
+    if (input.file_buffer) {
+        buffer = input.file_buffer;
+    } else if (input.file_base64) {
+        buffer = Buffer.from(input.file_base64, 'base64');
+    } else {
+        throw new Error('Either file_buffer or file_base64 must be provided for PDF ingestion.');
+    }
+
+    const contentHash = computeContentHash(buffer);
+    const now = new Date().toISOString();
+
+    // Check if document already exists
+    const existingDoc = db.prepare('SELECT * FROM m1_documents WHERE content_hash = ?').get(contentHash) as any;
+    if (existingDoc) {
+        const existingProposals = getDocumentProposals(db, existingDoc.id);
+        const hasApproved = existingProposals.some(p => p.review_status === 'approved');
+        if (hasApproved) {
+            return {
+                document: {
+                    id: existingDoc.id,
+                    filename: existingDoc.filename,
+                    content_hash: existingDoc.content_hash,
+                    mime_type: existingDoc.mime_type,
+                    byte_size: existingDoc.byte_size,
+                    created_at: existingDoc.created_at,
+                    storage_path: existingDoc.storage_path
+                },
+                proposals: existingProposals,
+                already_approved: true,
+                supported: true
+            };
+        }
+    }
+
+    // Persist document record
+    const docId = existingDoc ? existingDoc.id : `doc-${crypto.randomUUID()}`;
+    if (!existingDoc) {
+        db.prepare(`
+            INSERT INTO m1_documents (
+                id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            docId,
+            input.filename,
+            contentHash,
+            'application/pdf',
+            buffer.length,
+            null,
+            buffer.toString('base64'),
+            now
+        );
+    }
+
+    // 2. Extract using OpenTax-AU adapter
+    const extractionResult = await extractInvoiceFromPdf(buffer);
+
+    // 3. Resolve target account & currency
+    let targetAccount: any = null;
+    if (input.target_account_id) {
+        targetAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.target_account_id);
+    }
+    const currency: CurrencyCode = targetAccount ? (targetAccount.currency as CurrencyCode) : extractionResult.currency;
+    const entityId = input.entity_id || (targetAccount ? targetAccount.entity_id : null);
+
+    // Remove any previously generated unapproved proposals for this document
+    db.prepare(`DELETE FROM m1_proposals WHERE document_id = ? AND review_status != 'approved'`).run(docId);
+
+    const proposals: ExtractedFinancialProposal[] = [];
+    const propId = `prop-${crypto.randomUUID()}`;
+
+    if (extractionResult.supported) {
+        // Negative amount for expense
+        const amountCents = -Math.abs(extractionResult.total_cents);
+        const description = extractionResult.line_items[0]?.description
+            ? `${extractionResult.supplier_name} - ${extractionResult.line_items[0].description}`
+            : `${extractionResult.supplier_name || 'Invoice'} purchase`;
+
+        const evidence: EvidenceReference = {
+            document_id: docId,
+            content_hash: contentHash,
+            page_number: 1,
+            extraction_version: 'opentax_invoice_v1',
+            source_snippet: extractionResult.source_snippet
+        };
+
+        const findings = [...extractionResult.validation_findings];
+
+        // Check external duplicate in ledger
+        if (input.target_account_id && extractionResult.date) {
+            const externalDuplicate = db.prepare(`
+                SELECT t.id, t.date, t.description
+                FROM m1_transactions t
+                JOIN m1_journal_entries j ON j.transaction_id = t.id
+                WHERE j.account_id = ?
+                  AND t.date = ?
+                  AND ABS(j.amount_cents) = ?
+                LIMIT 1
+            `).get(input.target_account_id, extractionResult.date, Math.abs(amountCents)) as any;
+
+            if (externalDuplicate) {
+                findings.push({
+                    severity: 'warning',
+                    code: 'POSSIBLE_DUPLICATE_EXISTING',
+                    message: `Possible duplicate: a ledger transaction already exists on ${extractionResult.date} for this account with matching amount.`
+                });
+            }
+        }
+
+        db.prepare(`
+            INSERT INTO m1_proposals (
+                id, document_id, entity_id, account_id, event_date, document_period,
+                original_currency, amount_cents, counterparty, description, event_type,
+                suggested_category, evidence_json, extraction_version, validation_findings,
+                review_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            propId,
+            docId,
+            entityId,
+            input.target_account_id || null,
+            extractionResult.date || now.substring(0, 10),
+            null,
+            currency,
+            amountCents,
+            extractionResult.supplier_name || null,
+            description,
+            'expense',
+            input.default_category || 'office_supplies',
+            JSON.stringify(evidence),
+            'opentax_invoice_v1',
+            JSON.stringify(findings),
+            'unreviewed',
+            now,
+            now
+        );
+
+        proposals.push({
+            id: propId,
+            document_id: docId,
+            entity_id: entityId,
+            account_id: input.target_account_id || null,
+            event_date: extractionResult.date || now.substring(0, 10),
+            original_currency: currency,
+            amount_cents: amountCents,
+            counterparty: extractionResult.supplier_name || null,
+            description,
+            event_type: 'expense',
+            suggested_category: input.default_category || 'office_supplies',
+            evidence,
+            extraction_version: 'opentax_invoice_v1',
+            validation_findings: findings,
+            review_status: 'unreviewed',
+            created_at: now,
+            updated_at: now
+        });
+    } else {
+        // Unsupported layout: Retain as unresolved, do not guess amounts!
+        const evidence: EvidenceReference = {
+            document_id: docId,
+            content_hash: contentHash,
+            page_number: 1,
+            extraction_version: 'opentax_invoice_v1',
+            source_snippet: extractionResult.source_snippet
+        };
+
+        const findings: ValidationFinding[] = [
+            {
+                severity: 'error',
+                code: 'UNSUPPORTED_LAYOUT',
+                message: 'This document does not match the supported text-based supplies invoice layout and has been retained as unresolved.'
+            },
+            ...extractionResult.validation_findings
+        ];
+
+        db.prepare(`
+            INSERT INTO m1_proposals (
+                id, document_id, entity_id, account_id, event_date, document_period,
+                original_currency, amount_cents, counterparty, description, event_type,
+                suggested_category, evidence_json, extraction_version, validation_findings,
+                review_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            propId,
+            docId,
+            entityId,
+            input.target_account_id || null,
+            now.substring(0, 10),
+            null,
+            currency,
+            0,
+            null,
+            `${input.filename} (unresolved layout)`,
+            'expense',
+            null,
+            JSON.stringify(evidence),
+            'opentax_invoice_v1',
+            JSON.stringify(findings),
+            'unreviewed',
+            now,
+            now
+        );
+
+        proposals.push({
+            id: propId,
+            document_id: docId,
+            entity_id: entityId,
+            account_id: input.target_account_id || null,
+            event_date: now.substring(0, 10),
+            original_currency: currency,
+            amount_cents: 0,
+            counterparty: null,
+            description: `${input.filename} (unresolved layout)`,
+            event_type: 'expense',
+            suggested_category: null,
+            evidence,
+            extraction_version: 'opentax_invoice_v1',
+            validation_findings: findings,
+            review_status: 'unreviewed',
+            created_at: now,
+            updated_at: now
+        });
+    }
+
+    const document: DocumentMetadata = {
+        id: docId,
+        filename: input.filename,
+        content_hash: contentHash,
+        mime_type: 'application/pdf',
+        byte_size: buffer.length,
+        created_at: existingDoc ? existingDoc.created_at : now,
+        storage_path: null
+    };
+
+    return {
+        document,
+        proposals,
+        supported: extractionResult.supported
+    };
+}
+

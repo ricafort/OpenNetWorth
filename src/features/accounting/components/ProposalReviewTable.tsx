@@ -68,6 +68,9 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     // Per-row category overrides: proposalId -> category
     const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
 
+    // Payment confirmation map for invoice expense proposals (Slice 1F)
+    const [paymentConfirmedMap, setPaymentConfirmedMap] = useState<Record<string, boolean>>({});
+
     // Target liquid account for this document
     const [targetAccountId, setTargetAccountId] = useState<string>('');
 
@@ -190,13 +193,23 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
         setError(null);
         setSuccessMessage(null);
 
+        const isPdfDoc = document?.mime_type === 'application/pdf';
+        if (isPdfDoc) {
+            const unconfirmed = proposals.filter(p => selectedIds.has(p.id) && !paymentConfirmedMap[p.id]);
+            if (unconfirmed.length > 0) {
+                setError('Please explicitly confirm payment for all selected invoice proposals before approving.');
+                return;
+            }
+        }
+
         const itemsToApprove = proposals
             .filter(p => selectedIds.has(p.id))
             .map(p => ({
                 proposal_id: p.id,
-                category: categoryOverrides[p.id] || p.suggested_category || 'living_expense',
+                category: categoryOverrides[p.id] || p.suggested_category || 'office_supplies',
                 description: p.description,
-                counterparty: p.counterparty || p.description
+                counterparty: p.counterparty || p.description,
+                payment_confirmed: paymentConfirmedMap[p.id] ?? (!isPdfDoc)
             }));
 
         try {
@@ -410,6 +423,9 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                     <th className="py-3 px-3">Description / Payee</th>
                                     <th className="py-3 px-3 text-right">Inflow / Outflow</th>
                                     <th className="py-3 px-3">Counterpart Category</th>
+                                    {document?.mime_type === 'application/pdf' && (
+                                        <th className="py-3 px-3">Payment Confirmed</th>
+                                    )}
                                     <th className="py-3 px-3">Flags & Status</th>
                                     <th className="py-3 px-3">Evidence Source</th>
                                 </tr>
@@ -482,6 +498,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                         ) : (
                                                             <>
                                                                 <option value="living_expense">Living Expense</option>
+                                                                <option value="office_supplies">Office Supplies</option>
                                                                 <option value="groceries">Groceries</option>
                                                                 <option value="utilities">Utilities</option>
                                                                 <option value="rent_expense">Rent</option>
@@ -495,6 +512,31 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                     </select>
                                                 )}
                                             </td>
+
+                                            {/* Payment Confirmed (Slice 1F) */}
+                                            {document?.mime_type === 'application/pdf' && (
+                                                <td className="py-3 px-3">
+                                                    {isApproved ? (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                            Confirmed
+                                                        </span>
+                                                    ) : (
+                                                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700 dark:text-slate-300">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={paymentConfirmedMap[proposal.id] ?? false}
+                                                                onChange={e => {
+                                                                    const checked = e.target.checked;
+                                                                    setPaymentConfirmedMap(prev => ({ ...prev, [proposal.id]: checked }));
+                                                                }}
+                                                                className="rounded border-slate-300 text-indigo-600 cursor-pointer"
+                                                            />
+                                                            <span className="text-[11px]">Paid</span>
+                                                        </label>
+                                                    )}
+                                                </td>
+                                            )}
 
                                             {/* Flags & Status */}
                                             <td className="py-3 px-3">

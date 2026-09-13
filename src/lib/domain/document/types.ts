@@ -196,10 +196,23 @@ export interface BatchApproveProposalsInput {
     entity_id: string;
     items: Array<{
         proposal_id: string;
-        category?: string; // e.g. 'groceries', 'utilities', 'salary', 'transfer'
+        category?: string; // e.g. 'groceries', 'utilities', 'salary', 'transfer', 'office_supplies'
         counterparty?: string;
         description?: string;
         transfer_account_id?: string; // If event_type is transfer
+        payment_confirmed?: boolean; // Required when approving invoice/receipt expense proposals
     }>;
+}
+
+/**
+ * Input payload for ingesting a text-based invoice/receipt PDF document (Slice 1F).
+ */
+export interface IngestPdfInput {
+    filename: string;
+    file_buffer?: Buffer;
+    file_base64?: string;
+    target_account_id?: string; // Target payment asset/credit account
+    default_category?: string; // Optional default expense category (e.g. 'office_supplies')
+    entity_id?: string; // Target sovereign entity
 }
 
