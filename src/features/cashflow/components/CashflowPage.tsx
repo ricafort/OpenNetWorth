@@ -13,6 +13,7 @@ import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 
 import { PageHeader } from '@/components/common/PageHeader';
 import { ContentCard } from '@/components/common/ContentCard';
+import { loadCashFlow, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 
 export const CashflowPage = () => { // Named export
     const { baseCurrency } = useNetWorth();
@@ -32,61 +33,93 @@ export const CashflowPage = () => { // Named export
     const [entries, setEntries] = useState<CashFlowEntry[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [entryError, setEntryError] = useState<string | null>(null);
 
     // ... autopilot state ...
     const [isAddingRecurring, setIsAddingRecurring] = useState(false);
     const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null);
 
     useEffect(() => {
-        // Load Cash Flow History
-        const savedHistory = localStorage.getItem('clearworth_cashflow');
-        if (savedHistory) {
-            setEntries(JSON.parse(savedHistory).sort((a: any, b: any) => a.month.localeCompare(b.month)));
+        /**
+         * Load Cash Flow History from authoritative local_driver (DATA-01, DATA-04).
+         * 
+         * Why this exists:
+         * Migrates any legacy records from clearworth_cashflow into opennetworth_cash_flow
+         * and SQLite so backups always include monthly figures (Finding 3).
+         */
+        const existing = loadCashFlow();
+        if (existing.length > 0) {
+            setEntries(existing.sort((a, b) => a.month.localeCompare(b.month)));
         } else {
-            // Start empty for fresh state
-            setEntries([]);
+            // Check legacy clearworth_cashflow key if present
+            const legacy = localStorage.getItem('clearworth_cashflow');
+            if (legacy) {
+                try {
+                    const parsed = JSON.parse(legacy);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        setEntries(parsed.sort((a, b) => a.month.localeCompare(b.month)));
+                        // Migrate each legacy record into SQLite persistence
+                        parsed.forEach(item => {
+                            persistScopedRecord('cashFlow', item).catch(() => {});
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error parsing legacy cash flow:', e);
+                }
+            } else {
+                setEntries([]);
+            }
         }
     }, []);
 
-    // ... handlers ...
-    const saveEntries = (newEntries: CashFlowEntry[]) => {
-        const sorted = newEntries.sort((a, b) => a.month.localeCompare(b.month));
-        setEntries(sorted);
-        localStorage.setItem('clearworth_cashflow', JSON.stringify(sorted));
-    };
-
-    const handleSaveEntry = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSaveEntry = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        setEntryError(null);
         const formData = new FormData(e.currentTarget);
         const month = formData.get('month') as string;
-        const income = parseFloat(formData.get('income') as string) || 0;
-        const expenses = parseFloat(formData.get('expenses') as string) || 0;
+        const incomeRaw = formData.get('income') as string;
+        const expensesRaw = formData.get('expenses') as string;
+
+        const income = parseFloat(incomeRaw);
+        const expenses = parseFloat(expensesRaw);
+
+        if (!month || !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) {
+            setEntryError('Please specify a valid month in YYYY-MM format.');
+            return;
+        }
+
+        if (isNaN(income) || income < 0 || isNaN(expenses) || expenses < 0) {
+            setEntryError('Income and expenses must be valid non-negative numbers.');
+            return;
+        }
 
         const newEntry: CashFlowEntry = {
-            id: editingId || `cf-${Date.now()}`,
+            id: editingId || `cf-${month}`,
             month,
             income,
             expenses
         };
 
-        const existingIndex = entries.findIndex(e => e.month === month);
-        let updated;
-        if (existingIndex >= 0 && (!editingId || entries[existingIndex].id === editingId)) {
-            updated = [...entries];
-            updated[existingIndex] = newEntry;
-        } else {
-            updated = [...entries, newEntry];
+        try {
+            await persistScopedRecord('cashFlow', newEntry);
+            const updatedEntries = loadCashFlow().sort((a, b) => a.month.localeCompare(b.month));
+            setEntries(updatedEntries);
+            setIsAdding(false);
+            setEditingId(null);
+        } catch (err: any) {
+            setEntryError(err.message || 'Failed to save cash flow record to local database.');
         }
-
-        saveEntries(updated);
-        setIsAdding(false);
-        setEditingId(null);
     };
 
-    const handleDeleteEntry = (id: string) => {
+    const handleDeleteEntry = async (id: string) => {
         if (confirm('Delete this entry?')) {
-            const updated = entries.filter(e => e.id !== id);
-            saveEntries(updated);
+            try {
+                await deleteScopedRecord('cashFlow', id);
+                const updatedEntries = loadCashFlow().sort((a, b) => a.month.localeCompare(b.month));
+                setEntries(updatedEntries);
+            } catch (err: any) {
+                alert(err.message || 'Failed to delete cash flow record.');
+            }
         }
     };
 
@@ -173,29 +206,39 @@ export const CashflowPage = () => { // Named export
                         </button>
                     </div>
 
-                    {isAdding && (
-                        <ContentCard className="border-emerald-100 shadow-sm border-2 animate-in fade-in slide-in-from-top-4 duration-200">
-                            <h3 className="text-lg font-semibold mb-4 text-emerald-900">Log Income & Expenses</h3>
-                            <form className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end" onSubmit={handleSaveEntry}>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-muted-foreground">Month</label>
-                                    <input name="month" type="month" defaultValue={new Date().toISOString().slice(0, 7)} className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-muted-foreground">Total Income ({baseCurrency})</label>
-                                    <input name="income" type="number" step="0.01" placeholder="0.00" className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-muted-foreground">Total Expenses ({baseCurrency})</label>
-                                    <input name="expenses" type="number" step="0.01" placeholder="0.00" className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
-                                </div>
-                                <div className="flex gap-2">
-                                    <button type="submit" className="flex-1 bg-slate-900 text-white rounded-lg p-2 font-medium hover:bg-slate-800 transition-colors">Save</button>
-                                    <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-muted-foreground hover:text-muted-foreground font-medium">Cancel</button>
-                                </div>
-                            </form>
-                        </ContentCard>
-                    )}
+                    {isAdding && (() => {
+                        const editingEntry = editingId ? entries.find(e => e.id === editingId) : null;
+                        return (
+                            <ContentCard className="border-emerald-100 shadow-sm border-2 animate-in fade-in slide-in-from-top-4 duration-200">
+                                <h3 className="text-lg font-semibold mb-4 text-emerald-900">
+                                    {editingEntry ? 'Edit Cash Flow' : 'Log Income & Expenses'}
+                                </h3>
+                                {entryError && (
+                                    <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
+                                        {entryError}
+                                    </div>
+                                )}
+                                <form className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end" onSubmit={handleSaveEntry}>
+                                    <div className="space-y-1">
+                                        <label htmlFor="cf-month" className="text-sm font-medium text-muted-foreground">Month</label>
+                                        <input id="cf-month" name="month" type="month" defaultValue={editingEntry?.month || new Date().toISOString().slice(0, 7)} className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label htmlFor="cf-income" className="text-sm font-medium text-muted-foreground">Total Income ({baseCurrency})</label>
+                                        <input id="cf-income" name="income" type="number" step="0.01" defaultValue={editingEntry?.income ?? ''} placeholder="0.00" className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label htmlFor="cf-expenses" className="text-sm font-medium text-muted-foreground">Total Expenses ({baseCurrency})</label>
+                                        <input id="cf-expenses" name="expenses" type="number" step="0.01" defaultValue={editingEntry?.expenses ?? ''} placeholder="0.00" className="w-full bg-muted border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-emerald-500" required />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button type="submit" className="flex-1 bg-slate-900 text-white rounded-lg p-2 font-medium hover:bg-slate-800 transition-colors">Save</button>
+                                        <button type="button" onClick={() => { setIsAdding(false); setEditingId(null); setEntryError(null); }} className="px-4 py-2 text-muted-foreground hover:text-muted-foreground font-medium">Cancel</button>
+                                    </div>
+                                </form>
+                            </ContentCard>
+                        );
+                    })()}
 
                     {/* Latest Summary Card */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -292,10 +335,20 @@ export const CashflowPage = () => { // Named export
                                             <td className="px-6 py-4 text-right font-bold text-slate-900 privacy-value">{formatCurrency(netVal, baseCurrency)}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex justify-center items-center gap-3">
-                                                    <button className="text-slate-400 hover:text-blue-500" onClick={() => {
-                                                        setIsAdding(true); /* Reuse form logic manually or refactor */
-                                                    }}>Edit</button>
-                                                    <button className="text-slate-400 hover:text-rose-500" onClick={() => handleDeleteEntry(entry.id)}>Delete</button>
+                                                    <button
+                                                        className="text-slate-400 hover:text-blue-500"
+                                                        aria-label={`Edit cash flow entry for ${entry.month}`}
+                                                        onClick={() => {
+                                                            setIsAdding(true);
+                                                            setEditingId(entry.id);
+                                                            setEntryError(null);
+                                                        }}
+                                                    >Edit</button>
+                                                    <button
+                                                        className="text-slate-400 hover:text-rose-500"
+                                                        aria-label={`Delete cash flow entry for ${entry.month}`}
+                                                        onClick={() => handleDeleteEntry(entry.id)}
+                                                    >Delete</button>
                                                 </div>
                                             </td>
                                         </tr>

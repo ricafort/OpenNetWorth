@@ -7,6 +7,7 @@ import { getPublishedTemplates, getTemplateFullData } from '@/lib/domain/templat
 import { UserProfile } from '@/types';
 import { PlayCircle, PenLine, ChevronLeft, Loader2, Globe, X, Upload } from 'lucide-react';
 import { SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
+import { importData } from '@/infrastructure/local_driver';
 
 interface WelcomeScreenProps {
     onStartManual: () => void;
@@ -19,6 +20,8 @@ export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenP
     const [loadingTemplates, setLoadingTemplates] = useState(false);
     const [loadingSelection, setLoadingSelection] = useState<string | null>(null);
     const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
+    const [restoreError, setRestoreError] = useState<string | null>(null);
+    const [isRestoring, setIsRestoring] = useState(false);
 
     // Fetch templates on mount
     useEffect(() => {
@@ -254,23 +257,37 @@ export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenP
                 </div>
 
                 <div className="pt-2 flex flex-col items-center gap-2">
-                    <label className="cursor-pointer text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1.5 p-2 rounded-xl hover:bg-blue-50 transition-colors">
-                        <Upload size={14} />
-                        Restore Existing Vault from Backup (.json)
+                    {restoreError && (
+                        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium max-w-md text-center">
+                            {restoreError}
+                        </div>
+                    )}
+                    <label className={`cursor-pointer text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1.5 p-2 rounded-xl hover:bg-blue-50 transition-colors ${isRestoring ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {isRestoring ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                        {isRestoring ? 'Restoring Vault...' : 'Restore Existing Vault from Backup (.json)'}
                         <input
                             type="file"
                             accept=".json"
+                            disabled={isRestoring}
                             className="hidden"
                             onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (!file) return;
+                                setRestoreError(null);
+                                setIsRestoring(true);
                                 const reader = new FileReader();
-                                reader.onload = (event) => {
-                                    const { importData } = require('@/infrastructure/local_driver');
-                                    if (importData(event.target?.result as string)) {
-                                        window.location.reload();
-                                    } else {
-                                        alert('Invalid backup file format.');
+                                reader.onload = async (event) => {
+                                    try {
+                                        const result = await importData(event.target?.result as string);
+                                        if (result.success) {
+                                            window.location.reload();
+                                        } else {
+                                            setRestoreError(result.error || 'Invalid backup file format.');
+                                            setIsRestoring(false);
+                                        }
+                                    } catch (err: any) {
+                                        setRestoreError(err.message || 'Unexpected error while restoring backup.');
+                                        setIsRestoring(false);
                                     }
                                 };
                                 reader.readAsText(file);

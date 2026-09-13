@@ -4,11 +4,61 @@
  * Why this exists:
  * Authoritative, local-first API endpoint for reading and persisting all user
  * financial data directly into the embedded SQLite database (`data/opennetworth.sqlite`).
- * Supports both bulk synchronization and scoped single-record operations (DATA-01, DATA-05).
+ * Supports both bulk synchronization/restore and scoped single-record operations (DATA-01, DATA-05).
+ * 
+ * Tricky logic:
+ * - Scoped saves and bulk restores strictly validate monetary values. Non-finite or non-numeric
+ *   inputs ("not-money", NaN) are rejected with HTTP 400 rather than fabricating zero balances (TRUST-07).
+ * - Bulk restore commits an atomic replacement across all collections. If an array (e.g. history)
+ *   is empty, the corresponding table is cleared so no stale rows remain behind (DATA-08, TRUST-11).
+ * 
+ * TODO: Support encrypted local SQLite exports via SQLCipher in future security hardening milestones.
  */
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
+
+class ValidationError extends Error {
+    statusCode = 400;
+}
+
+/**
+ * Strict monetary validation helper (TRUST-07, DATA-01).
+ * 
+ * Why this exists:
+ * Prevents non-numeric or non-finite inputs (e.g. "not-money", NaN, undefined)
+ * from being silently converted to fabricated zero balances (Number(x) || 0).
+ * Rejects invalid inputs with an explicit validation error.
+ */
+function parseFiniteNumber(
+    val: any,
+    fieldName: string,
+    options: { allowNegative?: boolean; required?: boolean } = {}
+): number {
+    const { allowNegative = false, required = true } = options;
+    if (val === undefined || val === null || val === '') {
+        if (!required) return 0;
+        throw new ValidationError(`${fieldName} is required and cannot be empty`);
+    }
+    const num = Number(val);
+    if (typeof num !== 'number' || isNaN(num) || !isFinite(num)) {
+        throw new ValidationError(`${fieldName} must be a valid finite number, received: "${val}"`);
+    }
+    if (!allowNegative && num < 0) {
+        throw new ValidationError(`${fieldName} cannot be negative, received: ${num}`);
+    }
+    return num;
+}
+
+/**
+ * Validates ISO month format (YYYY-MM).
+ */
+function validateMonth(month: any): string {
+    if (typeof month !== 'string' || !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) {
+        throw new ValidationError(`Invalid month format "${month}". Expected YYYY-MM.`);
+    }
+    return month;
+}
 
 export async function GET(request: Request) {
     try {
@@ -104,6 +154,9 @@ export async function POST(request: Request) {
             }
 
             if (entity === 'assets') {
+                const value = parseFiniteNumber(item.value, 'Asset value', { allowNegative: false, required: true });
+                const interest_rate = parseFiniteNumber(item.interest_rate, 'Interest rate', { allowNegative: true, required: false });
+
                 const stmt = db.prepare(`
                     INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
                     VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
@@ -122,17 +175,21 @@ export async function POST(request: Request) {
                     user_id: item.user_id || 'local_user',
                     name: item.name || 'Unnamed Asset',
                     type: item.type || 'other',
-                    value: Number(item.value) || 0,
+                    value,
                     is_liquid: item.is_liquid ? 1 : 0,
                     currency: item.currency || 'USD',
-                    interest_rate: Number(item.interest_rate) || 0,
+                    interest_rate,
                     investment_details: item.investment_details ? JSON.stringify(item.investment_details) : null,
                     last_updated: item.last_updated || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item });
+                return NextResponse.json({ success: true, item: { ...item, value, interest_rate } });
             }
 
             if (entity === 'liabilities') {
+                const balance = parseFiniteNumber(item.balance, 'Liability balance', { allowNegative: false, required: true });
+                const interest_rate = parseFiniteNumber(item.interest_rate, 'Interest rate', { allowNegative: true, required: false });
+                const minimum_payment = parseFiniteNumber(item.minimum_payment, 'Minimum payment', { allowNegative: false, required: false });
+
                 const stmt = db.prepare(`
                     INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
                     VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
@@ -151,17 +208,21 @@ export async function POST(request: Request) {
                     user_id: item.user_id || 'local_user',
                     name: item.name || 'Unnamed Debt',
                     type: item.type || 'other',
-                    balance: Number(item.balance) || 0,
-                    interest_rate: Number(item.interest_rate) || 0,
-                    minimum_payment: Number(item.minimum_payment) || 0,
+                    balance,
+                    interest_rate,
+                    minimum_payment,
                     is_good_debt: item.is_good_debt ? 1 : 0,
                     currency: item.currency || 'USD',
                     last_updated: item.last_updated || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item });
+                return NextResponse.json({ success: true, item: { ...item, balance, interest_rate, minimum_payment } });
             }
 
             if (entity === 'goals') {
+                const target_amount = parseFiniteNumber(item.target_amount, 'Target amount', { allowNegative: false, required: true });
+                const current_amount = parseFiniteNumber(item.current_amount, 'Current amount', { allowNegative: false, required: false });
+                const start_amount = parseFiniteNumber(item.start_amount, 'Start amount', { allowNegative: false, required: false });
+
                 const stmt = db.prepare(`
                     INSERT INTO goals (id, user_id, name, target_amount, current_amount, start_amount, currency, category, deadline, created_at)
                     VALUES (@id, @user_id, @name, @target_amount, @current_amount, @start_amount, @currency, @category, @deadline, @created_at)
@@ -178,18 +239,20 @@ export async function POST(request: Request) {
                     id: item.id,
                     user_id: item.user_id || 'local_user',
                     name: item.name || 'Unnamed Goal',
-                    target_amount: Number(item.target_amount) || 0,
-                    current_amount: Number(item.current_amount) || 0,
-                    start_amount: Number(item.start_amount) || 0,
+                    target_amount,
+                    current_amount,
+                    start_amount,
                     currency: item.currency || 'USD',
                     category: item.category || 'General',
                     deadline: item.deadline || null,
                     created_at: item.created_at || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item });
+                return NextResponse.json({ success: true, item: { ...item, target_amount, current_amount, start_amount } });
             }
 
             if (entity === 'recurring') {
+                const amount = parseFiniteNumber(item.amount, 'Recurring amount', { allowNegative: false, required: true });
+
                 const stmt = db.prepare(`
                     INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
                     VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
@@ -208,7 +271,7 @@ export async function POST(request: Request) {
                     id: item.id,
                     user_id: item.user_id || 'local_user',
                     name: item.name || 'Unnamed Item',
-                    amount: Number(item.amount) || 0,
+                    amount,
                     type: item.type || 'expense',
                     frequency: item.frequency || 'monthly',
                     category: item.category || 'General',
@@ -218,10 +281,14 @@ export async function POST(request: Request) {
                     currency: item.currency || 'USD',
                     created_at: item.created_at || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item });
+                return NextResponse.json({ success: true, item: { ...item, amount } });
             }
 
             if (entity === 'cashFlow') {
+                const month = validateMonth(item.month);
+                const income = parseFiniteNumber(item.income, 'Income', { allowNegative: false, required: true });
+                const expenses = parseFiniteNumber(item.expenses, 'Expenses', { allowNegative: false, required: true });
+
                 const stmt = db.prepare(`
                     INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
@@ -233,12 +300,12 @@ export async function POST(request: Request) {
                 stmt.run({
                     id: item.id || crypto.randomUUID(),
                     user_id: 'local_user',
-                    month: item.month,
-                    income: Number(item.income) || 0,
-                    expenses: Number(item.expenses) || 0,
+                    month,
+                    income,
+                    expenses,
                     currency: item.currency || 'USD'
                 });
-                return NextResponse.json({ success: true, item });
+                return NextResponse.json({ success: true, item: { ...item, month, income, expenses } });
             }
 
             return NextResponse.json({ error: `Unsupported entity for scoped save: ${entity}` }, { status: 400 });
@@ -279,26 +346,42 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: true, message: 'Vault wiped successfully' });
         }
 
-        // --- BULK SYNCHRONIZATION ---
+        // --- BULK RESTORE OR BULK SYNCHRONIZATION ---
         const { assets, liabilities, goals, recurring, history, cashFlow, settings, profile } = body;
+        const isBulkRestore = action === 'bulk_restore';
 
         const syncTransaction = db.transaction(() => {
+            // In a bulk restore, wipe existing records first to guarantee clean atomic replacement (TRUST-11)
+            if (isBulkRestore) {
+                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM settings").run();
+            }
+
             if (Array.isArray(assets)) {
-                db.prepare('DELETE FROM assets WHERE user_id = ?').run('local_user');
+                if (!isBulkRestore) {
+                    db.prepare('DELETE FROM assets WHERE user_id = ?').run('local_user');
+                }
                 const insertAsset = db.prepare(`
                     INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
                     VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
                 `);
                 for (const a of assets) {
+                    const value = parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
+                    const interest_rate = parseFiniteNumber(a.interest_rate, `Asset "${a.name || a.id}" interest rate`, { allowNegative: true, required: false });
                     insertAsset.run({
                         id: a.id || crypto.randomUUID(),
                         user_id: a.user_id || 'local_user',
-                        name: a.name,
-                        type: a.type,
-                        value: Number(a.value) || 0,
+                        name: a.name || 'Unnamed Asset',
+                        type: a.type || 'other',
+                        value,
                         is_liquid: a.is_liquid ? 1 : 0,
                         currency: a.currency || 'USD',
-                        interest_rate: Number(a.interest_rate) || 0,
+                        interest_rate,
                         investment_details: a.investment_details ? JSON.stringify(a.investment_details) : null,
                         last_updated: a.last_updated || new Date().toISOString()
                     });
@@ -306,20 +389,25 @@ export async function POST(request: Request) {
             }
 
             if (Array.isArray(liabilities)) {
-                db.prepare('DELETE FROM liabilities WHERE user_id = ?').run('local_user');
+                if (!isBulkRestore) {
+                    db.prepare('DELETE FROM liabilities WHERE user_id = ?').run('local_user');
+                }
                 const insertLiab = db.prepare(`
                     INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
                     VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
                 `);
                 for (const l of liabilities) {
+                    const balance = parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
+                    const interest_rate = parseFiniteNumber(l.interest_rate, `Liability "${l.name || l.id}" interest rate`, { allowNegative: true, required: false });
+                    const minimum_payment = parseFiniteNumber(l.minimum_payment, `Liability "${l.name || l.id}" minimum payment`, { allowNegative: false, required: false });
                     insertLiab.run({
                         id: l.id || crypto.randomUUID(),
                         user_id: l.user_id || 'local_user',
-                        name: l.name,
-                        type: l.type,
-                        balance: Number(l.balance) || 0,
-                        interest_rate: Number(l.interest_rate) || 0,
-                        minimum_payment: Number(l.minimum_payment) || 0,
+                        name: l.name || 'Unnamed Debt',
+                        type: l.type || 'other',
+                        balance,
+                        interest_rate,
+                        minimum_payment,
                         is_good_debt: l.is_good_debt ? 1 : 0,
                         currency: l.currency || 'USD',
                         last_updated: l.last_updated || new Date().toISOString()
@@ -328,19 +416,24 @@ export async function POST(request: Request) {
             }
 
             if (Array.isArray(goals)) {
-                db.prepare('DELETE FROM goals WHERE user_id = ?').run('local_user');
+                if (!isBulkRestore) {
+                    db.prepare('DELETE FROM goals WHERE user_id = ?').run('local_user');
+                }
                 const insertGoal = db.prepare(`
                     INSERT INTO goals (id, user_id, name, target_amount, current_amount, start_amount, currency, category, deadline, created_at)
                     VALUES (@id, @user_id, @name, @target_amount, @current_amount, @start_amount, @currency, @category, @deadline, @created_at)
                 `);
                 for (const g of goals) {
+                    const target_amount = parseFiniteNumber(g.target_amount, `Goal "${g.name || g.id}" target amount`, { allowNegative: false, required: true });
+                    const current_amount = parseFiniteNumber(g.current_amount, `Goal "${g.name || g.id}" current amount`, { allowNegative: false, required: false });
+                    const start_amount = parseFiniteNumber(g.start_amount, `Goal "${g.name || g.id}" start amount`, { allowNegative: false, required: false });
                     insertGoal.run({
                         id: g.id || crypto.randomUUID(),
                         user_id: g.user_id || 'local_user',
-                        name: g.name,
-                        target_amount: Number(g.target_amount) || 0,
-                        current_amount: Number(g.current_amount) || 0,
-                        start_amount: Number(g.start_amount) || 0,
+                        name: g.name || 'Unnamed Goal',
+                        target_amount,
+                        current_amount,
+                        start_amount,
                         currency: g.currency || 'USD',
                         category: g.category || 'General',
                         deadline: g.deadline || null,
@@ -350,18 +443,21 @@ export async function POST(request: Request) {
             }
 
             if (Array.isArray(recurring)) {
-                db.prepare('DELETE FROM recurring_transactions WHERE user_id = ?').run('local_user');
+                if (!isBulkRestore) {
+                    db.prepare('DELETE FROM recurring_transactions WHERE user_id = ?').run('local_user');
+                }
                 const insertRec = db.prepare(`
                     INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
                     VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
                 `);
                 for (const r of recurring) {
+                    const amount = parseFiniteNumber(r.amount, `Recurring item "${r.name || r.id}" amount`, { allowNegative: false, required: true });
                     insertRec.run({
                         id: r.id || crypto.randomUUID(),
                         user_id: r.user_id || 'local_user',
-                        name: r.name,
-                        amount: Number(r.amount) || 0,
-                        type: r.type,
+                        name: r.name || 'Unnamed Item',
+                        amount,
+                        type: r.type || 'expense',
                         frequency: r.frequency || 'monthly',
                         category: r.category || 'General',
                         start_date: r.start_date || new Date().toISOString().split('T')[0],
@@ -374,45 +470,54 @@ export async function POST(request: Request) {
             }
 
             if (Array.isArray(history)) {
-                const upsertHistory = db.prepare(`
+                // Ensure existing history is cleared on both restore and sync so empty history leaves 0 rows
+                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
+                const insertHistory = db.prepare(`
                     INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
                     VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
-                    ON CONFLICT(user_id, date) DO UPDATE SET
-                        total_assets = excluded.total_assets,
-                        total_liabilities = excluded.total_liabilities,
-                        net_worth = excluded.net_worth
                 `);
                 for (const h of history) {
-                    upsertHistory.run({
+                    const total_assets = parseFiniteNumber(h.totalAssets ?? h.total_assets, `History record ${h.date} total assets`, { allowNegative: false, required: true });
+                    const total_liabilities = parseFiniteNumber(h.totalLiabilities ?? h.total_liabilities, `History record ${h.date} total liabilities`, { allowNegative: false, required: true });
+                    const net_worth = parseFiniteNumber(h.netWorth ?? h.net_worth, `History record ${h.date} net worth`, { allowNegative: true, required: true });
+                    insertHistory.run({
                         id: h.id || crypto.randomUUID(),
                         user_id: 'local_user',
                         date: h.date,
-                        total_assets: Number(h.totalAssets ?? h.total_assets) || 0,
-                        total_liabilities: Number(h.totalLiabilities ?? h.total_liabilities) || 0,
-                        net_worth: Number(h.netWorth ?? h.net_worth) || 0
+                        total_assets,
+                        total_liabilities,
+                        net_worth
                     });
                 }
             }
 
             if (Array.isArray(cashFlow)) {
-                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                if (!isBulkRestore) {
+                    db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                }
                 const insertCashFlow = db.prepare(`
                     INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
                 `);
                 for (const cf of cashFlow) {
+                    const month = validateMonth(cf.month);
+                    const income = parseFiniteNumber(cf.income, `Cash flow entry ${cf.month} income`, { allowNegative: false, required: true });
+                    const expenses = parseFiniteNumber(cf.expenses, `Cash flow entry ${cf.month} expenses`, { allowNegative: false, required: true });
                     insertCashFlow.run({
                         id: cf.id || crypto.randomUUID(),
                         user_id: 'local_user',
-                        month: cf.month,
-                        income: Number(cf.income) || 0,
-                        expenses: Number(cf.expenses) || 0,
+                        month,
+                        income,
+                        expenses,
                         currency: cf.currency || 'USD'
                     });
                 }
             }
 
             if (settings && typeof settings === 'object') {
+                if (isBulkRestore) {
+                    db.prepare("DELETE FROM settings").run();
+                }
                 const upsertSetting = db.prepare(`
                     INSERT INTO settings (key, value)
                     VALUES (?, ?)
@@ -443,9 +548,10 @@ export async function POST(request: Request) {
 
         syncTransaction();
 
-        return NextResponse.json({ success: true, message: 'Vault saved to local SQLite successfully' });
+        return NextResponse.json({ success: true, message: isBulkRestore ? 'Vault restored successfully' : 'Vault saved to local SQLite successfully' });
     } catch (error: any) {
         console.error('Vault POST Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const status = error instanceof ValidationError || error.statusCode === 400 ? 400 : 500;
+        return NextResponse.json({ error: error.message || 'Internal database error' }, { status });
     }
 }

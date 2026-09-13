@@ -171,8 +171,9 @@ export const AssetsPage = () => {
                     <form className="grid grid-cols-1 md:grid-cols-4 gap-4" onSubmit={handleSubmit(onSubmit)}>
                         <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-5 gap-4">
                             <div className="space-y-1 col-span-2">
-                                <label className="text-sm font-medium text-slate-700">Name</label>
+                                <label htmlFor="asset-name-input" className="text-sm font-medium text-slate-700">Name</label>
                                 <input
+                                    id="asset-name-input"
                                     {...register('name')}
                                     placeholder="e.g. BTC Wallet"
                                     className={`w-full bg-card border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20 ${errors.name ? 'border-red-500' : 'border-border'}`}
@@ -181,8 +182,8 @@ export const AssetsPage = () => {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Type</label>
-                                <select {...register('type')} className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20">
+                                <label htmlFor="asset-type-select" className="text-sm font-bold text-muted-foreground">Type</label>
+                                <select id="asset-type-select" {...register('type')} className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20">
                                     <option value="cash">Cash</option>
                                     <option value="investment">Stock / ETF</option>
                                     <option value="crypto">Crypto</option>
@@ -195,12 +196,13 @@ export const AssetsPage = () => {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Currency</label>
+                                <label htmlFor="asset-currency-select" className="text-sm font-bold text-muted-foreground">Currency</label>
                                 <Controller
                                     name="currency"
                                     control={control}
                                     render={({ field }) => (
                                         <CurrencySelector
+                                            id="asset-currency-select"
                                             value={field.value}
                                             onChange={field.onChange}
                                             className="w-full"
@@ -210,8 +212,9 @@ export const AssetsPage = () => {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Value</label>
+                                <label htmlFor="asset-value-input" className="text-sm font-bold text-muted-foreground">Value</label>
                                 <input
+                                    id="asset-value-input"
                                     {...register('value', { valueAsNumber: true })}
                                     type="number"
                                     step="0.01"
@@ -221,8 +224,9 @@ export const AssetsPage = () => {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground">Yield %</label>
+                                <label htmlFor="asset-yield-input" className="text-sm font-bold text-muted-foreground">Yield %</label>
                                 <input
+                                    id="asset-yield-input"
                                     {...register('interest_rate', { valueAsNumber: true })}
                                     type="number"
                                     step="0.01"
@@ -236,24 +240,24 @@ export const AssetsPage = () => {
                         {isInvestmentType && (
                             <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-xl border border-dashed border-border animate-in fade-in zoom-in-95 duration-200">
                                 <div className="space-y-1">
-                                    <label className="text-sm font-bold text-muted-foreground">Ticker (e.g. AAPL)</label>
-                                    <input {...register('investment_details.ticker')} placeholder="AAPL" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
+                                    <label htmlFor="asset-ticker-input" className="text-sm font-bold text-muted-foreground">Ticker (e.g. AAPL)</label>
+                                    <input id="asset-ticker-input" {...register('investment_details.ticker')} placeholder="AAPL" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-bold text-muted-foreground">Shares</label>
-                                    <input {...register('investment_details.shares', { valueAsNumber: true })} type="number" step="0.0001" placeholder="0" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
+                                    <label htmlFor="asset-shares-input" className="text-sm font-bold text-muted-foreground">Shares</label>
+                                    <input id="asset-shares-input" {...register('investment_details.shares', { valueAsNumber: true })} type="number" step="0.0001" placeholder="0" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-bold text-muted-foreground">Cost Basis</label>
-                                    <input {...register('investment_details.costBasis', { valueAsNumber: true })} type="number" step="0.01" placeholder="Total Cost" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
+                                    <label htmlFor="asset-cost-basis-input" className="text-sm font-bold text-muted-foreground">Cost Basis</label>
+                                    <input id="asset-cost-basis-input" {...register('investment_details.costBasis', { valueAsNumber: true })} type="number" step="0.01" placeholder="Total Cost" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-bold text-muted-foreground">Sector (Optional)</label>
-                                    <input {...register('investment_details.sector')} placeholder="e.g. Technology" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
+                                    <label htmlFor="asset-sector-input" className="text-sm font-bold text-muted-foreground">Sector (Optional)</label>
+                                    <input id="asset-sector-input" {...register('investment_details.sector')} placeholder="e.g. Technology" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-bold text-muted-foreground">Dividend Yield (%)</label>
-                                    <input {...register('investment_details.dividendYield', { valueAsNumber: true })} type="number" step="0.01" placeholder="e.g. 1.5" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
+                                    <label htmlFor="asset-dividend-yield-input" className="text-sm font-bold text-muted-foreground">Dividend Yield (%)</label>
+                                    <input id="asset-dividend-yield-input" {...register('investment_details.dividendYield', { valueAsNumber: true })} type="number" step="0.01" placeholder="e.g. 1.5" className="w-full bg-background border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20" />
                                 </div>
                             </div>
                         )}

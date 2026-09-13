@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { LayoutDashboard, Wallet, CreditCard, Users, Shield, Target, Menu, X, DollarSign, Calendar, TrendingUp, LogOut, User } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -31,6 +31,18 @@ export default function Sidebar() {
     const searchParams = useSearchParams();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const { isDemoMode, profile } = useProfile();
+
+    // Close mobile drawer on Escape key press (Finding 8, UX-02)
+    useEffect(() => {
+        if (!isMobileOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setIsMobileOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isMobileOpen]);
 
     // Fallback for "God Mode" badge if URL param is present even if context hasn't loaded yet
     const simulatedProfileId = searchParams.get('simulatedProfileId');

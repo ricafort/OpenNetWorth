@@ -127,6 +127,10 @@ function get<T>(key: string, parse = true): T | null {
         // Fallback to legacy clearworth key
         const legacyKey = key.replace('opennetworth_', 'clearworth_');
         item = localStorage.getItem(legacyKey);
+        // Cashflow legacy key special check (clearworth_cashflow without underscore)
+        if (!item && key === STORAGE_KEYS.CASH_FLOW) {
+            item = localStorage.getItem('clearworth_cashflow');
+        }
     }
     if (!item) return null;
     try {
@@ -137,46 +141,15 @@ function get<T>(key: string, parse = true): T | null {
     }
 }
 
-// Background synchronization with local SQLite engine
-let syncDebounceTimer: any = null;
-const pendingSyncData: Record<string, any> = {};
-
-function syncToSqlite(key: string, value: any) {
-    if (typeof window === 'undefined') return;
-
-    // Map storage keys to SQLite vault entity names
-    const entityMap: Record<string, string> = {
-        [STORAGE_KEYS.ASSETS]: 'assets',
-        [STORAGE_KEYS.LIABILITIES]: 'liabilities',
-        [STORAGE_KEYS.NET_WORTH_HISTORY]: 'history',
-        [STORAGE_KEYS.GOALS]: 'goals',
-        [STORAGE_KEYS.CASH_FLOW]: 'cashFlow',
-        [STORAGE_KEYS.SETTINGS]: 'settings',
-        'opennetworth_recurring': 'recurring',
-        'opennetworth_recurring_txs': 'recurring'
-    };
-
-    const entityName = entityMap[key];
-    if (!entityName) return;
-
-    pendingSyncData[entityName] = value;
-
-    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
-    syncDebounceTimer = setTimeout(async () => {
-        try {
-            const payload = { ...pendingSyncData };
-            await fetch('/api/vault', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-        } catch (e) {
-            // Silently swallow in offline or serverless contexts
-            console.debug('SQLite auto-sync notification:', e);
-        }
-    }, 500);
-}
-
+/**
+ * Updates local cache and dispatches UI update notifications.
+ * 
+ * Why this exists:
+ * Provides fast synchronous local storage access and reactive UI updates.
+ * Separated from persistence: does NOT invoke any bulk SQLite sync (DATA-04, DATA-05).
+ * Durable writes must explicitly use scoped operations (persistScopedRecord / deleteScopedRecord)
+ * or atomic bulk restore (importData).
+ */
 function set<T>(key: string, value: T) {
     if (typeof window === 'undefined') return;
     const str = JSON.stringify(value);
@@ -186,10 +159,10 @@ function set<T>(key: string, value: T) {
     if (key.startsWith('opennetworth_')) {
         const legacyKey = key.replace('opennetworth_', 'clearworth_');
         localStorage.setItem(legacyKey, str);
+        if (key === STORAGE_KEYS.CASH_FLOW) {
+            localStorage.setItem('clearworth_cashflow', str);
+        }
     }
-
-    // Persist to local SQLite embedded database
-    syncToSqlite(key, value);
 
     // Dispatch custom event for reactive UI updates
     window.dispatchEvent(new Event('opennetworth_data_updated'));
@@ -360,6 +333,12 @@ export function validateBackup(data: any): { valid: boolean; error?: string } {
         if (counts.recurring !== undefined && counts.recurring !== recurring.length) {
             return { valid: false, error: `Recurring count mismatch: manifest declares ${counts.recurring}, found ${recurring.length}` };
         }
+        if (counts.cashFlow !== undefined && counts.cashFlow !== cashFlow.length) {
+            return { valid: false, error: `Cash flow count mismatch: manifest declares ${counts.cashFlow}, found ${cashFlow.length}` };
+        }
+        if (counts.history !== undefined && counts.history !== history.length) {
+            return { valid: false, error: `History count mismatch: manifest declares ${counts.history}, found ${history.length}` };
+        }
     }
 
     // Individual data integrity validation
@@ -370,8 +349,11 @@ export function validateBackup(data: any): { valid: boolean; error?: string } {
         if (typeof item.name !== 'string') {
             return { valid: false, error: `Asset "${item.id}" has an invalid name` };
         }
-        if (typeof item.value !== 'number' || isNaN(item.value)) {
+        if (typeof item.value !== 'number' || isNaN(item.value) || !isFinite(item.value)) {
             return { valid: false, error: `Asset "${item.name || item.id}" has a non-numeric value` };
+        }
+        if (item.value < 0) {
+            return { valid: false, error: `Asset "${item.name || item.id}" cannot have a negative value` };
         }
     }
 
@@ -382,8 +364,11 @@ export function validateBackup(data: any): { valid: boolean; error?: string } {
         if (typeof item.name !== 'string') {
             return { valid: false, error: `Liability "${item.id}" has an invalid name` };
         }
-        if (typeof item.balance !== 'number' || isNaN(item.balance)) {
+        if (typeof item.balance !== 'number' || isNaN(item.balance) || !isFinite(item.balance)) {
             return { valid: false, error: `Liability "${item.name || item.id}" has a non-numeric balance` };
+        }
+        if (item.balance < 0) {
+            return { valid: false, error: `Liability "${item.name || item.id}" cannot have a negative balance` };
         }
     }
 
@@ -394,7 +379,7 @@ export function validateBackup(data: any): { valid: boolean; error?: string } {
         if (typeof item.name !== 'string') {
             return { valid: false, error: `Goal "${item.id}" has an invalid name` };
         }
-        if (typeof item.target_amount !== 'number' || isNaN(item.target_amount)) {
+        if (typeof item.target_amount !== 'number' || isNaN(item.target_amount) || !isFinite(item.target_amount) || item.target_amount < 0) {
             return { valid: false, error: `Goal "${item.name || item.id}" has a non-numeric target_amount` };
         }
     }
@@ -406,15 +391,30 @@ export function validateBackup(data: any): { valid: boolean; error?: string } {
         if (typeof item.name !== 'string') {
             return { valid: false, error: `Recurring item "${item.id}" has an invalid name` };
         }
-        if (typeof item.amount !== 'number' || isNaN(item.amount)) {
+        if (typeof item.amount !== 'number' || isNaN(item.amount) || !isFinite(item.amount) || item.amount < 0) {
             return { valid: false, error: `Recurring item "${item.name || item.id}" has a non-numeric amount` };
         }
     }
 
     for (const [idx, item] of history.entries()) {
         const netWorth = item.netWorth ?? item.net_worth;
-        if (typeof netWorth !== 'number' || isNaN(netWorth)) {
+        if (typeof netWorth !== 'number' || isNaN(netWorth) || !isFinite(netWorth)) {
             return { valid: false, error: `History record at index ${idx} has a non-numeric net worth` };
+        }
+    }
+
+    for (const [idx, item] of cashFlow.entries()) {
+        if (!item || typeof item !== 'object') {
+            return { valid: false, error: `Cash flow entry at index ${idx} is not an object` };
+        }
+        if (!item.month || typeof item.month !== 'string' || !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(item.month)) {
+            return { valid: false, error: `Cash flow entry at index ${idx} has invalid month "${item?.month}". Expected YYYY-MM.` };
+        }
+        if (typeof item.income !== 'number' || isNaN(item.income) || !isFinite(item.income) || item.income < 0) {
+            return { valid: false, error: `Cash flow entry for ${item.month} has invalid or negative income` };
+        }
+        if (typeof item.expenses !== 'number' || isNaN(item.expenses) || !isFinite(item.expenses) || item.expenses < 0) {
+            return { valid: false, error: `Cash flow entry for ${item.month} has invalid or negative expenses` };
         }
     }
 
@@ -429,7 +429,17 @@ export function exportAllData(): string {
     const recurring = loadRecurringTransactions();
     const history = loadNetWorthHistory();
     const cashFlow = loadCashFlow();
-    const settings = get<Record<string, any>>(STORAGE_KEYS.SETTINGS) || {};
+    
+    // Aggregate all user settings into the backup (payoff preferences, dashboard layout, base preferences)
+    const baseSettings = get<Record<string, any>>(STORAGE_KEYS.SETTINGS) || {};
+    const freedomSettings = get<Record<string, any>>(STORAGE_KEYS.FREEDOM_SETTINGS) || {};
+    const dashboardLayout = get<Record<string, any>>('opennetworth_dashboard_layout') || {};
+
+    const settings: Record<string, any> = {
+        ...baseSettings,
+        freedomSettings,
+        dashboardLayout
+    };
 
     const archive: BackupArchive = {
         manifest: {
@@ -467,6 +477,16 @@ export function exportAllData(): string {
     return JSON.stringify(archive, null, 2);
 }
 
+/**
+ * Restores vault data atomically from a JSON backup archive (TRUST-11, DATA-01).
+ * 
+ * Why this exists:
+ * - Validates backup integrity and schema before making any changes.
+ * - Commits to SQLite database FIRST.
+ * - Inspects response.ok: if database write fails (e.g. HTTP 500), reports error and
+ *   leaves existing local storage completely untouched.
+ * - Updates local cache ONLY after database confirms success.
+ */
 export async function importData(jsonString: string): Promise<{ success: boolean; error?: string }> {
     try {
         let parsed: any;
@@ -476,7 +496,7 @@ export async function importData(jsonString: string): Promise<{ success: boolean
             return { success: false, error: 'File contains invalid JSON syntax' };
         }
 
-        // Pre-restore validation (TRUST-11)
+        // 1. Pre-restore validation (TRUST-11)
         const validation = validateBackup(parsed);
         if (!validation.valid) {
             return { success: false, error: validation.error };
@@ -484,23 +504,13 @@ export async function importData(jsonString: string): Promise<{ success: boolean
 
         const vault = parsed.vault;
 
-        // Apply to local cache
-        saveAssets(vault.assets);
-        saveLiabilities(vault.liabilities);
-        saveGoals(vault.goals);
-        saveRecurringTransactions(vault.recurring);
-        saveNetWorthHistory(vault.history);
-        saveCashFlow(vault.cashFlow);
-        if (vault.settings) {
-            set(STORAGE_KEYS.SETTINGS, vault.settings);
-        }
-
-        // Apply durably to SQLite
+        // 2. Commit durably to SQLite FIRST via atomic bulk_restore (DATA-01, TRUST-11)
         if (typeof window !== 'undefined') {
-            await fetch('/api/vault', {
+            const res = await fetch('/api/vault', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    action: 'bulk_restore',
                     assets: vault.assets,
                     liabilities: vault.liabilities,
                     goals: vault.goals,
@@ -510,6 +520,33 @@ export async function importData(jsonString: string): Promise<{ success: boolean
                     settings: vault.settings
                 })
             });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: 'Database restore failed' }));
+                return { success: false, error: err.error || `Database restore returned HTTP ${res.status}` };
+            }
+        }
+
+        // 3. ONLY after database confirms success (HTTP 200), refresh local browser cache
+        saveAssets(vault.assets);
+        saveLiabilities(vault.liabilities);
+        saveGoals(vault.goals);
+        saveRecurringTransactions(vault.recurring);
+        saveNetWorthHistory(vault.history);
+        saveCashFlow(vault.cashFlow);
+
+        if (vault.settings) {
+            const { freedomSettings, dashboardLayout, ...baseSettings } = vault.settings;
+            set(STORAGE_KEYS.SETTINGS, baseSettings);
+            if (freedomSettings) {
+                set(STORAGE_KEYS.FREEDOM_SETTINGS, freedomSettings);
+            }
+            if (dashboardLayout) {
+                set('opennetworth_dashboard_layout', dashboardLayout);
+            }
+        }
+
+        if (typeof window !== 'undefined') {
             window.dispatchEvent(new Event('opennetworth_data_updated'));
             window.dispatchEvent(new Event('clearworth_data_updated'));
         }
@@ -763,9 +800,19 @@ export function saveDashboardLayout(config: DashboardConfig): void {
 
 /**
  * Synchronizes client state with local SQLite database on boot.
- * - Inspects all 7 supported record types (DATA-08).
+ * 
+ * Why this exists:
+ * Inspects all 7 supported record types (DATA-08).
+ * Uses an explicit versioned migration flag ('opennetworth_vault_migrated_v1') to perform
+ * initial migration from legacy browser storage to SQLite once.
+ * 
+ * Tricky logic:
+ * - After migration, SQLite is the authoritative source of truth.
+ * - Local cache is refreshed directly from SQLite.
+ * - Stale browser records absent from SQLite are NEVER revived into the database (Finding 4).
  * - Vaults containing only goals or recurring transactions are preserved.
- * - Idempotent reconciliation produces 0 changes when already reconciled (DATA-09).
+ * 
+ * TODO: Support background conflict resolution if multi-device sync is added in Milestone 2+.
  */
 export async function initVaultSync(): Promise<void> {
     if (typeof window === 'undefined') return;
@@ -777,6 +824,9 @@ export async function initVaultSync(): Promise<void> {
         const vault = json.vault;
 
         if (!vault) return;
+
+        const MIGRATION_FLAG = 'opennetworth_vault_migrated_v1';
+        const isMigrated = localStorage.getItem(MIGRATION_FLAG) === 'true';
 
         const localAssets = loadAssets();
         const localLiabs = loadLiabilities();
@@ -805,8 +855,38 @@ export async function initVaultSync(): Promise<void> {
             localCashFlow.length > 0 ||
             Object.keys(localSettings).length > 0;
 
-        if (sqliteHasData && !clientHasData) {
-            // Restore from SQLite into localStorage
+        if (!isMigrated) {
+            // Versioned one-time migration
+            if (!sqliteHasData && clientHasData) {
+                // Initial seed of existing client data to SQLite
+                await fetch('/api/vault', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        assets: localAssets,
+                        liabilities: localLiabs,
+                        goals: localGoals,
+                        recurring: localRecurring,
+                        history: localHistory,
+                        cashFlow: localCashFlow,
+                        settings: localSettings
+                    })
+                });
+            } else if (sqliteHasData) {
+                // SQLite already populated; hydrate local cache
+                if (vault.assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(vault.assets));
+                if (vault.liabilities) localStorage.setItem(STORAGE_KEYS.LIABILITIES, JSON.stringify(vault.liabilities));
+                if (vault.goals) localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(vault.goals));
+                if (vault.recurring) localStorage.setItem(STORAGE_KEYS.RECURRING, JSON.stringify(vault.recurring));
+                if (vault.history) localStorage.setItem(STORAGE_KEYS.NET_WORTH_HISTORY, JSON.stringify(vault.history));
+                if (vault.cashFlow) localStorage.setItem(STORAGE_KEYS.CASH_FLOW, JSON.stringify(vault.cashFlow));
+                if (vault.settings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(vault.settings));
+                window.dispatchEvent(new Event('opennetworth_data_updated'));
+            }
+            localStorage.setItem(MIGRATION_FLAG, 'true');
+        } else {
+            // Post-migration: SQLite is authoritative.
+            // Hydrate local cache directly from SQLite so deleted items never revive.
             if (vault.assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(vault.assets));
             if (vault.liabilities) localStorage.setItem(STORAGE_KEYS.LIABILITIES, JSON.stringify(vault.liabilities));
             if (vault.goals) localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(vault.goals));
@@ -814,49 +894,6 @@ export async function initVaultSync(): Promise<void> {
             if (vault.history) localStorage.setItem(STORAGE_KEYS.NET_WORTH_HISTORY, JSON.stringify(vault.history));
             if (vault.cashFlow) localStorage.setItem(STORAGE_KEYS.CASH_FLOW, JSON.stringify(vault.cashFlow));
             if (vault.settings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(vault.settings));
-            window.dispatchEvent(new Event('opennetworth_data_updated'));
-        } else if (!sqliteHasData && clientHasData) {
-            // Initial seed of existing client data to SQLite
-            await fetch('/api/vault', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    assets: localAssets,
-                    liabilities: localLiabs,
-                    goals: localGoals,
-                    recurring: localRecurring,
-                    history: localHistory,
-                    cashFlow: localCashFlow,
-                    settings: localSettings
-                })
-            });
-        } else if (sqliteHasData && clientHasData) {
-            // Idempotent reconciliation (DATA-09):
-            // Reconciling an already-reconciled database produces zero changes and zero duplicate records.
-            const reconcile = <T extends { id: string }>(sqliteList: T[] = [], localList: T[] = []): T[] => {
-                const map = new Map<string, T>();
-                for (const item of sqliteList) {
-                    map.set(item.id, item);
-                }
-                for (const item of localList) {
-                    if (!map.has(item.id)) {
-                        map.set(item.id, item);
-                    }
-                }
-                return Array.from(map.values());
-            };
-
-            const reconciledAssets = reconcile(vault.assets, localAssets);
-            const reconciledLiabs = reconcile(vault.liabilities, localLiabs);
-            const reconciledGoals = reconcile(vault.goals, localGoals);
-            const reconciledRecurring = reconcile(vault.recurring, localRecurring);
-            const reconciledCashFlow = reconcile(vault.cashFlow, localCashFlow);
-
-            localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(reconciledAssets));
-            localStorage.setItem(STORAGE_KEYS.LIABILITIES, JSON.stringify(reconciledLiabs));
-            localStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(reconciledGoals));
-            localStorage.setItem(STORAGE_KEYS.RECURRING, JSON.stringify(reconciledRecurring));
-            localStorage.setItem(STORAGE_KEYS.CASH_FLOW, JSON.stringify(reconciledCashFlow));
             window.dispatchEvent(new Event('opennetworth_data_updated'));
         }
     } catch (e) {
