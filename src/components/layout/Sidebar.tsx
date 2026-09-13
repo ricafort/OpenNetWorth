@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { LayoutDashboard, Wallet, CreditCard, Users, Shield, Target, Menu, X, DollarSign, Calendar, TrendingUp, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Wallet, CreditCard, Users, Shield, Target, Menu, X, DollarSign, Calendar, TrendingUp, LogOut, User, BookOpen } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import { clsx, type ClassValue } from 'clsx';
@@ -14,6 +14,7 @@ function cn(...inputs: ClassValue[]) {
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { name: 'Accounting', href: '/accounting', icon: BookOpen },
     { name: 'Assets', href: '/assets', icon: Wallet },
     { name: 'Liabilities', href: '/liabilities', icon: CreditCard },
     { name: 'Goals', href: '/goals', icon: Target },

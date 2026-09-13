@@ -43,6 +43,31 @@ export interface EntityNetWorthResult {
     account_count: number;
 }
 
+export interface CategoryBreakdownItem {
+    account_id: string;
+    account_name: string;
+    type: 'income' | 'expense';
+    sub_type: string;
+    currency: CurrencyCode;
+    total_cents: number;
+    formatted_total: string;
+    transaction_count: number;
+}
+
+export interface PeriodIncomeExpenseResult {
+    entity_id: string;
+    start_date?: string;
+    end_date?: string;
+    total_income_cents_by_currency: Record<CurrencyCode, number>;
+    total_expenses_cents_by_currency: Record<CurrencyCode, number>;
+    net_savings_cents_by_currency: Record<CurrencyCode, number>;
+    formatted_income_by_currency: Record<CurrencyCode, string>;
+    formatted_expenses_by_currency: Record<CurrencyCode, string>;
+    formatted_net_savings_by_currency: Record<CurrencyCode, string>;
+    breakdown_by_category: CategoryBreakdownItem[];
+    calculation_version: string;
+}
+
 export const CALCULATION_ENGINE_VERSION = '1.0.0';
 
 /**
@@ -77,8 +102,10 @@ export function getAccountBalance(
     // Normal balance rule:
     // Assets & Expenses: positive debit increases balance -> balance = netDebitCredits
     // Liabilities, Equity, Income: positive credit increases balance -> balance = -netDebitCredits
+    // Tricky logic: Normalize -0 to 0 in JavaScript arithmetic
     const isDebitNormal = account.type === 'asset' || account.type === 'expense';
-    const balanceCents = isDebitNormal ? netDebitCredits : -netDebitCredits;
+    const rawBalance = isDebitNormal ? netDebitCredits : -netDebitCredits;
+    const balanceCents = rawBalance === 0 ? 0 : rawBalance;
 
     const money: Money = { amount_cents: balanceCents, currency: account.currency };
 
@@ -158,3 +185,152 @@ export function getEntityNetWorth(
         account_count: accounts.length
     };
 }
+
+/**
+ * Calculates total income, total expenses, net savings, and category breakdowns for an entity over a date range.
+ * 
+ * Why this exists:
+ * Implements M1-FLOW-02, M1-CALC-01, and Acceptance Scenario T2.
+ * Directly aggregates posted journal entries for income and expense accounts.
+ * Transfers (asset-to-asset) and credit card repayments (asset-to-liability)
+ * do not involve income or expense accounts, naturally yielding $0.00 in income and expenses (T3, T4).
+ * 
+ * Tricky logic:
+ * - Income accounts are Credit-normal: postings have negative amount_cents, so total = -Sum(amount_cents).
+ * - Expense accounts are Debit-normal: postings have positive amount_cents, so total = Sum(amount_cents).
+ * - Net savings = total_income - total_expenses.
+ * - Unlike currencies are never aggregated together; totals are keyed by CurrencyCode.
+ */
+export function getPeriodIncomeAndExpenses(
+    db: Database.Database,
+    entityId: string,
+    startDate?: string,
+    endDate?: string
+): PeriodIncomeExpenseResult {
+    let sql = `
+        SELECT 
+            j.amount_cents,
+            j.currency,
+            a.id as account_id,
+            a.name as account_name,
+            a.type as account_type,
+            a.sub_type,
+            t.id as transaction_id,
+            t.date
+        FROM m1_journal_entries j
+        JOIN m1_accounts a ON j.account_id = a.id
+        JOIN m1_transactions t ON j.transaction_id = t.id
+        WHERE a.entity_id = ? AND a.type IN ('income', 'expense') AND t.status = 'posted'
+    `;
+    const params: any[] = [entityId];
+
+    if (startDate) {
+        sql += ' AND t.date >= ?';
+        params.push(startDate);
+    }
+    if (endDate) {
+        sql += ' AND t.date <= ?';
+        params.push(endDate);
+    }
+
+    sql += ' ORDER BY t.date ASC';
+
+    const rows = db.prepare(sql).all(...params) as Array<{
+        amount_cents: number;
+        currency: string;
+        account_id: string;
+        account_name: string;
+        account_type: 'income' | 'expense';
+        sub_type: string;
+        transaction_id: string;
+        date: string;
+    }>;
+
+    const totalIncome: Record<CurrencyCode, number> = {};
+    const totalExpenses: Record<CurrencyCode, number> = {};
+    const categoryMap = new Map<string, {
+        account_id: string;
+        account_name: string;
+        type: 'income' | 'expense';
+        sub_type: string;
+        currency: CurrencyCode;
+        total_cents: number;
+        transaction_count: number;
+    }>();
+
+    for (const r of rows) {
+        const curr = r.currency.toUpperCase();
+        const isIncome = r.account_type === 'income';
+
+        // Credit-normal vs Debit-normal
+        // Income postings: negative cents -> positive income
+        // Expense postings: positive cents -> positive expense
+        const rawMag = isIncome ? -r.amount_cents : r.amount_cents;
+        const magnitudeCents = rawMag === 0 ? 0 : rawMag;
+
+        if (isIncome) {
+            totalIncome[curr] = (totalIncome[curr] || 0) + magnitudeCents;
+        } else {
+            totalExpenses[curr] = (totalExpenses[curr] || 0) + magnitudeCents;
+        }
+
+        const catKey = `${r.account_id}`;
+        if (!categoryMap.has(catKey)) {
+            categoryMap.set(catKey, {
+                account_id: r.account_id,
+                account_name: r.account_name,
+                type: r.account_type,
+                sub_type: r.sub_type,
+                currency: curr,
+                total_cents: 0,
+                transaction_count: 0
+            });
+        }
+        const item = categoryMap.get(catKey)!;
+        item.total_cents += magnitudeCents;
+        item.transaction_count += 1;
+    }
+
+    const allCurrencies = Array.from(new Set([...Object.keys(totalIncome), ...Object.keys(totalExpenses)]));
+    const netSavings: Record<CurrencyCode, number> = {};
+    const formattedIncome: Record<CurrencyCode, string> = {};
+    const formattedExpenses: Record<CurrencyCode, string> = {};
+    const formattedSavings: Record<CurrencyCode, string> = {};
+
+    for (const curr of allCurrencies) {
+        const inc = totalIncome[curr] || 0;
+        const exp = totalExpenses[curr] || 0;
+        const rawSav = inc - exp;
+        const sav = rawSav === 0 ? 0 : rawSav;
+        netSavings[curr] = sav;
+        formattedIncome[curr] = formatMoney({ amount_cents: inc, currency: curr });
+        formattedExpenses[curr] = formatMoney({ amount_cents: exp, currency: curr });
+        formattedSavings[curr] = formatMoney({ amount_cents: sav, currency: curr });
+    }
+
+    const breakdown: CategoryBreakdownItem[] = Array.from(categoryMap.values()).map(cat => ({
+        account_id: cat.account_id,
+        account_name: cat.account_name,
+        type: cat.type,
+        sub_type: cat.sub_type,
+        currency: cat.currency,
+        total_cents: cat.total_cents,
+        formatted_total: formatMoney({ amount_cents: cat.total_cents, currency: cat.currency }),
+        transaction_count: cat.transaction_count
+    }));
+
+    return {
+        entity_id: entityId,
+        start_date: startDate,
+        end_date: endDate,
+        total_income_cents_by_currency: totalIncome,
+        total_expenses_cents_by_currency: totalExpenses,
+        net_savings_cents_by_currency: netSavings,
+        formatted_income_by_currency: formattedIncome,
+        formatted_expenses_by_currency: formattedExpenses,
+        formatted_net_savings_by_currency: formattedSavings,
+        breakdown_by_category: breakdown,
+        calculation_version: CALCULATION_ENGINE_VERSION
+    };
+}
+
