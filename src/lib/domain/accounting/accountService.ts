@@ -25,6 +25,7 @@
 import Database from 'better-sqlite3';
 import {
     Account,
+    AccountOwnership,
     AccountSubType,
     AccountType,
     CurrencyCode,
@@ -90,7 +91,7 @@ export function createEntity(db: Database.Database, input: CreateEntityInput): E
     if (!validTypes.includes(input.type)) {
         throw new ValidationError(`Invalid entity type: ${input.type}. Must be one of: ${validTypes.join(', ')}`);
     }
-    const currency = input.currency.toUpperCase();
+    const currency = (input.currency || 'USD').toUpperCase();
     const id = input.id || crypto.randomUUID();
     const now = new Date().toISOString();
 
@@ -424,3 +425,155 @@ export function listAccounts(db: Database.Database, entityId?: string): Account[
         updated_at: r.updated_at
     }));
 }
+
+export interface AccountOwnershipInput {
+    entity_id: string;
+    share_percentage?: number;
+    ownership_percentage?: number;
+}
+
+/**
+ * Sets joint ownership allocations for an account (M1-FLOW-07, T7).
+ * 
+ * Why this exists:
+ * In a household or shared financial setting, assets (e.g. real estate) or liabilities (e.g. joint mortgage)
+ * may be co-owned between multiple entities (e.g. 50/50, 60/40).
+ * Storing explicit ownership percentages enables individual net worth reports to accurately allocate
+ * each owner's share while enabling household views to report the asset once without double-counting.
+ * 
+ * Tricky logic:
+ * - Validates each entity exists before saving.
+ * - Enforces that each share_percentage > 0 and <= 100.
+ * - Enforces that total allocated percentage across all entities does not exceed 100%.
+ * - Atomic replacement: wipes previous allocations for this account and inserts the new distribution.
+ * 
+ * TODO: Support automated ownership distribution on initial account creation modal in future UI polish.
+ */
+export function setAccountOwnership(
+    db: Database.Database,
+    accountId: string,
+    allocations: AccountOwnershipInput[]
+): AccountOwnership[] {
+    const account = db.prepare('SELECT id, name FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    if (!account) {
+        throw new ValidationError(`Account not found: ${accountId}`);
+    }
+
+    if (!allocations || allocations.length === 0) {
+        // Clearing joint ownership - account belongs 100% to primary entity
+        db.prepare('DELETE FROM m1_account_ownership WHERE account_id = ?').run(accountId);
+        return [];
+    }
+
+    let totalPercentage = 0;
+    const entityLookup = db.prepare('SELECT id, name FROM m1_entities WHERE id = ?');
+    const seenEntities = new Set<string>();
+
+    for (const alloc of allocations) {
+        if (!alloc.entity_id) {
+            throw new ValidationError('Entity ID is required for each ownership allocation.');
+        }
+        if (seenEntities.has(alloc.entity_id)) {
+            throw new ValidationError(`Duplicate entity in ownership allocation: ${alloc.entity_id}`);
+        }
+        seenEntities.add(alloc.entity_id);
+
+        const entity = entityLookup.get(alloc.entity_id);
+        if (!entity) {
+            throw new ValidationError(`Entity not found for ownership allocation: ${alloc.entity_id}`);
+        }
+
+        const pct = (alloc as any).ownership_percentage !== undefined ? (alloc as any).ownership_percentage : alloc.share_percentage;
+        if (typeof pct !== 'number' || !Number.isFinite(pct)) {
+            throw new ValidationError(`Invalid share percentage: "${pct}". Must be a valid number.`);
+        }
+        if (pct <= 0 || pct > 100) {
+            throw new ValidationError(`Share percentage must be between 0 and 100 (exclusive of 0), received: ${pct}%.`);
+        }
+
+        totalPercentage += pct;
+    }
+
+    // Floating-point safety: allow tiny round-off up to 100.0001
+    if (totalPercentage > 100.0001) {
+        throw new ValidationError(`Total ownership percentage cannot exceed 100%, calculated: ${totalPercentage}%.`);
+    }
+
+    const now = new Date().toISOString();
+    const results: AccountOwnership[] = [];
+
+    const runAtomic = db.transaction(() => {
+        db.prepare('DELETE FROM m1_account_ownership WHERE account_id = ?').run(accountId);
+        const insertStmt = db.prepare(`
+            INSERT INTO m1_account_ownership (id, account_id, entity_id, share_percentage, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        `);
+
+        for (const alloc of allocations) {
+            const id = crypto.randomUUID();
+            const pct = (alloc as any).ownership_percentage !== undefined ? (alloc as any).ownership_percentage : alloc.share_percentage;
+            insertStmt.run(id, accountId, alloc.entity_id, pct, now);
+            results.push({
+                id,
+                account_id: accountId,
+                entity_id: alloc.entity_id,
+                share_percentage: pct,
+                ownership_percentage: pct,
+                created_at: now
+            });
+        }
+    });
+
+    runAtomic();
+    return results;
+}
+
+/**
+ * Retrieves configured joint ownership allocations for an account.
+ * 
+ * Why this exists:
+ * Required by calculation services and UI views to display and apply ownership splits.
+ */
+export function getAccountOwnership(db: Database.Database, accountId: string): AccountOwnership[] {
+    const rows = db.prepare(`
+        SELECT * FROM m1_account_ownership WHERE account_id = ? ORDER BY share_percentage DESC
+    `).all(accountId) as any[];
+
+    return rows.map(r => ({
+        id: r.id,
+        account_id: r.account_id,
+        entity_id: r.entity_id,
+        share_percentage: r.share_percentage,
+        ownership_percentage: r.share_percentage,
+        created_at: r.created_at
+    }));
+}
+
+/**
+ * Lists all member entities belonging to a household scope.
+ * 
+ * Why this exists:
+ * Enables household-level reporting by aggregating all individuals whose parent_entity_id
+ * points to the household entity (M1-FLOW-07).
+ * 
+ * Tricky logic:
+ * Includes the household entity itself plus any child entities whose parent_entity_id equals householdEntityId.
+ * 
+ * TODO: Support arbitrary n-level corporate subsidiary hierarchies in future milestones.
+ */
+export function listEntityMembers(db: Database.Database, householdEntityId: string): Entity[] {
+    const rows = db.prepare(`
+        SELECT * FROM m1_entities WHERE id = ? OR parent_entity_id = ? ORDER BY type DESC, name ASC
+    `).all(householdEntityId, householdEntityId) as any[];
+
+    return rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        currency: r.currency,
+        parent_entity_id: r.parent_entity_id,
+        created_at: r.created_at,
+        updated_at: r.updated_at
+    }));
+}
+

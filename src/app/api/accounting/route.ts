@@ -27,13 +27,21 @@ import {
     createAccount,
     updateAccount,
     listAccounts,
+    setAccountOwnership,
+    getAccountOwnership,
+    listEntityMembers,
     ValidationError,
     ConflictError
 } from '@/lib/domain/accounting/accountService';
 import {
     getAccountBalance,
     getEntityNetWorth,
-    getPeriodIncomeAndExpenses
+    getPeriodIncomeAndExpenses,
+    getActualCashFlowStatement,
+    getAccountLedgerDrilldown,
+    getScopeNetWorth,
+    getConsolidatedNetWorth,
+    setExchangeRate
 } from '@/lib/domain/accounting/balanceService';
 import {
     postTransaction,
@@ -42,10 +50,12 @@ import {
     recordTransfer,
     recordCreditCardRepayment,
     recordLoanRepayment,
+    recordAssetValuation,
     correctTransaction,
     listTransactions
 } from '@/lib/domain/accounting/transactionService';
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { ScopeType } from '@/lib/domain/accounting/types';
 
 export async function GET(request: Request) {
     try {
@@ -53,11 +63,93 @@ export async function GET(request: Request) {
         initAccountingSchema(db); // Idempotent schema check
 
         const url = new URL(request.url);
+        const view = url.searchParams.get('view');
         const entityId = url.searchParams.get('entity_id');
         const asOfDate = url.searchParams.get('as_of_date') || undefined;
         const startDate = url.searchParams.get('start_date') || undefined;
         const endDate = url.searchParams.get('end_date') || undefined;
         const includeTransactions = url.searchParams.get('include_transactions') === 'true';
+
+        // Slice 1D: View-specific queries
+        if (view === 'drilldown') {
+            const accountId = url.searchParams.get('account_id');
+            if (!accountId) {
+                return NextResponse.json({ error: 'Missing required parameter: account_id' }, { status: 400 });
+            }
+            const limitStr = url.searchParams.get('limit');
+            const limit = limitStr ? parseInt(limitStr, 10) : undefined;
+            const drilldown = getAccountLedgerDrilldown(db, {
+                account_id: accountId,
+                start_date: startDate,
+                end_date: endDate,
+                limit
+            });
+            return NextResponse.json({ success: true, drilldown });
+        }
+
+        if (view === 'ownership') {
+            const accountId = url.searchParams.get('account_id');
+            if (!accountId) {
+                return NextResponse.json({ error: 'Missing required parameter: account_id' }, { status: 400 });
+            }
+            const ownership = getAccountOwnership(db, accountId);
+            return NextResponse.json({ success: true, ownership });
+        }
+
+        if (view === 'members') {
+            const householdId = url.searchParams.get('household_id');
+            if (!householdId) {
+                return NextResponse.json({ error: 'Missing required parameter: household_id' }, { status: 400 });
+            }
+            const members = listEntityMembers(db, householdId);
+            return NextResponse.json({ success: true, members });
+        }
+
+        if (view === 'reports') {
+            const reportType = url.searchParams.get('report_type');
+            if (reportType === 'scope_net_worth') {
+                const scopeId = url.searchParams.get('scope_id') || entityId;
+                const scopeType = (url.searchParams.get('scope_type') || 'individual') as ScopeType;
+                if (!scopeId) {
+                    return NextResponse.json({ error: 'Missing required parameter: scope_id' }, { status: 400 });
+                }
+                const report = getScopeNetWorth(db, scopeId, scopeType, asOfDate);
+                return NextResponse.json({ success: true, report });
+            }
+
+            if (reportType === 'consolidated_net_worth') {
+                const targetEntityId = entityId || url.searchParams.get('scope_id');
+                const reportingCurrency = url.searchParams.get('reporting_currency') || 'AUD';
+                if (!targetEntityId) {
+                    return NextResponse.json({ error: 'Missing required parameter: entity_id' }, { status: 400 });
+                }
+                const report = getConsolidatedNetWorth(db, targetEntityId, reportingCurrency, asOfDate);
+                return NextResponse.json({ success: true, report });
+            }
+
+            if (reportType === 'cash_flow') {
+                if (!entityId) {
+                    return NextResponse.json({ error: 'Missing required parameter: entity_id' }, { status: 400 });
+                }
+                const report = getActualCashFlowStatement(db, entityId, startDate, endDate);
+                return NextResponse.json({ success: true, report });
+            }
+
+            // If no specific report_type given under view=reports, return aggregated reports
+            if (entityId) {
+                const scopeNetWorth = getScopeNetWorth(db, entityId, 'individual', asOfDate);
+                const cashFlow = getActualCashFlowStatement(db, entityId, startDate, endDate);
+                const incomeExpenses = getPeriodIncomeAndExpenses(db, entityId, startDate, endDate);
+                return NextResponse.json({
+                    success: true,
+                    reports: {
+                        scope_net_worth: scopeNetWorth,
+                        cash_flow: cashFlow,
+                        accrual_income_expenses: incomeExpenses
+                    }
+                });
+            }
+        }
 
         const entities = listEntities(db);
 
@@ -222,6 +314,33 @@ export async function POST(request: Request) {
             if (!correction) return NextResponse.json({ error: 'Missing correction payload' }, { status: 400 });
             const result = correctTransaction(db, correction);
             return NextResponse.json({ success: true, correction: result });
+        }
+
+        // 7. Joint Ownership Allocation (M1-FLOW-07, T7)
+        if (action === 'set_ownership') {
+            const { account_id, allocations } = body;
+            if (!account_id || !allocations) {
+                return NextResponse.json({ error: 'Missing account_id or allocations array' }, { status: 400 });
+            }
+            setAccountOwnership(db, account_id, allocations);
+            const updatedOwnership = getAccountOwnership(db, account_id);
+            return NextResponse.json({ success: true, ownership: updatedOwnership });
+        }
+
+        // 8. Dated Non-Cash Asset Valuation Adjustment (M1-FLOW-06, T6)
+        if (action === 'record_valuation') {
+            const { payload } = body;
+            if (!payload) return NextResponse.json({ error: 'Missing asset valuation payload' }, { status: 400 });
+            const tx = recordAssetValuation(db, payload);
+            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+        }
+
+        // 9. Exchange Rate Definition (M1-CALC-03, T8)
+        if (action === 'set_exchange_rate') {
+            const { rate } = body;
+            if (!rate) return NextResponse.json({ error: 'Missing exchange rate payload' }, { status: 400 });
+            const saved = setExchangeRate(db, rate);
+            return NextResponse.json({ success: true, exchange_rate: saved }, { status: 201 });
         }
 
         return NextResponse.json({ error: `Unsupported action: ${action}` }, { status: 400 });

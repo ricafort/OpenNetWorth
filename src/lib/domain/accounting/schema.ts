@@ -103,11 +103,26 @@ export const ACCOUNTING_SCHEMA_DDL = `
         FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE
     );
 
-    -- Indices for high performance ledger queries
+    -- Dated Exchange Rates (Slice 1D: Currency Completeness & Conversion)
+    CREATE TABLE IF NOT EXISTS m1_exchange_rates (
+        id TEXT PRIMARY KEY,
+        from_currency TEXT NOT NULL,
+        to_currency TEXT NOT NULL,
+        rate REAL NOT NULL CHECK (rate > 0),
+        effective_date TEXT NOT NULL, -- YYYY-MM-DD
+        source TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(from_currency, to_currency, effective_date)
+    );
+
+    -- Indices for high performance ledger and report queries
     CREATE INDEX IF NOT EXISTS idx_m1_journal_entries_account ON m1_journal_entries(account_id);
     CREATE INDEX IF NOT EXISTS idx_m1_journal_entries_tx ON m1_journal_entries(transaction_id);
     CREATE INDEX IF NOT EXISTS idx_m1_transactions_date ON m1_transactions(date);
     CREATE INDEX IF NOT EXISTS idx_m1_accounts_entity ON m1_accounts(entity_id);
+    CREATE INDEX IF NOT EXISTS idx_m1_account_ownership_acc ON m1_account_ownership(account_id);
+    CREATE INDEX IF NOT EXISTS idx_m1_account_ownership_ent ON m1_account_ownership(entity_id);
+    CREATE INDEX IF NOT EXISTS idx_m1_exchange_rates_lookup ON m1_exchange_rates(from_currency, to_currency, effective_date);
 `;
 
 /**

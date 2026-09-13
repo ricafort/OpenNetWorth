@@ -3,8 +3,10 @@
  * 
  * Why this component exists:
  * Top-level view for Milestone 1 sovereign double-entry accounting engine.
- * Provides intuitive tab navigation between Daily Financial Events (Slice 1C)
- * and Accounts & Opening Balances (Slice 1B).
+ * Provides intuitive tab navigation between:
+ * - Daily Financial Events (Slice 1C)
+ * - Reports, Ownership & Traceability (Slice 1D)
+ * - Accounts & Opening Balances (Slice 1B)
  * 
  * Tricky logic:
  * - Maintains active subtab in local state or URL query param to support deep-linking.
@@ -14,12 +16,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ShieldCheck, BookOpen, Layers, DollarSign } from 'lucide-react';
+import { ShieldCheck, BookOpen, Layers, DollarSign, PieChart } from 'lucide-react';
 import { AccountManagementView } from './AccountManagementView';
 import { DailyEventsView } from './DailyEventsView';
+import { ReportsTraceabilityView } from './ReportsTraceabilityView';
 
 export const AccountingPage: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'events' | 'accounts'>('events');
+    const [activeTab, setActiveTab] = useState<'events' | 'accounts' | 'reports'>('events');
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -59,15 +62,20 @@ export const AccountingPage: React.FC = () => {
                         <Layers className="w-4 h-4" />
                         <span>Accounts & Balances</span>
                     </button>
+                    <button
+                        onClick={() => setActiveTab('reports')}
+                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition ${activeTab === 'reports' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+                    >
+                        <PieChart className="w-4 h-4" />
+                        <span>Reports & Traceability</span>
+                    </button>
                 </div>
             </div>
 
             {/* Subtab Content */}
-            {activeTab === 'events' ? (
-                <DailyEventsView />
-            ) : (
-                <AccountManagementView />
-            )}
+            {activeTab === 'events' && <DailyEventsView />}
+            {activeTab === 'accounts' && <AccountManagementView />}
+            {activeTab === 'reports' && <ReportsTraceabilityView />}
         </div>
     );
 };

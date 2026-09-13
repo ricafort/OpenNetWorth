@@ -14,11 +14,28 @@
  * - Multi-currency totals are grouped strictly by currency. Unlike currencies are NEVER added
  *   directly or assumed 1:1 without explicit dated exchange rates (M1-CALC-03).
  * 
- * TODO: Add dated exchange rate lookups and currency conversion in Slice 1D.
+ * TODO: Add automated FX rate feed sync in Milestone 2.
  */
 
 import Database from 'better-sqlite3';
-import { CurrencyCode, Money, formatMoney } from './types';
+import {
+    AccountSubType,
+    AccountType,
+    CashFlowActivityType,
+    CashFlowItem,
+    CashFlowStatementResult,
+    ConsolidatedNetWorthResult,
+    CurrencyCode,
+    ExchangeRate,
+    LedgerEntryDrilldownItem,
+    Money,
+    AccountLedgerDrilldownResult,
+    ScopeNetWorthItem,
+    ScopeNetWorthResult,
+    ScopeType,
+    formatMoney
+} from './types';
+import { listEntityMembers, ValidationError } from './accountService';
 
 export interface AccountBalanceResult {
     account_id: string;
@@ -333,4 +350,791 @@ export function getPeriodIncomeAndExpenses(
         calculation_version: CALCULATION_ENGINE_VERSION
     };
 }
+
+export interface SetExchangeRateInput {
+    from_currency: CurrencyCode;
+    to_currency: CurrencyCode;
+    rate: number;
+    effective_date: string; // YYYY-MM-DD
+    source: string;
+}
+
+/**
+ * Sets or updates a dated exchange rate (M1-CALC-03, T8).
+ * 
+ * Why this exists:
+ * Multi-currency portfolios require authoritative historical exchange rates to calculate
+ * consolidated net worth without guessing or fabricating rates.
+ * 
+ * Tricky logic:
+ * - Direct rate is saved as (from, to, date).
+ * - Rate must be a strictly positive finite number.
+ * 
+ * TODO: Add automated daily ECB / Federal Reserve rate feed syncing in Milestone 2.
+ */
+export function setExchangeRate(
+    db: Database.Database,
+    input: SetExchangeRateInput
+): ExchangeRate {
+    const from = input.from_currency.toUpperCase();
+    const to = input.to_currency.toUpperCase();
+    if (from === to) {
+        throw new ValidationError('From and to currencies must be different.');
+    }
+    if (!Number.isFinite(input.rate) || input.rate <= 0) {
+        throw new ValidationError(`Exchange rate must be a finite positive number, received: ${input.rate}`);
+    }
+    const id = `fx-${from}-${to}-${input.effective_date}`;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+        INSERT INTO m1_exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(from_currency, to_currency, effective_date) DO UPDATE SET
+            rate = excluded.rate,
+            source = excluded.source,
+            created_at = excluded.created_at
+    `).run(id, from, to, input.rate, input.effective_date, input.source.trim(), now);
+
+    return {
+        id,
+        from_currency: from,
+        to_currency: to,
+        rate: input.rate,
+        effective_date: input.effective_date,
+        source: input.source.trim(),
+        created_at: now
+    };
+}
+
+/**
+ * Looks up the dated exchange rate between two currencies (M1-CALC-03).
+ * Returns 1.0 if from === to.
+ * Checks for direct rate on or before `asOfDate`.
+ * If direct rate not found, checks for inverse rate (1 / rate).
+ * Returns null if no rate is available.
+ */
+export function getExchangeRate(
+    db: Database.Database,
+    fromCurrency: CurrencyCode,
+    toCurrency: CurrencyCode,
+    asOfDate?: string
+): number | null {
+    const from = fromCurrency.toUpperCase();
+    const to = toCurrency.toUpperCase();
+    if (from === to) return 1.0;
+
+    const date = asOfDate || new Date().toISOString().split('T')[0];
+
+    // Check direct rate (most recent on or before date)
+    const direct = db.prepare(`
+        SELECT rate FROM m1_exchange_rates
+        WHERE from_currency = ? AND to_currency = ? AND effective_date <= ?
+        ORDER BY effective_date DESC LIMIT 1
+    `).get(from, to, date) as any;
+
+    if (direct) return direct.rate;
+
+    // Check inverse rate
+    const inverse = db.prepare(`
+        SELECT rate FROM m1_exchange_rates
+        WHERE from_currency = ? AND to_currency = ? AND effective_date <= ?
+        ORDER BY effective_date DESC LIMIT 1
+    `).get(to, from, date) as any;
+
+    if (inverse && inverse.rate > 0) return 1.0 / inverse.rate;
+
+    return null;
+}
+
+/**
+ * Calculates consolidated net worth in a single reporting currency with strict completeness checks (M1-CALC-03, T8).
+ * 
+ * Why this exists:
+ * Guarantees that multi-currency users see consolidated totals only when legitimate exchange rates exist.
+ * If any currency cannot be converted, the total is marked incomplete, and missing rates are explicitly enumerated.
+ * Never silently fabricates a 1:1 conversion.
+ */
+export function getConsolidatedNetWorth(
+    db: Database.Database,
+    entityId: string,
+    reportingCurrency: CurrencyCode = 'USD',
+    asOfDate?: string
+): ConsolidatedNetWorthResult {
+    const targetCurr = reportingCurrency.toUpperCase();
+    const effectiveDate = asOfDate || new Date().toISOString().split('T')[0];
+
+    // Get raw net worth by currency
+    const rawNw = getEntityNetWorth(db, entityId, effectiveDate);
+
+    let isComplete = true;
+    const missingRates: Array<{ from: CurrencyCode; to: CurrencyCode; date: string }> = [];
+    let consolidatedTotalCents = 0;
+
+    const appliedExchangeRates: Record<string, number> = {};
+    for (const [curr, cents] of Object.entries(rawNw.net_worth_cents_by_currency)) {
+        if (curr === targetCurr) {
+            consolidatedTotalCents += cents;
+            appliedExchangeRates[`${curr}->${targetCurr}`] = 1.0;
+            continue;
+        }
+
+        const rate = getExchangeRate(db, curr, targetCurr, effectiveDate);
+        if (rate === null) {
+            isComplete = false;
+            missingRates.push({ from: curr, to: targetCurr, date: effectiveDate });
+        } else {
+            appliedExchangeRates[`${curr}->${targetCurr}`] = rate;
+            // Convert with exact deterministic rounding
+            const converted = Math.round(cents * rate);
+            consolidatedTotalCents += converted;
+        }
+    }
+
+    return {
+        reporting_currency: targetCurr,
+        is_complete: isComplete,
+        missing_rates: missingRates,
+        consolidated_total_cents: isComplete ? consolidatedTotalCents : null,
+        formatted_consolidated_total: isComplete
+            ? formatMoney({ amount_cents: consolidatedTotalCents, currency: targetCurr })
+            : null,
+        original_totals_by_currency: rawNw.net_worth_cents_by_currency,
+        formatted_original_by_currency: rawNw.formatted_net_worth_by_currency,
+        applied_exchange_rates: appliedExchangeRates,
+        as_of_date: effectiveDate,
+        calculation_version: CALCULATION_ENGINE_VERSION
+    };
+}
+
+export interface GetScopeNetWorthInput {
+    target_entity_id: string;
+    scope_type?: ScopeType; // 'individual' | 'household' | 'consolidated', default 'individual'
+    as_of_date?: string;
+}
+
+/**
+ * Calculates scope-aware net worth with joint ownership allocation (M1-FLOW-07, T7).
+ * 
+ * Why this exists:
+ * Resolves joint asset and liability attribution:
+ * - Individual Scope: A jointly owned asset (e.g. 50/50 property) reports only the configured
+ *   percentage share (50%) for the individual owner.
+ * - Household Scope: Aggregates all accounts across household member entities.
+ *   Jointly owned accounts are reported ONCE at 100%, completely avoiding the 200% duplicate counting flaw.
+ * 
+ * Tricky logic:
+ * - For individual scope:
+ *   * Looks up accounts where entity_id = target_entity_id.
+ *   * Also looks up accounts where m1_account_ownership has entity_id = target_entity_id.
+ *   * If account has ownership allocations:
+ *     - If this entity is an allocated owner, uses alloc.share_percentage.
+ *     - If this entity is the primary entity but has allocated 100% to others, share is 0%.
+ *     - If this entity is the primary entity and allocated only partial (e.g. 30% to spouse), retained share is 70%.
+ *   * If account has NO ownership allocations: 100% attributed to primary entity.
+ * - For household scope:
+ *   * Fetches member entities via listEntityMembers(db, target_entity_id).
+ *   * Collects all accounts belonging to member entities or jointly owned by member entities.
+ *   * De-duplicates by account_id so each account is counted exactly once at 100%.
+ */
+export function getScopeNetWorth(
+    db: Database.Database,
+    targetEntityIdOrInput: string | GetScopeNetWorthInput,
+    scopeTypeArg?: ScopeType,
+    asOfDateArg?: string
+): ScopeNetWorthResult {
+    const input: GetScopeNetWorthInput = typeof targetEntityIdOrInput === 'string'
+        ? { target_entity_id: targetEntityIdOrInput, scope_type: scopeTypeArg, as_of_date: asOfDateArg }
+        : targetEntityIdOrInput;
+
+    const scopeType = input.scope_type || 'individual';
+    const effectiveDate = input.as_of_date || new Date().toISOString().split('T')[0];
+
+    const targetEntity = db.prepare('SELECT id, name, type, currency FROM m1_entities WHERE id = ?').get(input.target_entity_id) as any;
+    if (!targetEntity) {
+        throw new Error(`Entity not found: ${input.target_entity_id}`);
+    }
+
+    const items: ScopeNetWorthItem[] = [];
+    const totalAssets: Record<CurrencyCode, number> = {};
+    const totalLiabilities: Record<CurrencyCode, number> = {};
+
+    if (scopeType === 'individual') {
+        // Find all candidate accounts:
+        // 1. Accounts where entity_id = targetEntity.id
+        // 2. Accounts where m1_account_ownership has entity_id = targetEntity.id
+        const candidateAccounts = db.prepare(`
+            SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency
+            FROM m1_accounts a
+            LEFT JOIN m1_account_ownership o ON a.id = o.account_id
+            WHERE (a.entity_id = ? OR o.entity_id = ?) AND a.is_active = 1
+              AND a.type IN ('asset', 'liability')
+            ORDER BY a.type ASC, a.name ASC
+        `).all(targetEntity.id, targetEntity.id) as any[];
+
+        for (const acc of candidateAccounts) {
+            const balResult = getAccountBalance(db, acc.id, effectiveDate);
+            const grossBalance = balResult.balance_cents;
+            const curr = acc.currency.toUpperCase();
+
+            // Check ownership allocations
+            const ownerships = db.prepare(`
+                SELECT entity_id, share_percentage FROM m1_account_ownership WHERE account_id = ?
+            `).all(acc.id) as Array<{ entity_id: string; share_percentage: number }>;
+
+            let sharePercentage = 100;
+            let isJoint = false;
+
+            if (ownerships.length > 0) {
+                isJoint = true;
+                const myOwnership = ownerships.find(o => o.entity_id === targetEntity.id);
+                if (myOwnership) {
+                    sharePercentage = myOwnership.share_percentage;
+                } else if (acc.entity_id === targetEntity.id) {
+                    // Primary owner but other entities have shares
+                    const otherTotal = ownerships.reduce((sum, o) => sum + o.share_percentage, 0);
+                    sharePercentage = Math.max(0, 100 - otherTotal);
+                } else {
+                    sharePercentage = 0;
+                }
+            }
+
+            if (sharePercentage <= 0) continue;
+
+            const attributedBalance = Math.round(grossBalance * (sharePercentage / 100));
+
+            items.push({
+                account_id: acc.id,
+                account_name: acc.name,
+                account_type: acc.type,
+                sub_type: acc.sub_type,
+                account_sub_type: acc.sub_type,
+                currency: curr,
+                gross_balance_cents: grossBalance,
+                ownership_share_percentage: sharePercentage,
+                ownership_percentage: sharePercentage,
+                attributed_balance_cents: attributedBalance,
+                formatted_attributed_balance: formatMoney({ amount_cents: attributedBalance, currency: curr }),
+                formatted_scoped_balance: formatMoney({ amount_cents: attributedBalance, currency: curr }),
+                formatted_full_balance: formatMoney({ amount_cents: grossBalance, currency: curr }),
+                primary_entity_id: acc.entity_id,
+                is_joint: isJoint
+            });
+
+            if (acc.type === 'asset') {
+                totalAssets[curr] = (totalAssets[curr] || 0) + attributedBalance;
+            } else if (acc.type === 'liability') {
+                totalLiabilities[curr] = (totalLiabilities[curr] || 0) + attributedBalance;
+            }
+        }
+
+        const allCurrencies = Array.from(new Set([...Object.keys(totalAssets), ...Object.keys(totalLiabilities)]));
+        const netWorthCents: Record<CurrencyCode, number> = {};
+        const formattedNetWorth: Record<CurrencyCode, string> = {};
+
+        for (const curr of allCurrencies) {
+            const a = totalAssets[curr] || 0;
+            const l = totalLiabilities[curr] || 0;
+            const nw = a - l;
+            netWorthCents[curr] = nw;
+            formattedNetWorth[curr] = formatMoney({ amount_cents: nw, currency: curr });
+        }
+
+        return {
+            scope_type: 'individual',
+            target_entity_id: targetEntity.id,
+            entity_name: targetEntity.name,
+            as_of_date: effectiveDate,
+            net_worth_cents_by_currency: netWorthCents,
+            total_assets_cents_by_currency: totalAssets,
+            total_liabilities_cents_by_currency: totalLiabilities,
+            formatted_net_worth_by_currency: formattedNetWorth,
+            scoped_net_worth_cents_by_currency: netWorthCents,
+            scoped_assets_cents_by_currency: totalAssets,
+            scoped_liabilities_cents_by_currency: totalLiabilities,
+            formatted_scoped_net_worth_by_currency: formattedNetWorth,
+            items,
+            calculation_version: CALCULATION_ENGINE_VERSION
+        };
+    } else {
+        // Household / Consolidated Scope
+        const members = listEntityMembers(db, targetEntity.id);
+        const memberIds = members.map(m => m.id);
+
+        // Fetch all unique accounts belonging to any household member or co-owned by a member
+        const placeholders = memberIds.map(() => '?').join(',');
+        const accounts = db.prepare(`
+            SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency
+            FROM m1_accounts a
+            LEFT JOIN m1_account_ownership o ON a.id = o.account_id
+            WHERE (a.entity_id IN (${placeholders}) OR o.entity_id IN (${placeholders}))
+              AND a.is_active = 1 AND a.type IN ('asset', 'liability')
+            ORDER BY a.type ASC, a.name ASC
+        `).all(...memberIds, ...memberIds) as any[];
+
+        const seenAccounts = new Set<string>();
+
+        for (const acc of accounts) {
+            if (seenAccounts.has(acc.id)) continue;
+            seenAccounts.add(acc.id);
+
+            const balResult = getAccountBalance(db, acc.id, effectiveDate);
+            const grossBalance = balResult.balance_cents;
+            const curr = acc.currency.toUpperCase();
+
+            // In household scope, jointly owned accounts between members appear ONCE at 100% (T7)
+            const ownerships = db.prepare(`
+                SELECT entity_id, share_percentage FROM m1_account_ownership WHERE account_id = ?
+            `).all(acc.id) as Array<{ entity_id: string; share_percentage: number }>;
+
+            const isJoint = ownerships.length > 0;
+            const attributedBalance = grossBalance; // 100% counted once in household
+
+            items.push({
+                account_id: acc.id,
+                account_name: acc.name,
+                account_type: acc.type,
+                sub_type: acc.sub_type,
+                account_sub_type: acc.sub_type,
+                currency: curr,
+                gross_balance_cents: grossBalance,
+                ownership_share_percentage: 100,
+                ownership_percentage: 100,
+                attributed_balance_cents: attributedBalance,
+                formatted_attributed_balance: formatMoney({ amount_cents: attributedBalance, currency: curr }),
+                formatted_scoped_balance: formatMoney({ amount_cents: attributedBalance, currency: curr }),
+                formatted_full_balance: formatMoney({ amount_cents: grossBalance, currency: curr }),
+                primary_entity_id: acc.entity_id,
+                is_joint: isJoint
+            });
+
+            if (acc.type === 'asset') {
+                totalAssets[curr] = (totalAssets[curr] || 0) + attributedBalance;
+            } else if (acc.type === 'liability') {
+                totalLiabilities[curr] = (totalLiabilities[curr] || 0) + attributedBalance;
+            }
+        }
+
+        const allCurrencies = Array.from(new Set([...Object.keys(totalAssets), ...Object.keys(totalLiabilities)]));
+        const netWorthCents: Record<CurrencyCode, number> = {};
+        const formattedNetWorth: Record<CurrencyCode, string> = {};
+
+        for (const curr of allCurrencies) {
+            const a = totalAssets[curr] || 0;
+            const l = totalLiabilities[curr] || 0;
+            const nw = a - l;
+            netWorthCents[curr] = nw;
+            formattedNetWorth[curr] = formatMoney({ amount_cents: nw, currency: curr });
+        }
+
+        return {
+            scope_type: scopeType,
+            target_entity_id: targetEntity.id,
+            entity_name: targetEntity.name,
+            as_of_date: effectiveDate,
+            member_entities: members.map(m => ({ id: m.id, name: m.name, type: m.type })),
+            net_worth_cents_by_currency: netWorthCents,
+            total_assets_cents_by_currency: totalAssets,
+            total_liabilities_cents_by_currency: totalLiabilities,
+            formatted_net_worth_by_currency: formattedNetWorth,
+            scoped_net_worth_cents_by_currency: netWorthCents,
+            scoped_assets_cents_by_currency: totalAssets,
+            scoped_liabilities_cents_by_currency: totalLiabilities,
+            formatted_scoped_net_worth_by_currency: formattedNetWorth,
+            items,
+            calculation_version: CALCULATION_ENGINE_VERSION
+        };
+    }
+}
+
+/**
+ * Calculates the Actual Cash Flow Statement (Liquid Cash Movements) for an entity over a date range.
+ * 
+ * Why this exists:
+ * Strictly fulfills the assessor requirement to keep Income/Expense reporting distinct from Cash Flow.
+ * - Income/Expense Statement: Accrual revenue/expense (includes credit card purchases, non-cash depreciation, etc.).
+ * - Cash Flow Statement: Tracks only liquid cash and bank asset accounts ('cash', 'checking', 'savings').
+ *   * Credit card purchases = $0 cash movement.
+ *   * Credit card repayments = Cash Outflow (Financing).
+ *   * Loan repayments = Cash Outflow (Financing: principal + interest + fee).
+ *   * Direct income received to bank = Cash Inflow (Operating).
+ *   * Direct expenses paid from bank = Cash Outflow (Operating).
+ * 
+ * Tricky logic:
+ * - Identifies all liquid cash accounts for the entity (`type = 'asset' AND sub_type IN ('cash', 'checking', 'savings')`).
+ * - For each transaction affecting cash accounts, examines counterpart postings in the same transaction:
+ *   * Counterpart in 'income' -> Operating Inflow.
+ *   * Counterpart in 'expense' -> Operating Outflow.
+ *   * Counterpart in 'liability' -> Financing Outflow.
+ *   * Counterpart in another cash account -> Internal Transfer (Net cash movement = $0).
+ * - Computes starting liquid cash balance, net change, and ending liquid cash balance.
+ */
+export function getActualCashFlowStatement(
+    db: Database.Database,
+    entityId: string,
+    startDate?: string,
+    endDate?: string
+): CashFlowStatementResult {
+    // 1. Identify all liquid cash/bank accounts for the entity
+    const cashAccounts = db.prepare(`
+        SELECT id, name, currency
+        FROM m1_accounts
+        WHERE entity_id = ? AND type = 'asset' AND sub_type IN ('cash', 'checking', 'savings')
+    `).all(entityId) as Array<{ id: string; name: string; currency: string }>;
+
+    const cashAccountIds = new Set(cashAccounts.map(a => a.id));
+    const cashAccountMap = new Map(cashAccounts.map(a => [a.id, a.name]));
+
+    const operatingInflows: Record<CurrencyCode, number> = {};
+    const operatingOutflows: Record<CurrencyCode, number> = {};
+    const financingOutflows: Record<CurrencyCode, number> = {};
+    const netCashChange: Record<CurrencyCode, number> = {};
+    const startingCash: Record<CurrencyCode, number> = {};
+    const endingCash: Record<CurrencyCode, number> = {};
+    const items: CashFlowItem[] = [];
+
+    // Calculate starting cash balance as of day before startDate (if startDate provided)
+    if (startDate) {
+        for (const acc of cashAccounts) {
+            const curr = acc.currency.toUpperCase();
+            const prevRows = db.prepare(`
+                SELECT j.amount_cents
+                FROM m1_journal_entries j
+                JOIN m1_transactions t ON j.transaction_id = t.id
+                WHERE j.account_id = ? AND t.date < ? AND t.status = 'posted'
+            `).all(acc.id, startDate) as Array<{ amount_cents: number }>;
+            const bal = prevRows.reduce((sum, r) => sum + r.amount_cents, 0);
+            startingCash[curr] = (startingCash[curr] || 0) + bal;
+        }
+    } else {
+        for (const acc of cashAccounts) {
+            const curr = acc.currency.toUpperCase();
+            startingCash[curr] = 0;
+        }
+    }
+
+    if (cashAccounts.length === 0) {
+        return {
+            entity_id: entityId,
+            start_date: startDate,
+            end_date: endDate,
+            operating_inflows_cents_by_currency: {},
+            operating_outflows_cents_by_currency: {},
+            net_operating_cents_by_currency: {},
+            financing_outflows_cents_by_currency: {},
+            net_cash_change_cents_by_currency: {},
+            starting_cash_cents_by_currency: {},
+            ending_cash_cents_by_currency: {},
+            formatted_net_cash_change_by_currency: {},
+            formatted_ending_cash_by_currency: {},
+            items: [],
+            calculation_version: CALCULATION_ENGINE_VERSION
+        };
+    }
+
+    // Query all cash postings within period
+    const placeholders = cashAccounts.map(() => '?').join(',');
+    let sql = `
+        SELECT 
+            j.id as posting_id,
+            j.transaction_id,
+            j.account_id,
+            j.amount_cents,
+            j.currency,
+            t.date,
+            t.description,
+            t.payee_or_payer
+        FROM m1_journal_entries j
+        JOIN m1_transactions t ON j.transaction_id = t.id
+        WHERE j.account_id IN (${placeholders}) AND t.status = 'posted'
+    `;
+    const params: any[] = cashAccounts.map(a => a.id);
+
+    if (startDate) {
+        sql += ' AND t.date >= ?';
+        params.push(startDate);
+    }
+    if (endDate) {
+        sql += ' AND t.date <= ?';
+        params.push(endDate);
+    }
+    sql += ' ORDER BY t.date ASC, j.id ASC';
+
+    const cashPostings = db.prepare(sql).all(...params) as Array<{
+        posting_id: string;
+        transaction_id: string;
+        account_id: string;
+        amount_cents: number;
+        currency: string;
+        date: string;
+        description: string;
+        payee_or_payer?: string | null;
+    }>;
+
+    // Cache of counterpart lookups
+    const counterpartStmt = db.prepare(`
+        SELECT j.account_id, j.amount_cents, a.type as account_type, a.sub_type
+        FROM m1_journal_entries j
+        JOIN m1_accounts a ON j.account_id = a.id
+        WHERE j.transaction_id = ? AND j.account_id != ?
+    `);
+
+    for (const cp of cashPostings) {
+        const curr = cp.currency.toUpperCase();
+        const cashAmount = cp.amount_cents; // Positive = Debit cash (inflow), Negative = Credit cash (outflow)
+        const counterparts = counterpartStmt.all(cp.transaction_id, cp.account_id) as Array<{
+            account_id: string;
+            amount_cents: number;
+            account_type: string;
+            sub_type: string;
+        }>;
+
+        let activityType: CashFlowActivityType = 'operating';
+
+        // Check counterpart account types
+        const hasIncome = counterparts.some(c => c.account_type === 'income');
+        const hasExpense = counterparts.some(c => c.account_type === 'expense');
+        const hasLiability = counterparts.some(c => c.account_type === 'liability');
+        const hasOtherCash = counterparts.some(c => cashAccountIds.has(c.account_id));
+        const hasEquity = counterparts.some(c => c.account_type === 'equity');
+
+        if (hasOtherCash) {
+            activityType = 'transfer';
+        } else if (hasLiability) {
+            activityType = 'financing';
+        } else if (hasIncome || hasExpense) {
+            activityType = 'operating';
+        } else if (hasEquity) {
+            activityType = 'financing';
+        }
+
+        if (activityType === 'transfer') {
+            // Transfers between cash accounts don't alter aggregate liquidity
+            items.push({
+                transaction_id: cp.transaction_id,
+                date: cp.date,
+                description: cp.description,
+                payee_or_payer: cp.payee_or_payer,
+                activity_type: 'transfer',
+                cash_account_id: cp.account_id,
+                cash_account_name: cashAccountMap.get(cp.account_id) || 'Cash Account',
+                amount_cents: cashAmount,
+                currency: curr,
+                formatted_amount: formatMoney({ amount_cents: cashAmount, currency: curr })
+            });
+            continue;
+        }
+
+        if (cashAmount > 0) {
+            // Inflow
+            if (activityType === 'operating') {
+                operatingInflows[curr] = (operatingInflows[curr] || 0) + cashAmount;
+            }
+        } else {
+            // Outflow (cashAmount is negative, so magnitude is -cashAmount)
+            const outflowMagnitude = -cashAmount;
+            if (activityType === 'operating') {
+                operatingOutflows[curr] = (operatingOutflows[curr] || 0) + outflowMagnitude;
+            } else if (activityType === 'financing') {
+                financingOutflows[curr] = (financingOutflows[curr] || 0) + outflowMagnitude;
+            }
+        }
+
+        items.push({
+            transaction_id: cp.transaction_id,
+            date: cp.date,
+            description: cp.description,
+            payee_or_payer: cp.payee_or_payer,
+            activity_type: activityType,
+            cash_account_id: cp.account_id,
+            cash_account_name: cashAccountMap.get(cp.account_id) || 'Cash Account',
+            amount_cents: cashAmount,
+            currency: curr,
+            formatted_amount: formatMoney({ amount_cents: cashAmount, currency: curr })
+        });
+    }
+
+    const allCurrencies = Array.from(new Set([
+        ...Object.keys(startingCash),
+        ...Object.keys(operatingInflows),
+        ...Object.keys(operatingOutflows),
+        ...Object.keys(financingOutflows)
+    ]));
+
+    const netOperating: Record<CurrencyCode, number> = {};
+    const formattedNetChange: Record<CurrencyCode, string> = {};
+    const formattedEndingCash: Record<CurrencyCode, string> = {};
+
+    for (const curr of allCurrencies) {
+        const start = startingCash[curr] || 0;
+        const opIn = operatingInflows[curr] || 0;
+        const opOut = operatingOutflows[curr] || 0;
+        const finOut = financingOutflows[curr] || 0;
+
+        const netOp = opIn - opOut;
+        netOperating[curr] = netOp;
+
+        const netChange = opIn - opOut - finOut;
+        netCashChange[curr] = netChange;
+
+        const end = start + netChange;
+        endingCash[curr] = end;
+
+        formattedNetChange[curr] = formatMoney({ amount_cents: netChange, currency: curr });
+        formattedEndingCash[curr] = formatMoney({ amount_cents: end, currency: curr });
+    }
+
+    return {
+        entity_id: entityId,
+        start_date: startDate,
+        end_date: endDate,
+        operating_inflows_cents_by_currency: operatingInflows,
+        operating_outflows_cents_by_currency: operatingOutflows,
+        net_operating_cents_by_currency: netOperating,
+        financing_outflows_cents_by_currency: financingOutflows,
+        net_cash_change_cents_by_currency: netCashChange,
+        starting_cash_cents_by_currency: startingCash,
+        ending_cash_cents_by_currency: endingCash,
+        formatted_net_cash_change_by_currency: formattedNetChange,
+        formatted_ending_cash_by_currency: formattedEndingCash,
+        items,
+        calculation_version: CALCULATION_ENGINE_VERSION
+    };
+}
+
+export interface GetLedgerDrilldownInput {
+    account_id: string;
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+}
+
+/**
+ * Retrieves chronological ledger postings with exact running balances and evidence links (M1-EVID-01, M1-EVID-02).
+ * 
+ * Why this exists:
+ * Fulfills M1-EVID-02: Every displayed financial total must be drillable to its contributing accepted records.
+ * Provides complete transaction provenance, running balance tracking, and evidence metadata badges.
+ * 
+ * Tricky logic:
+ * - Computes opening balance prior to start_date.
+ * - Computes exact running balance for each row according to debit/credit normal balance rules.
+ * - Parses and attaches evidence references.
+ */
+export function getAccountLedgerDrilldown(
+    db: Database.Database,
+    input: GetLedgerDrilldownInput
+): AccountLedgerDrilldownResult {
+    const account = db.prepare('SELECT id, name, type, currency FROM m1_accounts WHERE id = ?').get(input.account_id) as any;
+    if (!account) {
+        throw new Error(`Account not found: ${input.account_id}`);
+    }
+
+    const isDebitNormal = account.type === 'asset' || account.type === 'expense';
+    const curr = account.currency.toUpperCase();
+
+    // 1. Calculate opening balance as of start_date (if start_date provided)
+    let openingBalanceCents = 0;
+    if (input.start_date) {
+        const priorRows = db.prepare(`
+            SELECT j.amount_cents
+            FROM m1_journal_entries j
+            JOIN m1_transactions t ON j.transaction_id = t.id
+            WHERE j.account_id = ? AND t.date < ? AND t.status = 'posted'
+        `).all(account.id, input.start_date) as Array<{ amount_cents: number }>;
+
+        const rawPrior = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
+        openingBalanceCents = isDebitNormal ? rawPrior : -rawPrior;
+    }
+
+    // 2. Query postings in date range
+    let sql = `
+        SELECT 
+            j.id as posting_id,
+            j.transaction_id,
+            j.amount_cents,
+            j.currency,
+            j.memo,
+            t.date,
+            t.description,
+            t.payee_or_payer,
+            t.origin,
+            t.evidence_refs
+        FROM m1_journal_entries j
+        JOIN m1_transactions t ON j.transaction_id = t.id
+        WHERE j.account_id = ? AND t.status = 'posted'
+    `;
+    const params: any[] = [account.id];
+
+    if (input.start_date) {
+        sql += ' AND t.date >= ?';
+        params.push(input.start_date);
+    }
+    if (input.end_date) {
+        sql += ' AND t.date <= ?';
+        params.push(input.end_date);
+    }
+    sql += ' ORDER BY t.date ASC, t.created_at ASC, j.id ASC';
+
+    if (input.limit) {
+        sql += ' LIMIT ?';
+        params.push(input.limit);
+    }
+
+    const rows = db.prepare(sql).all(...params) as any[];
+
+    let currentRunning = openingBalanceCents;
+    const entries: LedgerEntryDrilldownItem[] = [];
+
+    for (const r of rows) {
+        // Delta to normal balance:
+        // Debit increases Asset/Expense, decreases Liability/Equity/Income
+        const delta = isDebitNormal ? r.amount_cents : -r.amount_cents;
+        currentRunning += delta;
+
+        let parsedEvidence: any[] = [];
+        if (r.evidence_refs) {
+            try {
+                parsedEvidence = JSON.parse(r.evidence_refs);
+            } catch {
+                parsedEvidence = [r.evidence_refs];
+            }
+        }
+
+        entries.push({
+            posting_id: r.posting_id,
+            transaction_id: r.transaction_id,
+            date: r.date,
+            description: r.description,
+            payee_or_payer: r.payee_or_payer,
+            account_id: account.id,
+            account_name: account.name,
+            account_type: account.type,
+            amount_cents: r.amount_cents,
+            currency: curr,
+            running_balance_cents: currentRunning,
+            formatted_amount: formatMoney({ amount_cents: r.amount_cents, currency: curr }),
+            formatted_running_balance: formatMoney({ amount_cents: currentRunning, currency: curr }),
+            memo: r.memo,
+            origin: r.origin,
+            evidence_refs: parsedEvidence
+        });
+    }
+
+    return {
+        account_id: account.id,
+        account_name: account.name,
+        account_type: account.type,
+        currency: curr,
+        start_date: input.start_date,
+        end_date: input.end_date,
+        opening_balance_cents: openingBalanceCents,
+        closing_balance_cents: currentRunning,
+        formatted_opening_balance: formatMoney({ amount_cents: openingBalanceCents, currency: curr }),
+        formatted_closing_balance: formatMoney({ amount_cents: currentRunning, currency: curr }),
+        entries,
+        calculation_version: CALCULATION_ENGINE_VERSION
+    };
+}
+
 

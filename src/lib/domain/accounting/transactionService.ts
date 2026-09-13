@@ -28,7 +28,7 @@
  *   snapshot of previous_state in m1_transaction_corrections and enforces optimistic revision checks.
  *   Edits enforce shared validation (dates, descriptions, replacement posting count).
  * 
- * TODO: Add multi-currency transfer FX hedging journals in Slice 1D.
+ * TODO: Add multi-currency transfer FX hedging journals in Milestone 2.
  */
 
 import Database from 'better-sqlite3';
@@ -64,6 +64,18 @@ export interface PostTransactionInput {
     }>;
 }
 
+export interface RecordAssetValuationInput {
+    entity_id?: string;
+    asset_account_id: string;
+    new_valuation_cents: number;
+    date?: string; // YYYY-MM-DD
+    valuation_date?: string; // alias for date
+    description?: string;
+    evidence_refs?: any[] | null;
+    idempotency_key?: string | null;
+    source?: string | null;
+}
+
 export interface RecordIncomeInput {
     entity_id: string;
     bank_account_id: string;
@@ -74,7 +86,7 @@ export interface RecordIncomeInput {
     payer?: string | null;
     description: string;
     idempotency_key?: string | null;
-    evidence_refs?: string[] | null;
+    evidence_refs?: any[] | null;
 }
 
 export interface RecordExpenseInput {
@@ -87,7 +99,7 @@ export interface RecordExpenseInput {
     payee?: string | null;
     description: string;
     idempotency_key?: string | null;
-    evidence_refs?: string[] | null;
+    evidence_refs?: any[] | null;
 }
 
 export interface RecordTransferInput {
@@ -97,7 +109,7 @@ export interface RecordTransferInput {
     date: string; // YYYY-MM-DD
     description?: string;
     idempotency_key?: string | null;
-    evidence_refs?: string[] | null;
+    evidence_refs?: any[] | null;
 }
 
 export interface RecordCreditCardRepaymentInput {
@@ -107,7 +119,7 @@ export interface RecordCreditCardRepaymentInput {
     date: string; // YYYY-MM-DD
     description?: string;
     idempotency_key?: string | null;
-    evidence_refs?: string[] | null;
+    evidence_refs?: any[] | null;
 }
 
 export interface RecordLoanRepaymentInput {
@@ -122,7 +134,7 @@ export interface RecordLoanRepaymentInput {
     payee?: string | null;
     description?: string;
     idempotency_key?: string | null;
-    evidence_refs?: string[] | null;
+    evidence_refs?: any[] | null;
 }
 
 export interface CorrectTransactionInput {
@@ -283,6 +295,68 @@ export function ensureIncomeAccount(
         updated_at: now
     };
 }
+
+/**
+ * Ensures an Unrealized Valuation Reserve equity account exists for the given entity and currency.
+ * Auto-provisions the equity reserve account if not already present.
+ * 
+ * Why this exists:
+ * Milestone 1 (M1-FLOW-06, T6) requires that non-cash asset revaluations post to an equity reserve
+ * rather than operating cash income or bank accounts.
+ */
+export function ensureValuationEquityAccount(
+    db: Database.Database,
+    entityId: string,
+    currency: CurrencyCode = 'USD'
+): Account {
+    const curr = currency.toUpperCase();
+    const existing = db.prepare(`
+        SELECT * FROM m1_accounts
+        WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve' AND currency = ?
+    `).get(entityId, curr) as any;
+
+    if (existing) {
+        return {
+            id: existing.id,
+            entity_id: existing.entity_id,
+            name: existing.name,
+            type: existing.type,
+            sub_type: existing.sub_type,
+            currency: existing.currency,
+            is_active: Boolean(existing.is_active),
+            institution: existing.institution,
+            account_number_mask: existing.account_number_mask,
+            opening_date: existing.opening_date,
+            opening_balance_cents: existing.opening_balance_cents,
+            revision: existing.revision,
+            created_at: existing.created_at,
+            updated_at: existing.updated_at
+        };
+    }
+
+    const id = `acc-eq-val-${entityId}-${curr.toLowerCase()}`;
+    const name = 'Unrealized Valuation Reserve';
+    const now = new Date().toISOString();
+
+    db.prepare(`
+        INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
+        VALUES (?, ?, ?, 'equity', 'valuation_reserve', ?, 1, 1, ?, ?)
+    `).run(id, entityId, name, curr, now, now);
+
+    return {
+        id,
+        entity_id: entityId,
+        name,
+        type: 'equity',
+        sub_type: 'valuation_reserve',
+        currency: curr,
+        is_active: true,
+        revision: 1,
+        created_at: now,
+        updated_at: now
+    };
+}
+
 
 /**
  * String normalization for robust comparison (trims whitespace, treats null/undefined as empty).
@@ -918,6 +992,133 @@ export function recordLoanRepayment(db: Database.Database, input: RecordLoanRepa
             date: input.date,
             description: desc,
             payee_or_payer: input.payee,
+            origin: 'manual',
+            idempotency_key: input.idempotency_key,
+            evidence_refs: input.evidence_refs,
+            postings
+        });
+    });
+
+    return runAtomic();
+}
+
+/**
+ * Records a dated valuation adjustment for a non-cash asset (M1-FLOW-06, T6).
+ * 
+ * Why this exists:
+ * Non-cash assets (e.g. real estate, vehicles, private stock) experience valuation changes over time.
+ * Accounting principles and Acceptance Scenario T6 dictate that an upward valuation must NOT:
+ * - Increase cash or bank account balances.
+ * - Appear as operating cash income or revenue.
+ * Instead, it posts between the Asset account and an Unrealized Valuation Reserve Equity account.
+ * 
+ * Tricky logic:
+ * - Deterministic delta computation:
+ *   Calculates the asset's cumulative balance up to `input.date`.
+ *   Delta = new_valuation_cents - current_balance_cents.
+ *   * If Delta > 0 (Valuation gain):
+ *     Debit Asset (+Delta cents) -> increases asset balance to new_valuation_cents.
+ *     Credit Valuation Reserve Equity (-Delta cents) -> increases equity reserve.
+ *   * If Delta < 0 (Valuation loss / impairment):
+ *     Credit Asset (-Math.abs(Delta) cents) -> decreases asset balance.
+ *     Debit Valuation Reserve Equity (+Math.abs(Delta) cents) -> decreases equity reserve.
+ *   * If Delta === 0:
+ *     Throws ValidationError ('New valuation equals existing asset balance as of that date.')
+ * - Invariant: Sum of postings === 0.
+ * - Atomic execution: Auto-provisioning and transaction posting commit in a single transaction.
+ * 
+ * TODO: Support automated depreciation schedules in Milestone 2.
+ */
+export function recordAssetValuation(
+    db: Database.Database,
+    input: RecordAssetValuationInput
+): TransactionWithPostings {
+    const valDate = input.date || input.valuation_date || '';
+    assertValidCalendarDate(valDate, 'Valuation date');
+    assertValidMoneyCents(input.new_valuation_cents, 'New valuation amount');
+    if (input.new_valuation_cents < 0) {
+        throw new ValidationError('Asset valuation cannot be negative.');
+    }
+
+    const runAtomic = db.transaction(() => {
+        const assetAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.asset_account_id) as any;
+        if (!assetAccount) {
+            throw new ValidationError(`Asset account not found: ${input.asset_account_id}`);
+        }
+        if (assetAccount.type !== 'asset') {
+            throw new ValidationError(`Valuation adjustments are only supported on asset accounts, received type: "${assetAccount.type}".`);
+        }
+        const liquidCashSubTypes = ['cash', 'checking', 'savings'];
+        if (liquidCashSubTypes.includes(assetAccount.sub_type)) {
+            throw new ValidationError(`Cannot record valuation adjustment on liquid account type "${assetAccount.sub_type}". Use a transaction or opening balance.`);
+        }
+        const entityId = input.entity_id || assetAccount.entity_id;
+        if (input.entity_id && assetAccount.entity_id !== input.entity_id) {
+            throw new ValidationError(`Asset account "${assetAccount.name}" belongs to entity "${assetAccount.entity_id}", not "${input.entity_id}".`);
+        }
+
+        // Calculate current balance as of valuation date
+        const rows = db.prepare(`
+            SELECT j.amount_cents
+            FROM m1_journal_entries j
+            JOIN m1_transactions t ON j.transaction_id = t.id
+            WHERE j.account_id = ? AND t.date <= ? AND t.status = 'posted'
+        `).all(assetAccount.id, valDate) as { amount_cents: number }[];
+
+        const currentBalanceCents = rows.reduce((sum, r) => sum + r.amount_cents, 0);
+        const deltaCents = input.new_valuation_cents - currentBalanceCents;
+
+        if (deltaCents === 0) {
+            throw new ValidationError(`New valuation matches the existing balance (${input.new_valuation_cents} cents). No adjustment needed.`);
+        }
+
+        const currency = assetAccount.currency;
+        const equityAccount = ensureValuationEquityAccount(db, entityId, currency);
+
+        const postings: Array<{
+            account_id: string;
+            amount_cents: number;
+            currency: CurrencyCode;
+            memo?: string | null;
+        }> = [];
+
+        if (deltaCents > 0) {
+            // Valuation Gain: Debit Asset (+), Credit Valuation Equity (-)
+            postings.push({
+                account_id: assetAccount.id,
+                amount_cents: deltaCents,
+                currency,
+                memo: `Valuation Increase from appraisal: +${deltaCents} cents`
+            });
+            postings.push({
+                account_id: equityAccount.id,
+                amount_cents: -deltaCents,
+                currency,
+                memo: `Unrealized Valuation Reserve for ${assetAccount.name}`
+            });
+        } else {
+            // Valuation Loss / Impairment: Credit Asset (-), Debit Valuation Equity (+)
+            postings.push({
+                account_id: assetAccount.id,
+                amount_cents: deltaCents, // Negative
+                currency,
+                memo: `Valuation Impairment: ${deltaCents} cents`
+            });
+            postings.push({
+                account_id: equityAccount.id,
+                amount_cents: -deltaCents, // Positive
+                currency,
+                memo: `Unrealized Valuation Reserve for ${assetAccount.name}`
+            });
+        }
+
+        const sourceDesc = input.source ? ` (${input.source})` : '';
+        const desc = input.description || `Valuation Adjustment - ${assetAccount.name}${sourceDesc}`;
+
+        return postTransaction(db, {
+            date: valDate,
+            description: desc,
+            payee_or_payer: input.source || null,
             origin: 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,

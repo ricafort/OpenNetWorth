@@ -144,6 +144,7 @@ export interface AccountOwnership {
     account_id: string;
     entity_id: string;
     share_percentage: number; // 0 < share_percentage <= 100
+    ownership_percentage?: number; // Alias for share_percentage
     created_at: string;
 }
 
@@ -159,12 +160,17 @@ export type AccountSubType =
     | 'mortgage'
     | 'personal_loan'
     | 'auto_loan'
+    | 'loan'
     | 'brokerage'
+    | 'investment'
     | 'retirement'
     | 'property'
+    | 'real_estate'
+    | 'land'
     | 'vehicle'
     | 'opening_balance_equity'
     | 'retained_earnings'
+    | 'valuation_reserve'
     | 'salary'
     | 'freelance'
     | 'rental_income'
@@ -269,3 +275,181 @@ export interface TransactionCorrection {
     performed_by: string;
     timestamp: string;
 }
+
+// --- SLICE 1D: REPORTS, OWNERSHIP, CASH FLOW, AND EVIDENCE CONTRACTS ---
+
+/**
+ * Structured Evidence Reference (M1-EVID-01)
+ * 
+ * Why this exists:
+ * Provides permanent, auditable provenance links connecting double-entry financial postings
+ * back to source documents, page numbers, extracted cells, and bounding boxes.
+ * 
+ * Tricky logic:
+ * Accommodates both raw string references (e.g. "receipt_001.pdf") and full structured metadata objects.
+ * 
+ * TODO: Integrate direct PDF viewport jump links in Slice 1G document viewer.
+ */
+export interface StructuredEvidenceRef {
+    document_id: string;
+    content_hash: string;
+    page?: number | null;
+    table_or_cell_ref?: string | null;
+    bbox?: [number, number, number, number] | null; // [x0, y0, x1, y1]
+    extraction_version?: string | null;
+    source_url_or_path?: string | null;
+    label?: string | null;
+}
+
+/**
+ * Dated Exchange Rate Representation (M1-CALC-03, T8)
+ */
+export interface ExchangeRate {
+    id: string;
+    from_currency: CurrencyCode;
+    to_currency: CurrencyCode;
+    rate: number;
+    effective_date: string; // YYYY-MM-DD
+    source: string;
+    created_at: string;
+}
+
+export type ScopeType = 'individual' | 'household' | 'consolidated';
+
+/**
+ * Scope-Aware Balance Item with Joint Ownership Allocation (M1-FLOW-07, T7)
+ */
+export interface ScopeNetWorthItem {
+    account_id: string;
+    account_name: string;
+    account_type: 'asset' | 'liability';
+    sub_type: AccountSubType;
+    account_sub_type?: AccountSubType;
+    currency: CurrencyCode;
+    gross_balance_cents: number;
+    ownership_share_percentage: number;
+    ownership_percentage?: number;
+    attributed_balance_cents: number;
+    formatted_attributed_balance: string;
+    formatted_scoped_balance?: string;
+    formatted_full_balance?: string;
+    primary_entity_id: string;
+    is_joint: boolean;
+}
+
+/**
+ * Scope-Aware Net Worth Report Result (M1-CALC-01, M1-CALC-02, T7)
+ */
+export interface ScopeNetWorthResult {
+    scope_type: ScopeType;
+    target_entity_id: string;
+    entity_name: string;
+    as_of_date: string;
+    member_entities?: Array<{ id: string; name: string; type: string }>;
+    net_worth_cents_by_currency: Record<CurrencyCode, number>;
+    total_assets_cents_by_currency: Record<CurrencyCode, number>;
+    total_liabilities_cents_by_currency: Record<CurrencyCode, number>;
+    formatted_net_worth_by_currency: Record<CurrencyCode, string>;
+    scoped_net_worth_cents_by_currency?: Record<CurrencyCode, number>;
+    scoped_assets_cents_by_currency?: Record<CurrencyCode, number>;
+    scoped_liabilities_cents_by_currency?: Record<CurrencyCode, number>;
+    formatted_scoped_net_worth_by_currency?: Record<CurrencyCode, string>;
+    items: ScopeNetWorthItem[];
+    calculation_version: string;
+}
+
+/**
+ * Multi-Currency Consolidated Net Worth with Completeness Verification (M1-CALC-03, T8)
+ */
+export interface ConsolidatedNetWorthResult {
+    reporting_currency: CurrencyCode;
+    is_complete: boolean;
+    missing_rates: Array<{ from: CurrencyCode; to: CurrencyCode; date: string }>;
+    consolidated_total_cents?: number | null;
+    formatted_consolidated_total?: string | null;
+    original_totals_by_currency: Record<CurrencyCode, number>;
+    formatted_original_by_currency: Record<CurrencyCode, string>;
+    applied_exchange_rates?: Record<string, number>;
+    as_of_date: string;
+    calculation_version: string;
+}
+
+export type CashFlowActivityType = 'operating' | 'financing' | 'investing' | 'transfer';
+
+/**
+ * Cash Flow Item (Liquid Cash Movements Only)
+ */
+export interface CashFlowItem {
+    transaction_id: string;
+    date: string;
+    description: string;
+    payee_or_payer?: string | null;
+    activity_type: CashFlowActivityType;
+    cash_account_id: string;
+    cash_account_name: string;
+    amount_cents: number; // Signed integer: positive = Inflow, negative = Outflow
+    currency: CurrencyCode;
+    formatted_amount: string;
+}
+
+/**
+ * Actual Cash Flow Statement (M1-FLOW-02, M1-FLOW-04, M1-FLOW-05)
+ * 
+ * Why this exists:
+ * Strictly separates liquid cash asset movements from accrual revenue and cost recognition.
+ * Credit card purchases are not cash flows; debt repayments and cash settlements are.
+ */
+export interface CashFlowStatementResult {
+    entity_id: string;
+    start_date?: string;
+    end_date?: string;
+    operating_inflows_cents_by_currency: Record<CurrencyCode, number>;
+    operating_outflows_cents_by_currency: Record<CurrencyCode, number>;
+    net_operating_cents_by_currency: Record<CurrencyCode, number>;
+    financing_outflows_cents_by_currency: Record<CurrencyCode, number>;
+    net_cash_change_cents_by_currency: Record<CurrencyCode, number>;
+    starting_cash_cents_by_currency: Record<CurrencyCode, number>;
+    ending_cash_cents_by_currency: Record<CurrencyCode, number>;
+    formatted_net_cash_change_by_currency: Record<CurrencyCode, string>;
+    formatted_ending_cash_by_currency: Record<CurrencyCode, string>;
+    items: CashFlowItem[];
+    calculation_version: string;
+}
+
+/**
+ * Chronological Ledger Drill-Down with Running Balance & Evidence Provenance (M1-EVID-01, M1-EVID-02)
+ */
+export interface LedgerEntryDrilldownItem {
+    posting_id: string;
+    transaction_id: string;
+    date: string;
+    description: string;
+    payee_or_payer?: string | null;
+    account_id: string;
+    account_name: string;
+    account_type: AccountType;
+    amount_cents: number; // Signed: positive debit, negative credit
+    currency: CurrencyCode;
+    running_balance_cents: number;
+    formatted_amount: string;
+    formatted_running_balance: string;
+    memo?: string | null;
+    origin: TransactionOrigin;
+    evidence_refs: any[];
+}
+
+export interface AccountLedgerDrilldownResult {
+    account_id: string;
+    account_name: string;
+    account_type: AccountType;
+    currency: CurrencyCode;
+    start_date?: string;
+    end_date?: string;
+    opening_balance_cents: number;
+    closing_balance_cents: number;
+    formatted_opening_balance: string;
+    formatted_closing_balance: string;
+    entries: LedgerEntryDrilldownItem[];
+    calculation_version: string;
+}
+
