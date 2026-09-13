@@ -14,7 +14,19 @@ export default function DashboardModals() {
     const [isMentorSettingsOpen, setIsMentorSettingsOpen] = useState(false);
 
 
-    // Check-In Logic
+    /**
+     * Check-In Logic
+     * 
+     * Why this exists:
+     * Periodically prompts user with a Wealth Check-In modal and Snooze option based on checkInFrequency.
+     * 
+     * Tricky logic:
+     * Temporarily disabled per user request ("disable the tutorial and snooze for now")
+     * to avoid modal popups and snooze prompts interrupting dashboard navigation and testing.
+     * 
+     * TODO: Re-enable automated check-in prompt after milestone signoff.
+     */
+    /*
     useEffect(() => {
         const settings = loadSettings();
         const lastCheckIn = settings.lastCheckIn ? new Date(settings.lastCheckIn).getTime() : 0;
@@ -31,6 +43,7 @@ export default function DashboardModals() {
             return () => clearTimeout(timer);
         }
     }, []);
+    */
 
     const handleCheckInUpdate = async () => {
         const settings = loadSettings();
