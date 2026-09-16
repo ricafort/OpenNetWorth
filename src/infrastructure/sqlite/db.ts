@@ -12,7 +12,22 @@ import fs from 'fs';
 
 // Path to SQLite database file
 const DATA_DIR = path.resolve(process.cwd(), 'data');
-const DB_PATH = path.join(DATA_DIR, 'opennetworth.sqlite');
+const DEFAULT_DB_PATH = path.join(DATA_DIR, 'opennetworth.sqlite');
+
+/**
+ * Returns the effective SQLite database path.
+ * 
+ * Why this exists:
+ * Allows browser-based end-to-end tests or dev test runs to point to an isolated
+ * fixture database (e.g. data/test_browser_vault.sqlite) via OPENNETWORTH_DB_PATH,
+ * guaranteeing the live user vault is never opened.
+ */
+export function getEffectiveDbPath(): string {
+    if (process.env.OPENNETWORTH_DB_PATH) {
+        return path.resolve(process.cwd(), process.env.OPENNETWORTH_DB_PATH);
+    }
+    return DEFAULT_DB_PATH;
+}
 
 let dbInstance: Database.Database | null = null;
 let testDbInstance: Database.Database | null = null;
@@ -131,8 +146,11 @@ export function getDb(): Database.Database {
         return testDbInstance;
     }
 
+    const targetPath = getEffectiveDbPath();
+    const isLiveVault = path.resolve(targetPath) === path.resolve(DEFAULT_DB_PATH);
+
     // Guard: Under no circumstances should test code ever reach the live application vault
-    if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+    if ((process.env.NODE_ENV === 'test' || process.env.VITEST) && isLiveVault) {
         throw new Error(
             'CRITICAL SECURITY GUARD: Attempted to open application vault (opennetworth.sqlite) during test execution! Tests must use an isolated in-memory database.'
         );
@@ -142,13 +160,14 @@ export function getDb(): Database.Database {
         return dbInstance;
     }
 
-    // Ensure data directory exists
-    if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+    // Ensure parent directory exists
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    // Initialize better-sqlite3 with application file
-    dbInstance = new Database(DB_PATH);
+    // Initialize better-sqlite3 with target database file
+    dbInstance = new Database(targetPath);
 
     // Enable WAL mode for high performance concurrent reads and atomic writes
     dbInstance.pragma('journal_mode = WAL');

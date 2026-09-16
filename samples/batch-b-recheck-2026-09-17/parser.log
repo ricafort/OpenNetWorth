@@ -1,0 +1,114 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+ ❯ samples/batch-b-recheck-2026-09-17/parser.test.ts (9 tests | 5 failed) 9ms
+   × last month uses the complete Australian calendar month 5ms
+   × default month uses the complete Australian calendar month 1ms
+   ✓ July 2025 uses July calendar dates in Australia/Sydney 0ms
+   × single named date uses exactly one day 1ms
+   ✓ single ISO date uses exactly one day 0ms
+   × my business resolves explicit business scope with one business 0ms
+   ✓ multiple businesses require scope clarification 0ms
+   × all finances does not silently become personal only 1ms
+   ✓ an unsupported explicit historical year is not replaced by current year 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  samples/batch-b-recheck-2026-09-17/parser.test.ts > last month uses the complete Australian calendar month
+AssertionError: expected [ '2026-07-31', '2026-08-30' ] to deeply equal [ '2026-08-01', '2026-08-31' ]
+
+- Expected
++ Received
+
+  [
+-   "2026-08-01",
+-   "2026-08-31",
++   "2026-07-31",
++   "2026-08-30",
+  ]
+
+ ❯ samples/batch-b-recheck-2026-09-17/parser.test.ts:3:148
+      1| import {it,expect,vi,afterAll} from 'vitest';
+      2| import fs from 'node:fs';
+      3| it('last month uses the complete Australian calendar month',()=>{const…
+       |                                                                                                                                                    ^
+      4| it('default month uses the complete Australian calendar month',()=>{co…
+      5| import {parseSpendingIntent} from '../../src/app/api/mentor/intentPars…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  samples/batch-b-recheck-2026-09-17/parser.test.ts > default month uses the complete Australian calendar month
+AssertionError: expected [ '2026-08-31', '2026-09-29' ] to deeply equal [ '2026-09-01', '2026-09-30' ]
+
+- Expected
++ Received
+
+  [
+-   "2026-09-01",
+-   "2026-09-30",
++   "2026-08-31",
++   "2026-09-29",
+  ]
+
+ ❯ samples/batch-b-recheck-2026-09-17/parser.test.ts:4:140
+      2| import fs from 'node:fs';
+      3| it('last month uses the complete Australian calendar month',()=>{const…
+      4| it('default month uses the complete Australian calendar month',()=>{co…
+       |                                                                                                                                            ^
+      5| import {parseSpendingIntent} from '../../src/app/api/mentor/intentPars…
+      6| vi.useFakeTimers();vi.setSystemTime(new Date('2026-09-17T12:00:00+10:0…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  samples/batch-b-recheck-2026-09-17/parser.test.ts > single named date uses exactly one day
+AssertionError: expected [ '2026-09-01', '2026-09-30' ] to deeply equal [ '2026-09-16', '2026-09-16' ]
+
+- Expected
++ Received
+
+  [
+-   "2026-09-16",
+-   "2026-09-16",
++   "2026-09-01",
++   "2026-09-30",
+  ]
+
+ ❯ samples/batch-b-recheck-2026-09-17/parser.test.ts:12:142
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  samples/batch-b-recheck-2026-09-17/parser.test.ts > my business resolves explicit business scope with one business
+AssertionError: expected 'I\'m not sure if you mean personal or…' to be undefined
+
+- Expected: 
+undefined
+
++ Received: 
+"I'm not sure if you mean personal or business spending. Could you clarify whose finances you are asking about?"
+
+ ❯ samples/batch-b-recheck-2026-09-17/parser.test.ts:14:185
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  samples/batch-b-recheck-2026-09-17/parser.test.ts > all finances does not silently become personal only
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ samples/batch-b-recheck-2026-09-17/parser.test.ts:16:176
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 4 passed (9)
+   Start at  01:49:21
+   Duration  166ms (transform 29ms, setup 0ms, import 40ms, tests 9ms, environment 0ms)
+

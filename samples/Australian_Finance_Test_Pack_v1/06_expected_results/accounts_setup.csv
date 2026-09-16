@@ -1,0 +1,6 @@
+﻿Account ID,Entity ID,Name,Currency,Type,Sub Type,Opening Date,Signed Opening Balance
+HH-EVERYDAY,HH-NGUYEN,Everyday Checking,AUD,asset,checking,30/06/2025,15000.00
+HH-SAVINGS,HH-NGUYEN,Rainy Day Savings,AUD,asset,savings,30/06/2025,25000.00
+HH-CARD,HH-NGUYEN,Everyday Credit Card,AUD,liability,credit_card,30/06/2025,-600.00
+HH-RENTAL,HH-NGUYEN,Rental Property Bank,AUD,asset,checking,30/06/2025,5000.00
+BIZ-BANK,BIZ-WATTLE,Business Operating,AUD,asset,checking,30/06/2025,20000.00

@@ -1,0 +1,147 @@
+Browser tab: 13, Title: "Accounting Engine | OpenNetWorth", URL: "http://localhost:4005/accounting".
+0 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4005/accounting
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 link Description: Dashboard, Value: localhost:4005/
+		4 link Description: Accounting, Value: localhost:4005/accounting
+		5 link Description: Assets, Value: localhost:4005/assets
+		6 link Description: Liabilities, Value: localhost:4005/liabilities
+		7 link Description: Goals, Value: localhost:4005/goals
+		8 link Description: Cash Flow, Value: localhost:4005/cashflow
+		9 link Description: Growth Engine, Value: localhost:4005/portfolio
+		10 link Description: Freedom, Value: localhost:4005/freedom
+		11 link Description: Mentors, Value: localhost:4005/mentors
+		12 link Description: Privacy, Value: localhost:4005/privacy
+		13 text ON Local Vault Owner 🔒 100% On-Device
+		14 link Description: Backup / Restore Vault, Value: localhost:4005/privacy
+		15 button Light Mode
+		16 button Stealth Mode
+		17 button System Theme
+		18 button Blur Values
+		19 text v 1.0.0
+	20 container
+		21 heading Sovereign Accounting Engine, Value: 1
+			22 text Sovereign Accounting Engine
+		23 text LEDGER ACTIVE Local-first, double-entry financial ledger with exact minor-unit integer cents arithmetic. No floating-point rounding errors, no untraced balances.
+		24 button Daily Events & Ledger
+		25 button Accounts & Balances
+		26 button Reports & Traceability
+		27 button Document Inbox & Imports
+		183 button Back to Document Inbox
+		184 heading duplicate_identical_rows.csv, Value: 2
+			185 text duplicate_identical_rows.csv
+		186 text SHA-256:  6a473267...05d012c3 Review column extractions, duplicate flags, and confirm atomic ledger entries. Target Bank Account:
+		187 pop up button (collapsed, settable) Value: Business Operating (AUD), Secondary Actions: Expand
+			188 menu
+				189 (selected) Business Operating (AUD)
+				190 Everyday Checking (AUD)
+				191 Everyday Checking (AUD)
+				192 High Interest Savings (AUD)
+		193 text Total Extracted 2  rows Unreviewed 2  pending Posted to Ledger 0  approved Linked as Evidence 0  linked Issues & Duplicates 1  flagged Approval Failed Cannot approve proposal "prop-doc-1c868eb8-ec81-407d-93b6-efe2e4478d1f-r3": it is a possible duplicate and requires explicit confirmation.
+		194 button All (2)
+			195 text All (
+			196 text 2
+			197 text )
+		198 button Pending (2)
+			199 text Pending (
+			200 text 2
+			201 text )
+		202 button Posted (0)
+			203 text Posted (
+			204 text 0
+			205 text )
+		206 button Linked (0)
+			207 text Linked (
+			208 text 0
+			209 text )
+		210 button Issues (1)
+			211 text Issues (
+			212 text 1
+			213 text )
+		214 button Deselect All
+		215 button Approve Selected (2)
+			297 text Approve Selected (
+			298 text 2
+			299 text )
+		219 table
+			220 row
+				221 cell
+					222 checkbox (settable, integer) 1
+				223 cell
+					224 text Date
+				225 cell
+					226 text Description / Payee
+				227 cell
+					228 text Inflow / Outflow
+				229 cell
+					230 text Counterpart Category
+				231 cell
+					232 text Flags & Status
+				233 cell
+					234 text Evidence Source
+				235 cell
+					236 text Actions
+			237 row
+				238 cell
+					239 checkbox (settable, integer) 1
+				240 cell
+					241 text 2025-07-03
+				242 cell
+					243 text Waratah Office Supplies paper ream
+				244 cell
+					245 text - $ 22.00
+				246 cell
+					247 pop up button (collapsed, settable) Value: Living Expense, Secondary Actions: Expand
+						248 menu
+							249 (selected) Living Expense
+							250 Office Supplies
+							251 Groceries
+							252 Utilities
+							253 Rent
+							254 Transportation
+							255 Entertainment
+							256 Healthcare
+							257 Interest / Finance
+							258 Insurance
+				259 cell
+					260 text Unreviewed
+				261 cell
+					262 text Row 2
+				263 cell
+					264 button Edit, Help: Edit proposal fields
+			265 row
+				266 cell
+					267 checkbox (settable, integer) 1
+				268 cell
+					269 text 2025-07-03
+				270 cell
+					271 text Waratah Office Supplies paper ream
+				272 cell
+					273 text - $ 22.00
+				274 cell
+					275 pop up button (collapsed, settable) Value: Living Expense, Secondary Actions: Expand
+						276 menu
+							277 (selected) Living Expense
+							278 Office Supplies
+							279 Groceries
+							280 Utilities
+							281 Rent
+							282 Transportation
+							283 Entertainment
+							284 Healthcare
+							285 Interest / Finance
+							286 Insurance
+				287 cell
+					288 text Unreviewed
+					289 text File Duplicate
+					290 container
+						291 checkbox (settable, integer) Description: Confirm Separate, Value: 0
+						292 text Confirm Separate
+				293 cell
+					294 text Row 3
+				295 cell
+					296 button Edit, Help: Edit proposal fields
+	181 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		182 image
+
+The focused UI element is 0 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4005/accounting

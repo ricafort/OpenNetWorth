@@ -142,6 +142,34 @@ export const ACCOUNTING_SCHEMA_DDL = `
     CREATE INDEX IF NOT EXISTS idx_m1_account_ownership_ent ON m1_account_ownership(entity_id);
     CREATE INDEX IF NOT EXISTS idx_m1_exchange_rates_lookup ON m1_exchange_rates(from_currency, to_currency, effective_date);
     CREATE INDEX IF NOT EXISTS idx_m1_asset_valuations_acc_date ON m1_asset_valuations(account_id, valuation_date);
+
+    -- Draft Items (Personally Paid Business Expenses & Unresolved Financial Tasks)
+    -- Why this table exists:
+    -- Persists financial drafts directly into SQLite vault storage.
+    -- Separates payer entity from payment account and allows missing facts to remain explicitly unresolved.
+    -- Completely excluded from double-entry journal postings until finalized.
+    CREATE TABLE IF NOT EXISTS m1_drafts (
+        id TEXT PRIMARY KEY,
+        entity_id TEXT,
+        payer_entity_id TEXT,
+        payment_account_id TEXT,
+        currency TEXT,
+        amount_cents INTEGER,
+        date TEXT,
+        merchant TEXT,
+        description TEXT,
+        reimbursement_intent TEXT CHECK (reimbursement_intent IN ('yes', 'no', 'not_sure') OR reimbursement_intent IS NULL),
+        source_document_id TEXT,
+        source_transaction_id TEXT,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'posted', 'void', 'archived')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (entity_id) REFERENCES m1_entities(id) ON DELETE SET NULL,
+        FOREIGN KEY (payer_entity_id) REFERENCES m1_entities(id) ON DELETE SET NULL,
+        FOREIGN KEY (payment_account_id) REFERENCES m1_accounts(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_m1_drafts_entity ON m1_drafts(entity_id);
+    CREATE INDEX IF NOT EXISTS idx_m1_drafts_payer ON m1_drafts(payer_entity_id);
 `;
 
 /**
@@ -222,6 +250,32 @@ export function migrateAccountingSchema(db: Database.Database): void {
                 db.prepare("ALTER TABLE m1_transaction_corrections_new RENAME TO m1_transaction_corrections").run();
             }
         }
+
+        // 3. Ensure m1_drafts table and indices exist
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS m1_drafts (
+                id TEXT PRIMARY KEY,
+                entity_id TEXT,
+                payer_entity_id TEXT,
+                payment_account_id TEXT,
+                currency TEXT,
+                amount_cents INTEGER,
+                date TEXT,
+                merchant TEXT,
+                description TEXT,
+                reimbursement_intent TEXT CHECK (reimbursement_intent IN ('yes', 'no', 'not_sure') OR reimbursement_intent IS NULL),
+                source_document_id TEXT,
+                source_transaction_id TEXT,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'posted', 'void', 'archived')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (entity_id) REFERENCES m1_entities(id) ON DELETE SET NULL,
+                FOREIGN KEY (payer_entity_id) REFERENCES m1_entities(id) ON DELETE SET NULL,
+                FOREIGN KEY (payment_account_id) REFERENCES m1_accounts(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_m1_drafts_entity ON m1_drafts(entity_id);
+            CREATE INDEX IF NOT EXISTS idx_m1_drafts_payer ON m1_drafts(payer_entity_id);
+        `);
     });
 
     // Run migration safely with foreign key toggle

@@ -9,15 +9,19 @@ import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useLiabilitiesQuery } from '@/features/liabilities/hooks/useLiabilitiesQuery';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
+import { useAccountingCheck } from '@/features/accounting/hooks/useAccountingCheck';
 
 import { generateDebtAdviceAction } from '@/app/actions';
 
 export default function FreedomDateCard() {
-    const { liabilities } = useLiabilitiesQuery();
+    const { liabilities, isLoading: isLiabilitiesLoading } = useLiabilitiesQuery();
+    const { hasModernLiabilities, isLoading: isAccountingLoading } = useAccountingCheck();
     const [freedomDate, setFreedomDate] = useState<string | null>(null);
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
     const [hasDebt, setHasDebt] = useState(false);
     const [advice, setAdvice] = useState<string>('Analyzing your path to freedom...');
+
+    const isLoading = isLiabilitiesLoading || isAccountingLoading;
 
     useEffect(() => {
         const activeDebts = liabilities.filter(l => l.balance > 0);
@@ -29,22 +33,14 @@ export default function FreedomDateCard() {
             setFreedomDate(result.freedomDate);
             setDaysRemaining(result.daysUntilFreedom);
 
-            // Fetch AI Advice
-            // We use a default persona for the "General" dashboard view, or random?
-            // Let's use "Dave Ramsey" style for Debt as a default if none selected, 
-            // or just a "Financial Mentor".
-            // Ideally we check the user's selected mentor from localStorage, but for this widget 
-            // let's stick to a solid default or fetch the "primary" mentor.
-            // For MVP, hardcoding a "Wise Mentor" persona.
-
             generateDebtAdviceAction(
                 "The Mentor",
                 "a wise, direct, and encouraging financial guide",
                 {
                     totalDebt: liabilities.reduce((sum, l) => sum + l.balance, 0),
                     highestInterestRate: Math.max(...liabilities.map(l => l.interest_rate)),
-                    monthlyIncome: 5000, // TODO: Fetch from CashFlow or Settings
-                    monthlyExpenses: 3000, // TODO: Fetch
+                    monthlyIncome: 5000,
+                    monthlyExpenses: 3000,
                     payoffStrategy: loadFreedomSettings().strategy
                 }
             ).then(setAdvice);
@@ -54,7 +50,46 @@ export default function FreedomDateCard() {
         }
     }, [liabilities]);
 
+    if (isLoading) {
+        return (
+            <div className="bg-slate-100 rounded-2xl p-6 shadow-sm h-full flex flex-col justify-between animate-pulse">
+                <div className="h-6 w-24 bg-slate-200 rounded-full mb-4"></div>
+                <div className="space-y-3">
+                    <div className="h-8 w-3/4 bg-slate-200 rounded"></div>
+                    <div className="h-4 w-1/2 bg-slate-200 rounded"></div>
+                </div>
+            </div>
+        );
+    }
+
     if (!hasDebt) {
+        if (hasModernLiabilities) {
+            return (
+                <div className="bg-slate-800 rounded-2xl p-6 text-slate-200 shadow-lg relative overflow-hidden h-full flex flex-col justify-between">
+                    <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full backdrop-blur-sm w-fit">
+                        <AlertCircle size={14} className="text-amber-400" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-300">Integration Notice</span>
+                    </div>
+
+                    <div className="mt-4">
+                        <h3 className="text-xl font-bold tracking-tight text-white mb-2">Incomplete View</h3>
+                        <p className="text-sm text-slate-400 font-medium">
+                            This view does not yet include all your recorded accounts.
+                        </p>
+                    </div>
+
+                    <div className="mt-6">
+                        <Link
+                            href="/accounting"
+                            className="text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-4 py-2 rounded-lg inline-block hover:bg-amber-500/20 transition-colors"
+                        >
+                            See Accounts for your balances →
+                        </Link>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden h-full flex flex-col justify-between">
                 <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-2xl"></div>

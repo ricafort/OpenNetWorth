@@ -1,0 +1,15 @@
+import {it,expect,vi,afterAll} from 'vitest';
+import fs from 'node:fs';
+import {parseSpendingIntent} from '../../src/app/api/mentor/intentParser';
+vi.useFakeTimers();vi.setSystemTime(new Date('2026-09-17T12:00:00+10:00'));
+const entities=[{id:'personal',name:'Household',type:'person'},{id:'alpha',name:'Alpha Design',type:'business'},{id:'beta',name:'Beta Consulting',type:'business'}];
+const results:any[]=[];
+afterAll(()=>{vi.useRealTimers();fs.writeFileSync('samples/batch-b-assessment-2026-09-17/parser-results.json',JSON.stringify(results,null,2));});
+function parse(q:string,e=entities){const r=parseSpendingIntent(q,e);results.push({q,...r});return r;}
+it('July 2025 uses July calendar dates in Australia/Sydney',()=>{const r=parse('How much did I spend in July 2025?');expect([r.startDate,r.endDate]).toEqual(['2025-07-01','2025-07-31']);});
+it('single named date uses exactly one day',()=>{const r=parse('How much did I spend on 16 September 2026?');expect([r.startDate,r.endDate]).toEqual(['2026-09-16','2026-09-16']);});
+it('single ISO date uses exactly one day',()=>{const r=parse('How much did I spend on 2026-09-16?');expect([r.startDate,r.endDate]).toEqual(['2026-09-16','2026-09-16']);});
+it('my business resolves explicit business scope with one business',()=>{const r=parse('How much did my business spend in July 2025?',entities.slice(0,2));expect(r.needsClarification).toBeUndefined();expect(r.entityId).toBe('alpha');});
+it('multiple businesses require scope clarification',()=>{const r=parse('Business expenses in July 2025');expect(r.needsClarification).toBeTruthy();});
+it('all finances does not silently become personal only',()=>{const r=parse('Expenses across all my finances in July 2025');expect(r.entityId==='all'||!!r.needsClarification).toBe(true);});
+it('an unsupported explicit historical year is not replaced by current year',()=>{const r=parse('Expenses in February 1999');expect(!!r.needsClarification||r.periodLabel?.includes('1999')).toBe(true);});

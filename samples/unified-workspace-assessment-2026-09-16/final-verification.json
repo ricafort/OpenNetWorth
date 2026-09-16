@@ -1,0 +1,61 @@
+{
+  "counts": {
+    "m1_entities": 2,
+    "m1_accounts": 15,
+    "m1_transactions": 1015,
+    "m1_journal_entries": 2032,
+    "m1_transaction_corrections": 1
+  },
+  "importPostings": [
+    {
+      "description": "TEST unified CSV",
+      "status": "posted",
+      "name": "Living Expense",
+      "type": "expense",
+      "currency": "AUD",
+      "amount_cents": 700
+    },
+    {
+      "description": "TEST unified CSV",
+      "status": "posted",
+      "name": "TEST AUD Everyday",
+      "type": "asset",
+      "currency": "AUD",
+      "amount_cents": -700
+    },
+    {
+      "description": "TEST invalid property CSV",
+      "status": "void",
+      "name": "Living Expense",
+      "type": "expense",
+      "currency": "AUD",
+      "amount_cents": 600
+    },
+    {
+      "description": "TEST invalid property CSV",
+      "status": "void",
+      "name": "TEST Home",
+      "type": "asset",
+      "currency": "AUD",
+      "amount_cents": -600
+    }
+  ],
+  "reportAll": {
+    "status": 500,
+    "body": {
+      "error": "Entity not found: all"
+    }
+  },
+  "live": {
+    "data/opennetworth.sqlite": {
+      "unchanged": true,
+      "before": "29f6020e1c96ab683185e4211f490f364f7566f4e4888e505316d1b93ec28d9e",
+      "after": "29f6020e1c96ab683185e4211f490f364f7566f4e4888e505316d1b93ec28d9e"
+    },
+    "data/opennetworth.sqlite-wal": {
+      "unchanged": true,
+      "before": "4a9f10461afd4117a5650a3e1e38e18bc8e538806b0e821f34998a59bafcb2c7",
+      "after": "4a9f10461afd4117a5650a3e1e38e18bc8e538806b0e821f34998a59bafcb2c7"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+﻿Invoice,Direction,Issued,Due,Supplier,Customer,Net AUD,GST AUD,Gross AUD,Paid date,Status
+WD-07-05,issued,03/07/2025,05/07/2025,Wattle Design Studio Pty Ltd,Example Client 5,3000.00,300.00,3300.00,2025-07-05,paid
+WD-07-19,issued,17/07/2025,19/07/2025,Wattle Design Studio Pty Ltd,Example Client 19,2000.00,200.00,2200.00,2025-07-19,paid
+WD-08-05,issued,03/08/2025,05/08/2025,Wattle Design Studio Pty Ltd,Example Client 5,3000.00,300.00,3300.00,2025-08-05,paid
+WD-08-19,issued,17/08/2025,19/08/2025,Wattle Design Studio Pty Ltd,Example Client 19,2000.00,200.00,2200.00,2025-08-19,paid
+WD-09-05,issued,03/09/2025,05/09/2025,Wattle Design Studio Pty Ltd,Example Client 5,3000.00,300.00,3300.00,2025-09-05,paid
+WD-09-19,issued,17/09/2025,19/09/2025,Wattle Design Studio Pty Ltd,Example Client 19,2000.00,200.00,2200.00,2025-09-19,paid
+WOS-0711,received,11/07/2025,11/07/2025,Waratah Office Supplies,Wattle Design Studio Pty Ltd,100.00,10.00,110.00,2025-07-11,paid
+WOS-0920,received,20/09/2025,04/10/2025,Waratah Office Supplies,Wattle Design Studio Pty Ltd,300.00,30.00,330.00,,unpaid

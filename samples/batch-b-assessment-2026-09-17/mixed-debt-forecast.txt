@@ -1,0 +1,111 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Financial Freedom" [level=2]
+  - paragraph: Design your exit strategy from debt.
+  - generic: Payoff Strategy
+  - button "avalanche"
+  - button "snowball"
+  - button "minimum"
+  - paragraph: Highest interest rate first. Mathematically optimal.
+  - generic: Extra Monthly Payment
+  - generic: $
+  - spinbutton: "500"
+  - generic: Your Freedom Date
+  - heading "December 17, 2026" [level=2]
+  - paragraph: Effective APR
+  - paragraph: 10.0%
+  - generic: (Weighted Avg)
+  - paragraph: Monthly Burn
+  - paragraph: $5
+  - generic: lost to interest
+  - paragraph: Time to Payoff
+  - paragraph: 2 months
+  - paragraph: Total Interest
+  - paragraph: $6
+  - paragraph: Total Paid
+  - paragraph: $656
+  - heading "Payoff Timeline" [level=3]
+  - application:
+    - generic: Nov 26
+  - heading "Strategy Impact" [level=3]
+  - paragraph: Time Saved
+  - paragraph: 12 months
+  - paragraph: Interest Saved
+  - paragraph: $35
+  - paragraph: "\"Compound interest is the eighth wonder of the world. He who understands it, earns it... he who doesn't... pays it.\""
+  - heading "Payoff Schedule" [level=3]
+  - table:
+    - rowgroup:
+      - row "Month Total Payment Principal Interest Remaining Balance":
+        - columnheader "Month"
+        - columnheader "Total Payment"
+        - columnheader "Principal"
+        - columnheader "Interest"
+        - columnheader "Remaining Balance"
+    - rowgroup:
+      - row "2026-10 $550 $545 $5 $105":
+        - cell "2026-10"
+        - cell "$550"
+        - cell "$545"
+        - cell "$5"
+        - cell "$105"
+      - row "2026-11 $106 $105 $1 $0":
+        - cell "2026-11"
+        - cell "$106"
+        - cell "$105"
+        - cell "$1"
+        - cell "$0"
+- button "Open Next.js Dev Tools":
+- alert
+- generic: Oct 26

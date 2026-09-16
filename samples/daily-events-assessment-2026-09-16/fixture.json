@@ -1,0 +1,15 @@
+{
+  "entities": {
+    "business": "e78afa17-4623-4009-87dc-b9357d52a57a",
+    "household": "012b2691-1975-4823-a52a-b696bcd86c6e"
+  },
+  "accounts": {
+    "Mortgage": "0a17d02b-dd2f-4e0f-91ad-8264dd6d5ef5",
+    "Home": "55c173be-61b8-4622-8034-ab72d4b73ac1",
+    "Savings": "068f26b2-b575-45d1-9f1d-8dda0142ed4e",
+    "Company Bank": "0daba4cf-6298-4414-85b6-548be2cc98e0",
+    "USD Bank": "ff84e58e-f78e-4c88-8b97-c378f98b5667",
+    "Credit Card": "080f13b4-7d55-4cc5-b047-734fc80deeac",
+    "Everyday": "6b416dac-9f22-4075-a025-84d8a89a71ef"
+  }
+}

@@ -1479,7 +1479,18 @@ export function getAccountLedgerDrilldown(
         let parsedEvidence: any[] = [];
         if (r.evidence_refs) {
             try {
-                parsedEvidence = JSON.parse(r.evidence_refs);
+                const parsed = JSON.parse(r.evidence_refs);
+                parsedEvidence = Array.isArray(parsed) ? parsed : [parsed];
+                parsedEvidence = parsedEvidence.map(item => {
+                    if (typeof item === 'string') {
+                        try {
+                            return JSON.parse(item);
+                        } catch {
+                            return item;
+                        }
+                    }
+                    return item;
+                });
             } catch {
                 parsedEvidence = [r.evidence_refs];
             }

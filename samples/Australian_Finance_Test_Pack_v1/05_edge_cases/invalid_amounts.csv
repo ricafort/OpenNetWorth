@@ -1,0 +1,4 @@
+﻿Date,Description,Amount
+07/07/2025,Trailing characters,12oops
+08/07/2025,Two decimal separators,1.2.3
+09/07/2025,Bad thousands grouping,"1,2,3.00"

@@ -1,0 +1,34 @@
+{
+  "live": [
+    {
+      "file": "data/opennetworth.sqlite",
+      "unchanged": true
+    },
+    {
+      "file": "data/opennetworth.sqlite-wal",
+      "unchanged": true
+    }
+  ],
+  "balances": [
+    {
+      "entity": "Household",
+      "name": "Everyday Checking",
+      "cents": 88312
+    },
+    {
+      "entity": "Company",
+      "name": "Business Operating",
+      "cents": 39000
+    }
+  ],
+  "counts": {
+    "documents": 10,
+    "imported_transactions": 7,
+    "linked": 2
+  },
+  "handoff": {
+    "account_id": "ce85de62-401e-4938-9549-f058622df1f8",
+    "entity_id": "0dac3d81-9835-412e-995e-e54b2b48aca3",
+    "review_status": "modified"
+  }
+}

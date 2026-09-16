@@ -43,13 +43,18 @@ interface DocumentItem {
     total_proposals: number;
     unreviewed_proposals: number;
     approved_proposals: number;
+    linked_proposals?: number;
     rejected_proposals: number;
 }
 
-export const DocumentInboxView: React.FC = () => {
+interface DocumentInboxViewProps {
+    entities: Entity[];
+    selectedEntityId: string;
+}
+
+export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, selectedEntityId }) => {
     const [documents, setDocuments] = useState<DocumentItem[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
-    const [entities, setEntities] = useState<Entity[]>([]);
     const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
     const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
@@ -68,12 +73,11 @@ export const DocumentInboxView: React.FC = () => {
                 setDocuments(docData.documents);
             }
 
-            // 2. Fetch accounts and entities from accounting API
+            // 2. Fetch accounts from accounting API
             const accRes = await fetch('/api/accounting?view=overview');
             const accData = await accRes.json();
             if (accData.success) {
                 if (Array.isArray(accData.accounts)) setAccounts(accData.accounts);
-                if (Array.isArray(accData.entities)) setEntities(accData.entities);
             }
         } catch (err: any) {
             setError(err.message || 'Failed to load inbox documents.');
@@ -91,18 +95,21 @@ export const DocumentInboxView: React.FC = () => {
         let totalProps = 0;
         let pendingProps = 0;
         let approvedProps = 0;
+        let linkedProps = 0;
 
         for (const doc of documents) {
             totalProps += doc.total_proposals;
             pendingProps += doc.unreviewed_proposals;
             approvedProps += doc.approved_proposals;
+            linkedProps += doc.linked_proposals || 0;
         }
 
         return {
             docCount: documents.length,
             totalProps,
             pendingProps,
-            approvedProps
+            approvedProps,
+            linkedProps
         };
     }, [documents]);
 
@@ -121,6 +128,7 @@ export const DocumentInboxView: React.FC = () => {
                     loadData();
                 }}
                 accounts={accounts}
+                entities={entities}
                 onApprovalComplete={() => loadData()}
             />
         );
@@ -137,15 +145,11 @@ export const DocumentInboxView: React.FC = () => {
                                 <Inbox className="w-5 h-5" />
                             </div>
                             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                                Document Inbox & Bank CSV Imports
+                                Documents
                             </h2>
-                            <span className="text-[11px] font-semibold uppercase px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                                Slice 1E
-                            </span>
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
-                            Preserves original bank CSV files, applies reusable column mappings, detects duplicate rows,
-                            and generates drillable double-entry transactions upon your explicit approval.
+                            Import bank statements, receipts and invoices. Review transactions before saving them.
                         </p>
                     </div>
 
@@ -155,20 +159,20 @@ export const DocumentInboxView: React.FC = () => {
                             className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
                         >
                             <FileText className="w-4 h-4 text-indigo-400" />
-                            <span>Import PDF Invoice</span>
+                            <span>Add receipt or invoice</span>
                         </button>
                         <button
                             onClick={() => setIsImportModalOpen(true)}
                             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
                         >
                             <Upload className="w-4 h-4" />
-                            <span>Import Bank CSV</span>
+                            <span>Import bank statement</span>
                         </button>
                     </div>
                 </div>
 
                 {/* Metric Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mt-5">
                     <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">
                             Preserved Documents
@@ -200,12 +204,24 @@ export const DocumentInboxView: React.FC = () => {
                         <div className="flex items-center gap-2 mt-1">
                             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                             <span className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
-                                {totals.approvedProps} transactions
+                                {totals.approvedProps} posted
                             </span>
                         </div>
                     </div>
 
-                    <div className="bg-indigo-50 dark:bg-indigo-950/30 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/40">
+                    <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-xl border border-blue-200 dark:border-blue-900/40">
+                        <span className="text-blue-700 dark:text-blue-400 text-xs font-medium block">
+                            Linked as Evidence
+                        </span>
+                        <div className="flex items-center gap-2 mt-1">
+                            <Bookmark className="w-4 h-4 text-blue-600" />
+                            <span className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                                {totals.linkedProps} linked
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="bg-indigo-50 dark:bg-indigo-950/30 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/40 col-span-2 sm:col-span-1">
                         <span className="text-indigo-700 dark:text-indigo-400 text-xs font-medium block">
                             Safety Guarantee
                         </span>
@@ -223,7 +239,7 @@ export const DocumentInboxView: React.FC = () => {
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
                     <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                        Imported Document Vault
+                        Imported Files
                     </h3>
                     <button
                         onClick={loadData}
@@ -245,11 +261,10 @@ export const DocumentInboxView: React.FC = () => {
                         </div>
                         <div className="max-w-sm mx-auto">
                             <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                                Your Document Inbox is Empty
+                                No documents yet
                             </h4>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                Import a bank CSV file to automatically extract reviewable financial proposals
-                                and eliminate manual bookkeeping.
+                                Import a bank statement or receipt to review transactions and keep your records organized.
                             </p>
                         </div>
                         <button
@@ -257,7 +272,7 @@ export const DocumentInboxView: React.FC = () => {
                             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
                         >
                             <Upload className="w-4 h-4" />
-                            <span>Import Your First Bank CSV</span>
+                            <span>Import a bank statement</span>
                         </button>
                     </div>
                 ) : (
@@ -275,8 +290,9 @@ export const DocumentInboxView: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                                 {documents.map(doc => {
+                                    const settledCount = doc.approved_proposals + (doc.linked_proposals || 0);
                                     const percent = doc.total_proposals > 0
-                                        ? Math.round((doc.approved_proposals / doc.total_proposals) * 100)
+                                        ? Math.round((settledCount / doc.total_proposals) * 100)
                                         : 0;
 
                                     return (
@@ -300,7 +316,10 @@ export const DocumentInboxView: React.FC = () => {
                                             <td className="py-3.5 px-4">
                                                 <div className="space-y-1.5 w-40">
                                                     <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                                                        <span>{doc.approved_proposals} / {doc.total_proposals} approved</span>
+                                                        <span>
+                                                            {settledCount} / {doc.total_proposals} settled
+                                                            {Boolean(doc.linked_proposals && doc.linked_proposals > 0) && ` (${doc.linked_proposals} linked)`}
+                                                        </span>
                                                         <span>{percent}%</span>
                                                     </div>
                                                     <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -316,7 +335,7 @@ export const DocumentInboxView: React.FC = () => {
                                                     onClick={() => setSelectedDocumentId(doc.id)}
                                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold transition"
                                                 >
-                                                    <span>Review Proposals</span>
+                                                    <span>Review transactions</span>
                                                     <ArrowRight className="w-3.5 h-3.5" />
                                                 </button>
                                             </td>

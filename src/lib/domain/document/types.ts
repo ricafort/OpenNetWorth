@@ -43,7 +43,7 @@ export interface EvidenceReference {
     source_snippet?: string | null;
 }
 
-export type ProposalReviewStatus = 'unreviewed' | 'approved' | 'rejected' | 'modified';
+export type ProposalReviewStatus = 'unreviewed' | 'approved' | 'rejected' | 'modified' | 'linked';
 
 export type FinancialEventType = 'income' | 'expense' | 'transfer' | 'repayment' | 'valuation_adjustment';
 
@@ -72,6 +72,7 @@ export interface ExtractedFinancialProposal {
     validation_findings: ValidationFinding[];
     review_status: ProposalReviewStatus;
     related_proposal_ids?: string[];
+    linked_transaction_id?: string | null; // Target transaction when linked as supporting evidence (Slice 1G)
     created_at: string;
     updated_at: string;
 }
@@ -201,6 +202,7 @@ export interface BatchApproveProposalsInput {
         description?: string;
         transfer_account_id?: string; // If event_type is transfer
         payment_confirmed?: boolean; // Required when approving invoice/receipt expense proposals
+        duplicate_confirmed?: boolean; // Required when approving proposals flagged as possible duplicates
     }>;
 }
 
@@ -215,4 +217,34 @@ export interface IngestPdfInput {
     default_category?: string; // Optional default expense category (e.g. 'office_supplies')
     entity_id?: string; // Target sovereign entity
 }
+
+/**
+ * Bank transaction candidate for receipt linking (Slice 1G).
+ * 
+ * Why this exists:
+ * Presents users with ranked candidate ledger transactions that match an extracted
+ * PDF invoice/receipt proposal in account, currency, amount, and approximate date.
+ */
+export interface TransactionCandidate {
+    id: string;
+    date: string; // YYYY-MM-DD
+    description: string;
+    payee_or_payer: string | null;
+    amount_cents: number; // Signed amount of posting on the account
+    currency: CurrencyCode;
+    account_id: string;
+    account_name: string;
+    date_difference_days: number;
+    match_score: number;
+    has_existing_evidence: boolean;
+}
+
+/**
+ * Input payload for linking a document proposal to an existing bank transaction (Slice 1G).
+ */
+export interface LinkProposalInput {
+    proposal_id: string;
+    transaction_id: string;
+}
+
 

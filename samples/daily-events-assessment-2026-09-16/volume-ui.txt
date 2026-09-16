@@ -1,0 +1,789 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - text: Dashboard
+  - link "Accounting":
+    - /url: /accounting
+    - text: Accounting
+  - link "Assets":
+    - /url: /assets
+    - text: Assets
+  - link "Liabilities":
+    - /url: /liabilities
+    - text: Liabilities
+  - link "Goals":
+    - /url: /goals
+    - text: Goals
+  - link "Cash Flow":
+    - /url: /cashflow
+    - text: Cash Flow
+  - link "Growth Engine":
+    - /url: /portfolio
+    - text: Growth Engine
+  - link "Freedom":
+    - /url: /freedom
+    - text: Freedom
+  - link "Mentors":
+    - /url: /mentors
+    - text: Mentors
+  - link "Privacy":
+    - /url: /privacy
+    - text: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Sovereign Accounting Engine" [level=1]
+  - generic: Ledger Active
+  - paragraph: Local-first, double-entry financial ledger with exact minor-unit integer cents arithmetic. No floating-point rounding errors, no untraced balances.
+  - button "Daily Events & Ledger":
+    - generic: Daily Events & Ledger
+  - button "Accounts & Balances":
+    - generic: Accounts & Balances
+  - button "Reports & Traceability":
+    - generic: Reports & Traceability
+  - button "Document Inbox & Imports":
+    - generic: Document Inbox & Imports
+  - heading "Daily Financial Events" [level=2]
+  - paragraph: Strict double-entry journal with exact cents arithmetic
+  - generic: "Entity:"
+  - combobox:
+    - option "A Household (household)"
+    - option "B Company (business)" [selected]
+  - textbox: 2026-09-01
+  - generic: to
+  - textbox: 2026-09-15
+  - button "Refresh" [active]:
+  - button "Record Event":
+    - generic: Record Event
+  - generic: Period Income
+  - generic: A$0.00 AUD
+  - generic: Accrual income recognized in period
+  - generic: Period Expenses
+  - generic: A$6.01 AUD
+  - generic: Accrual expenses recognized in period
+  - generic: Income Minus Expenses
+  - generic: "-A$6.01 AUD"
+  - generic: Net period earnings / retained savings
+  - heading "Double-Entry Journal Ledger" [level=3]
+  - paragraph: Every event has balanced debit and credit legs summing to $0.00
+  - generic: 100 entries
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 101
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 100
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 099
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 098
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 097
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 096
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 095
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 094
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 093
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 092
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 091
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 090
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 089
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 088
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 087
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 086
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 085
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 084
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 083
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 082
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 081
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 080
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 079
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 078
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 077
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 076
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 075
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 074
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 073
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 072
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 071
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 070
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 069
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 068
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 067
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 066
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 065
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 064
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 063
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 062
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 061
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 060
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 059
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 058
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 057
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 056
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 055
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 054
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 053
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 052
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 051
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 050
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 049
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 048
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 047
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 046
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 045
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 044
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 043
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 042
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 041
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 040
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 039
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 038
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 037
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 036
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 035
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 034
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 033
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 032
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 031
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 030
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 029
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 028
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 027
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 026
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 025
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 024
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 023
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 022
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 021
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 020
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 019
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 018
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 017
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 016
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 015
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 014
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 013
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 012
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 011
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 010
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 009
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 008
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 007
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 006
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 005
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 004
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 003
+  - generic: 2 legs
+  - button "Auditable Void":
+  - button "View journal legs":
+  - generic: 2026-09-15
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST volume 002
+  - generic: 2 legs
+  - button "Auditable Void":
+- button "Open Next.js Dev Tools":
+- button "Open issues overlay":
+  - generic: "2"
+  - generic: "3"
+  - text: Issue
+  - generic: s
+- button "Collapse issues badge":
+- alert

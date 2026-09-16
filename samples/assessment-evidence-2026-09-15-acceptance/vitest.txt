@@ -1,0 +1,127 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+ ✓ src/infrastructure/sqlite/db.test.ts (3 tests) 6ms
+ ✓ src/lib/domain/debtCalculator.test.ts (4 tests) 4ms
+ ✓ src/lib/domain/portfolioAnalysis.test.ts (7 tests) 4ms
+ ✓ src/lib/api/localLlm.test.ts (7 tests) 4ms
+stderr | src/lib/domain/mentorAdvice.test.ts > MentorAdvice Service (Local LLM) > should return fallback advice on Local LLM failure (Debt)
+Error generating debt advice with local LLM: Error: Local LLM Offline
+    at setupErrorMock (D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:24:62)
+    at D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:43:9
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+
+stderr | src/lib/domain/mentorAdvice.test.ts > MentorAdvice Service (Local LLM) > should return fallback advice on Local LLM failure (Investment)
+Error generating investment advice with local LLM: Error: Local LLM Offline
+    at setupErrorMock (D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:24:62)
+    at D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:71:9
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+
+ ✓ src/lib/domain/document/csvParserService.test.ts (16 tests) 10ms
+ ✓ src/lib/domain/mentorAdvice.test.ts (4 tests) 17ms
+stderr | src/lib/domain/templateService.test.ts > templateService > should return null if profile fetch fails
+Error fetching template profile: { message: 'Not found' }
+
+ ✓ src/lib/domain/templateService.test.ts (3 tests) 6ms
+ ✓ src/app/api/documents/raw/route.test.ts (4 tests) 12ms
+ ✓ src/lib/domain/accounting/accounting.test.ts (12 tests) 33ms
+ ✓ src/lib/domain/accounting/slice1b.test.ts (5 tests) 30ms
+stderr | src/infrastructure/sqlite/milestone0.test.ts > Milestone 0 Remediation Acceptance Tests (Findings 1, 2, 5, 7) > Finding 7: API route rejects non-numeric monetary inputs ("not-money", NaN) with HTTP 400
+Vault POST Error: ValidationError: Asset value must be a valid finite number, received: "not-money"
+    at parseFiniteNumber (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:45:15)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:157:31)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/infrastructure/sqlite/milestone0.test.ts:474:21
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | src/infrastructure/sqlite/milestone0.test.ts > Milestone 0 Final Blocker Acceptance Tests (Findings 1, 2, 3, 4, 5) > Finding 2: Initial migration failure (HTTP 500) preserves browser data and does NOT set migration flag
+Migration POST commit failed with status: 500
+
+ ✓ src/infrastructure/sqlite/milestone0.test.ts (32 tests) 59ms
+ ✓ src/lib/domain/document/slice1e_remediations.test.ts (9 tests) 44ms
+ ✓ src/lib/domain/document/slice1e.test.ts (8 tests) 50ms
+ ✓ src/lib/domain/document/slice1g.test.ts (6 tests) 52ms
+stderr | src/lib/domain/document/slice1g_remediations.test.ts > Slice 1G Remediations: State Transitions, Direction Matching & Migration > rejects linking an expense proposal to an incoming deposit transaction with status 400
+Failed to link proposal to transaction: Error: Transaction "9f9dfc65-d15c-4186-b845-1b209eaf5cba" does not have a payment account posting matching proposal amount (-15000 cents), currency (AUD), and direction (expense).
+    at linkProposalToTransaction (D:/LocalVersions/OpenNetWorth/src/lib/domain/document/documentInboxService.ts:1553:15)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/documents/proposals/link/route.ts:42:24)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/lib/domain/document/slice1g_remediations.test.ts:538:26
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20
+
+ ✓ src/lib/domain/document/slice1g_remediations.test.ts (6 tests) 55ms
+ ✓ src/lib/domain/document/slice1f_remediations.test.ts (15 tests) 73ms
+ ✓ src/lib/domain/accounting/slice1c.test.ts (23 tests) 82ms
+ ❯ src/lib/domain/accounting/slice1d.test.ts (32 tests | 1 failed) 137ms
+       ✓ revalues real estate upward against Valuation Reserve equity with zero cash and zero operating income impact 23ms
+       ✓ revalues asset downward, debiting Valuation Reserve equity without affecting cash or operating expenses 3ms
+       ✓ rejects revaluing liquid cash, checking, or savings accounts as non-cash asset valuations 2ms
+       ✓ rejects negative or zero valuation amounts 1ms
+       ✓ calculates individual % shares correctly and de-duplicates household scope to 100% without 200% double-counting 6ms
+       ✓ validates ownership percentage bounds and rejects sum > 100% 2ms
+       ✓ flags is_complete: false and lists missing rates when exchange rate is missing, never defaulting to 1:1 3ms
+       ✓ supports inverse rate lookup and validates rate inputs 1ms
+       ✓ proves cash flow tracks liquid cash accounts strictly while accrual tracks earned/incurred performance 5ms
+       ✓ returns chronological journal entries with accurate running balance and structured evidence references 3ms
+       ✓ correctly calculates credit-normal running balance for liability accounts 4ms
+       ✓ handles set_ownership, record_valuation, set_exchange_rate and view queries via HTTP handlers 8ms
+       ✓ Finding 1: Currency Conversion Scale & Explicit Rounding (JPY <-> AUD) 3ms
+       ✓ Finding 2: Household Ownership Attribution & External Owner Exclusion 6ms
+       ✓ Finding 3: Consistent Report Scope in Converted Net Worth 3ms
+       ✓ Finding 4: Actual Cash Flow Reconciliation with Double-Entry Ledger 4ms
+       ✓ Finding 5: Historical Valuation Correctness & Target Preservation Regression 4ms
+       ✓ Finding 6: Valuation Idempotency Retries and Conflicts 3ms
+       × Finding 7: Structured Evidence Identity & Field-Level Conflict Detection 6ms
+         ✓ Remediation 1: Rejects duplicate same-day valuation target with ValidationError and preserves state 3ms
+         ✓ Remediation 2: Preserves subsequent valuation targets after earlier valuation void and edit 5ms
+         ✓ Remediation 3: Cascading valuation adjustments record revaluation_cascade corrections and reject stale revisions 3ms
+         ✓ Remediation 4: Cash flow handles refunds (inflow), income reversals (outflow), mixed-legs, and exposes reconciliation discrepancy 3ms
+         ✓ Remediation 5: Converted and unconverted reports consume identical scope_type, entity, and reporting date via API 3ms
+         ✓ Remediation 6: Unified partial-ownership remainder policy and rejection of ambiguous allocations 4ms
+         ✓ Remediation 7: Multi-currency conversion applies scale conversion even when exchange rate is 1.0 2ms
+         ✓ Remediation 8: Valuation idempotency checks description and source, throwing ConflictError on mismatch 3ms
+         ✓ Assessor Item 1: Upgrades populated legacy schema transactionally, preserving balances, evidence, and audit history 4ms
+         ✓ Assessor Item 2: Valuation corrections update authoritative target and preserve it through cascades; rejects unsafe edits 5ms
+         ✓ Assessor Item 3: Records dedicated transaction and valuation row for zero-delta appraisal, preserving evidence and supporting idempotency 2ms
+         ✓ Assessor Item 4: $100 internal transfer plus $10 fee produces $0 external inflow, $10 operating outflow, and -$10 net cash change 2ms
+         ✓ Full Accounting Lifecycle: create → edit → backdate → cascade → void → retry 7ms
+ ✓ src/lib/domain/document/slice1f.test.ts (8 tests) 1907ms
+     ✓ 1. OpenTax-AU adapter extracts supplier, date, currency, line items, and total from supported supplies PDF  331ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/domain/accounting/slice1d.test.ts > Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Links > 7. Assessor Remediation Regression Tests (Findings 1 - 7) > Finding 7: Structured Evidence Identity & Field-Level Conflict Detection
+SqliteError: no such table: transaction_evidence
+ ❯ Database.prepare node_modules/better-sqlite3/lib/methods/wrappers.js:5:21
+ ❯ src/lib/domain/accounting/slice1d.test.ts:1336:39
+    1334|             });
+    1335|             expect(result2.id).toBe(tx.id);
+    1336|             const evidenceCount2 = db.prepare('SELECT COUNT(*) as coun…
+       |                                       ^
+    1337|             expect(evidenceCount2.count).toBe(1);
+    1338|             const ev2 = db.prepare('SELECT * FROM transaction_evidence…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 18 passed (19)
+      Tests  1 failed | 203 passed (204)
+   Start at  19:16:56
+   Duration  4.23s (transform 5.20s, setup 0ms, import 6.88s, tests 2.59s, environment 2ms)
+

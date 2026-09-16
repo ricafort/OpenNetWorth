@@ -441,11 +441,14 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
                                         }}
                                         className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
                                     >
-                                        {liquidAccounts.map(acc => (
-                                            <option key={acc.id} value={acc.id}>
-                                                {acc.name} ({acc.currency})
-                                            </option>
-                                        ))}
+                                        {liquidAccounts.map(acc => {
+                                            const entityName = entities.find(e => e.id === acc.entity_id)?.name || 'Unknown Entity';
+                                            return (
+                                                <option key={acc.id} value={acc.id}>
+                                                    {entityName} - {acc.name} ({acc.currency})
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                     <p className="text-[11px] text-slate-400 mt-1">
                                         Account whose balance will reflect these deposits & withdrawals.

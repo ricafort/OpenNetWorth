@@ -1,0 +1,289 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Your finances" [level=1]
+  - paragraph: See your personal and business finances together.
+  - generic: "Viewing:"
+  - combobox:
+    - option "All my finances" [selected]
+    - option "TEST Alex (Personal)"
+    - option "TEST Alex Business (Business)"
+  - button "Transactions":
+    - generic: Transactions
+  - button "Accounts":
+    - generic: Accounts
+  - button "Reports" [active]:
+    - generic: Reports
+  - button "Documents":
+    - generic: Documents
+  - generic: Accounting Scope
+  - combobox:
+    - option "Individual Entity (Ownership Share %)" [selected]
+    - option "Household Unit (100% De-duplicated)"
+  - generic: As Of Valuation Date
+  - textbox: 2026-09-16
+  - generic: Period Start / End
+  - textbox:
+    - /placeholder: Start
+  - generic: to
+  - textbox:
+    - /placeholder: End
+  - button "Revalue Asset":
+    - generic: Revalue Asset
+  - button "Exchange Rates":
+    - generic: Exchange Rates
+  - button "Refresh All Reports":
+  - button "Your finances by owner":
+    - generic: Your finances by owner
+  - button "Cash Flow vs Accrual Performance":
+    - generic: Cash Flow vs Accrual Performance
+  - button "Ledger Drill-Down & Evidence Links":
+    - generic: Ledger Drill-Down & Evidence Links
+  - generic: Your finances by owner — Overview
+  - paragraph: Cross-entity consolidation is deferred to prevent commingling sovereign entities (individuals, companies, trusts) without certified exchange rates and inter-entity eliminations. Review each component owner's assets, liabilities, and accounts below, or select an entity to open its dedicated consolidated report.
+  - heading "TEST Alex" [level=4]
+  - generic: Personal
+  - text: "Sovereign Currency:"
+  - strong: USD
+  - paragraph: Balance as of 2026-09-16 · 15 active accounts
+  - button "View TEST Alex's Report":
+    - generic: View TEST Alex's Report
+  - generic: Net Worth (AUD)
+  - generic: AUD
+  - generic: What you own minus what you owe
+  - generic: A$102,153.00
+  - generic: "Assets: A$302,303.00"
+  - generic: "Liab: A$200,150.00"
+  - generic: Net Worth (JPY)
+  - generic: JPY
+  - generic: What you own minus what you owe
+  - generic: ¥10,000
+  - generic: "Assets: ¥10,000"
+  - generic: "Liab: ¥0"
+  - generic: Net Worth (USD)
+  - generic: USD
+  - generic: What you own minus what you owe
+  - generic: $1,000.00
+  - generic: "Assets: $1,000.00"
+  - generic: "Liab: $0.00"
+  - table:
+    - rowgroup:
+      - row "Account Type / Category Currency Balance As Of Date Action":
+        - columnheader "Account"
+        - columnheader "Type / Category"
+        - columnheader "Currency"
+        - columnheader "Balance"
+        - columnheader "As Of Date"
+        - columnheader "Action"
+    - rowgroup:
+      - row "TEST Everyday asset · checking AUD A$703.00 2026-09-16":
+        - cell "TEST Everyday"
+        - cell "asset · checking"
+        - cell "AUD"
+        - cell "A$703.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "TEST Home asset · property AUD A$300,000.00 2026-09-16":
+        - cell "TEST Home"
+        - cell "asset · property"
+        - cell "AUD"
+        - cell "A$300,000.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "TEST Household CSV asset · checking AUD A$1,000.00 2026-09-16":
+        - cell "TEST Household CSV"
+        - cell "asset · checking"
+        - cell "AUD"
+        - cell "A$1,000.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "TEST Savings asset · savings AUD A$600.00 2026-09-16":
+        - cell "TEST Savings"
+        - cell "asset · savings"
+        - cell "AUD"
+        - cell "A$600.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "TEST USD asset · checking USD $1,000.00 2026-09-16":
+        - cell "TEST USD"
+        - cell "asset · checking"
+        - cell "USD"
+        - cell "$1,000.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "TEST Yen asset · checking JPY ¥10,000 2026-09-16":
+        - cell "TEST Yen"
+        - cell "asset · checking"
+        - cell "JPY"
+        - cell "¥10,000"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Opening Balance Equity equity · opening_balance_equity AUD A$101,200.00 2026-09-16":
+        - cell "Opening Balance Equity"
+        - cell "equity · opening_balance_equity"
+        - cell "AUD"
+        - cell "A$101,200.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Opening Balance Equity equity · opening_balance_equity JPY ¥10,000 2026-09-16":
+        - cell "Opening Balance Equity"
+        - cell "equity · opening_balance_equity"
+        - cell "JPY"
+        - cell "¥10,000"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Opening Balance Equity equity · opening_balance_equity USD $1,000.00 2026-09-16":
+        - cell "Opening Balance Equity"
+        - cell "equity · opening_balance_equity"
+        - cell "USD"
+        - cell "$1,000.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Bank Fee expense · bank_fee AUD A$5.00 2026-09-16":
+        - cell "Bank Fee"
+        - cell "expense · bank_fee"
+        - cell "AUD"
+        - cell "A$5.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Loan Interest expense · loan_interest AUD A$20.00 2026-09-16":
+        - cell "Loan Interest"
+        - cell "expense · loan_interest"
+        - cell "AUD"
+        - cell "A$20.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Other expense · other AUD A$22.00 2026-09-16":
+        - cell "Other"
+        - cell "expense · other"
+        - cell "AUD"
+        - cell "A$22.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Salary income · salary AUD A$1,000.00 2026-09-16":
+        - cell "Salary"
+        - cell "income · salary"
+        - cell "AUD"
+        - cell "A$1,000.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "TEST Credit Card liability · credit_card AUD A$250.00 2026-09-16":
+        - cell "TEST Credit Card"
+        - cell "liability · credit_card"
+        - cell "AUD"
+        - cell "A$250.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "TEST Mortgage liability · mortgage AUD A$199,900.00 2026-09-16":
+        - cell "TEST Mortgage"
+        - cell "liability · mortgage"
+        - cell "AUD"
+        - cell "A$199,900.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+  - heading "TEST Alex Business" [level=4]
+  - generic: Business
+  - text: "Sovereign Currency:"
+  - strong: USD
+  - paragraph: Balance as of 2026-09-16 · 2 active accounts
+  - button "View TEST Alex Business's Report":
+    - generic: View TEST Alex Business's Report
+  - generic: Net Worth (AUD)
+  - generic: AUD
+  - generic: What you own minus what you owe
+  - generic: A$500.00
+  - generic: "Assets: A$500.00"
+  - generic: "Liab: A$0.00"
+  - table:
+    - rowgroup:
+      - row "Account Type / Category Currency Balance As Of Date Action":
+        - columnheader "Account"
+        - columnheader "Type / Category"
+        - columnheader "Currency"
+        - columnheader "Balance"
+        - columnheader "As Of Date"
+        - columnheader "Action"
+    - rowgroup:
+      - row "TEST Business Bank asset · checking AUD A$500.00 2026-09-16":
+        - cell "TEST Business Bank"
+        - cell "asset · checking"
+        - cell "AUD"
+        - cell "A$500.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+      - row "Opening Balance Equity equity · opening_balance_equity AUD A$500.00 2026-09-16":
+        - cell "Opening Balance Equity"
+        - cell "equity · opening_balance_equity"
+        - cell "AUD"
+        - cell "A$500.00"
+        - cell "2026-09-16"
+        - cell:
+          - button "Drill down to Ledger":
+- button "Open Next.js Dev Tools":
+- alert

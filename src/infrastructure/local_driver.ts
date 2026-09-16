@@ -339,6 +339,7 @@ export interface BackupArchive {
         history: NetWorthSnapshot[];
         cashFlow: CashFlowEntry[];
         settings: Record<string, any>;
+        drafts?: any[];
     };
 }
 
@@ -524,7 +525,8 @@ export function exportAllData(): string {
             recurring,
             history,
             cashFlow,
-            settings
+            settings,
+            drafts: get<any[]>('opennetworth_drafts') || []
         }
     };
 
@@ -535,6 +537,35 @@ export function exportAllData(): string {
     }
 
     return JSON.stringify(archive, null, 2);
+}
+
+/**
+ * Exports the complete, authoritative SQLite database vault (Version 2) via the backend API.
+ * 
+ * Why this exists:
+ * Milestone 1 and independent assessment findings require that exports represent a point-in-time
+ * consistent database snapshot containing both legacy and modern accounting/document collections
+ * directly from SQLite, rather than partial data read from browser localStorage.
+ */
+export async function exportAuthoritativeVault(): Promise<string> {
+    if (typeof window !== 'undefined') {
+        const res = await fetch('/api/vault');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Database export failed' }));
+            throw new Error(err.error || `Database export returned HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const archive = {
+            manifest: data.manifest || {
+                app: 'OpenNetWorth',
+                schemaVersion: 2,
+                exportTimestamp: new Date().toISOString()
+            },
+            vault: data.vault
+        };
+        return JSON.stringify(archive, null, 2);
+    }
+    return exportAllData();
 }
 
 /**
@@ -556,13 +587,17 @@ export async function importData(jsonString: string): Promise<{ success: boolean
             return { success: false, error: 'File contains invalid JSON syntax' };
         }
 
-        // 1. Pre-restore validation (TRUST-11)
-        const validation = validateBackup(parsed);
-        if (!validation.valid) {
-            return { success: false, error: validation.error };
+        const schemaVersion = parsed.manifest?.schemaVersion ?? parsed.schemaVersion ?? parsed.vault?.schemaVersion ?? 1;
+
+        // If it's a legacy V1 backup, validate using validateBackup
+        if (schemaVersion < 2) {
+            const validation = validateBackup(parsed);
+            if (!validation.valid) {
+                return { success: false, error: validation.error };
+            }
         }
 
-        const vault = parsed.vault;
+        const vault = parsed.vault || parsed;
 
         // 2. Commit durably to SQLite FIRST via atomic bulk_restore (DATA-01, TRUST-11)
         if (typeof window !== 'undefined') {
@@ -571,13 +606,9 @@ export async function importData(jsonString: string): Promise<{ success: boolean
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     action: 'bulk_restore',
-                    assets: vault.assets,
-                    liabilities: vault.liabilities,
-                    goals: vault.goals,
-                    recurring: vault.recurring,
-                    history: vault.history,
-                    cashFlow: vault.cashFlow,
-                    settings: vault.settings
+                    schemaVersion,
+                    manifest: parsed.manifest,
+                    vault
                 })
             });
 
@@ -588,14 +619,14 @@ export async function importData(jsonString: string): Promise<{ success: boolean
         }
 
         // 3. ONLY after database confirms success (HTTP 200), refresh local browser cache
-        saveAssets(vault.assets);
-        saveLiabilities(vault.liabilities);
-        saveGoals(vault.goals);
-        saveRecurringTransactions(vault.recurring);
-        set(STORAGE_KEYS.NET_WORTH_HISTORY, vault.history);
-        saveCashFlow(vault.cashFlow);
+        if (Array.isArray(vault.assets)) saveAssets(vault.assets);
+        if (Array.isArray(vault.liabilities)) saveLiabilities(vault.liabilities);
+        if (Array.isArray(vault.goals)) saveGoals(vault.goals);
+        if (Array.isArray(vault.recurring)) saveRecurringTransactions(vault.recurring);
+        if (Array.isArray(vault.history)) set(STORAGE_KEYS.NET_WORTH_HISTORY, vault.history);
+        if (Array.isArray(vault.cashFlow)) saveCashFlow(vault.cashFlow);
 
-        if (vault.settings) {
+        if (vault.settings && typeof vault.settings === 'object') {
             const { freedomSettings, dashboardLayout, ...baseSettings } = vault.settings;
             set(STORAGE_KEYS.SETTINGS, baseSettings);
             if (freedomSettings) {

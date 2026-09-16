@@ -1,0 +1,249 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Your finances" [level=1]
+  - paragraph: See your personal and business finances together.
+  - generic: "Viewing:"
+  - combobox:
+    - option "All my finances" [selected]
+    - option "TEST Alex (Personal)"
+    - option "TEST Alex Business (Business)"
+  - button "Transactions":
+    - generic: Transactions
+  - button "Accounts":
+    - generic: Accounts
+  - button "Reports":
+    - generic: Reports
+  - button "Documents":
+    - generic: Documents
+  - generic: "Date range:"
+  - textbox: 2026-09-01
+  - generic: to
+  - textbox: 2026-09-16
+  - button "Refresh transactions":
+  - button "Add transaction":
+    - generic: Add transaction
+  - heading "Transactions" [level=3]
+  - generic: Showing 6 of 6 transactions
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (opening_balance)
+  - generic: TEST Alex
+  - generic: TEST Today Balance
+  - generic: Opening Balance - TEST Today Balance
+  - generic: +A$100.12
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - generic: Loan Instalment Payment
+  - generic: "-A$125.00"
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - generic: Credit Card Bill Repayment
+  - generic: "-A$50.00"
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - generic: Internal Account Transfer
+  - generic: "-A$100.00"
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - text: Income - TEST Employer
+  - generic: — TEST Employer
+  - generic: +A$1,000.00
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - text: Preserve this note
+  - generic: — Officeworks TEST
+  - generic: "-A$22.00"
+  - button "Accounting details"
+  - button "Void transaction":
+  - heading "Unresolved Drafts (2)" [level=4]
+  - generic: Action Required
+  - text: Roundtrip preserve amount and source
+  - generic: — TEST correct JPY500
+  - generic: 2026-09-16
+  - generic: •
+  - text: "Business:"
+  - strong: TEST Alex Business
+  - generic: •
+  - text: "Payer:"
+  - strong: TEST Alex
+  - generic: •
+  - text: "Account:"
+  - strong: TEST Yen
+  - generic: •
+  - generic: "Reimbursement: yes"
+  - generic: ¥500
+  - button "Edit" [active]
+  - generic: •
+  - button "Discard"
+  - text: Personally paid business expense
+  - generic: — TEST JPY draft
+  - generic: 2026-09-16
+  - generic: •
+  - text: "Business:"
+  - strong: TEST Alex Business
+  - generic: •
+  - text: "Payer:"
+  - strong: TEST Alex
+  - generic: •
+  - text: "Account:"
+  - strong: TEST Yen
+  - generic: •
+  - generic: "Reimbursement: not_sure"
+  - generic: $500.00
+  - button "Edit"
+  - generic: •
+  - button "Discard"
+  - paragraph: These drafts do not affect your posted balances. Cross-entity automation (Owner's Draw / Due To) will be available in a future update to resolve these correctly.
+  - heading "Add expense" [level=3]
+  - paragraph: All finances
+  - button "Close dialog":
+  - button "Expense"
+  - button "Income"
+  - button "Transfer"
+  - button "Credit card payment"
+  - button "Loan payment"
+  - generic: Amount (AUD) *
+  - spinbutton: "5.00"
+  - generic: Date *
+  - textbox: 2026-09-16
+  - generic: Where did you spend it?
+  - textbox "e.g. Officeworks": TEST correct JPY500
+  - generic: Paid from *
+  - combobox:
+    - option "Choose an account" [selected]
+    - option "TEST Business Bank (A$390.00)"
+    - option "TEST Everyday (A$703.00)"
+    - option "TEST Household CSV (A$883.12)"
+    - option "TEST Savings (A$600.00)"
+    - option "TEST Today Balance (A$100.12)"
+    - option "TEST USD ($1,000.00)"
+    - option "TEST Yen (¥10,000)"
+    - option "TEST Credit Card (A$250.00)"
+    - option "+ Add an account…"
+  - generic: Category *
+  - combobox:
+    - option "Groceries" [selected]
+    - option "Utilities"
+    - option "Living expense"
+    - option "Repairs & maintenance"
+    - option "Other expense"
+  - button "Add a note":
+    - generic: Add a note
+  - checkbox "This was paid with personal funds for a business" [checked]
+  - generic: This was paid with personal funds for a business
+  - paragraph: This will be saved as a draft. Your balances will not change.
+  - generic: Which business was this for? *
+  - combobox:
+    - option "-- Select Business --"
+    - option "TEST Alex Business (Business)" [selected]
+  - generic: Who paid personally?
+  - combobox:
+    - option "-- Select Person (Optional) --"
+    - option "TEST Alex (Personal)" [selected]
+  - generic: Personal payment account used
+  - combobox:
+    - option "-- Select Personal Account (Optional) --"
+    - option "TEST Everyday (A$703.00)"
+    - option "TEST Home (A$300,000.00)"
+    - option "TEST Household CSV (A$883.12)"
+    - option "TEST Savings (A$600.00)"
+    - option "TEST Today Balance (A$100.12)"
+    - option "TEST USD ($1,000.00)"
+    - option "TEST Yen (¥10,000)" [selected]
+    - option "Opening Balance Equity (A$101,300.12)"
+    - option "Opening Balance Equity (¥10,000)"
+    - option "Opening Balance Equity ($1,000.00)"
+    - option "Bank Fee (A$5.00)"
+    - option "Loan Interest (A$20.00)"
+    - option "Office Supplies (A$37.00)"
+    - option "Other (A$22.00)"
+    - option "Utilities (A$79.88)"
+    - option "Salary (A$1,000.00)"
+    - option "TEST Credit Card (A$250.00)"
+    - option "TEST Mortgage (A$199,900.00)"
+  - generic: Will the business reimburse you? *
+  - combobox:
+    - option "Yes, I expect reimbursement (Due from Business)" [selected]
+    - option "No, it's an owner capital contribution"
+    - option "Not sure yet"
+  - button "Cancel"
+  - button "Update draft":
+    - generic: Update draft
+- button "Open Next.js Dev Tools":
+- alert

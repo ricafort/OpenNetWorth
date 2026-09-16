@@ -46,6 +46,7 @@ export const MentorsPage = () => {
         mentorId?: string;
         mentorName?: string;
         actionIntent?: any;
+        facts?: any;
     }[]>([]);
 
     const allMentors = [...STATIC_MENTORS, ...customMentors];
@@ -224,12 +225,12 @@ export const MentorsPage = () => {
                     });
                     const data = await resp.json();
                     const reply = data.response?.trim() || data.error || 'No advice could be generated at this time. Please ensure your Local LLM is active.';
-                    return { id: m.id, name: m.name, content: reply };
+                    return { id: m.id, name: m.name, content: reply, facts: data.facts };
                 })
             );
 
             responses.forEach(res => {
-                setChat(prev => [...prev, { role: 'mentor', mentorId: res.id, mentorName: res.name, content: res.content }]);
+                setChat(prev => [...prev, { role: 'mentor', mentorId: res.id, mentorName: res.name, content: res.content, facts: res.facts }]);
             });
 
             if (responses.length > 1) {

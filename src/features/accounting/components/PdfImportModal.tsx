@@ -119,9 +119,35 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
         }
     };
 
-    const handleProceedToReview = () => {
+    const handleProceedToReview = async () => {
         if (!extractedDoc) return;
-        onImportSuccess(extractedDoc.id);
+        setIsExtracting(true);
+        setError(null);
+        try {
+            for (const p of proposals) {
+                if (p.review_status !== 'approved' && p.review_status !== 'linked') {
+                    const res = await fetch('/api/documents/proposals', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            proposal_id: p.id,
+                            account_id: targetAccountId,
+                            suggested_category: selectedCategory
+                        })
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        throw new Error(errData.error || `Failed to update proposal ${p.id}`);
+                    }
+                }
+            }
+            onImportSuccess(extractedDoc.id);
+        } catch (err: any) {
+            console.error('Failed to persist account selection:', err);
+            setError(err.message || 'Failed to persist account selection.');
+        } finally {
+            setIsExtracting(false);
+        }
     };
 
     const activeProposal = proposals[0] || null;
@@ -255,14 +281,22 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
                                     </label>
                                     <select
                                         value={targetAccountId}
-                                        onChange={e => setTargetAccountId(e.target.value)}
+                                        onChange={e => {
+                                            const accId = e.target.value;
+                                            setTargetAccountId(accId);
+                                            const account = paymentAccounts.find(a => a.id === accId);
+                                            if (account) setSelectedEntityId(account.entity_id);
+                                        }}
                                         className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                                     >
-                                        {paymentAccounts.map(a => (
-                                            <option key={a.id} value={a.id}>
-                                                {a.name} ({a.currency}) - {a.type}
-                                            </option>
-                                        ))}
+                                        {paymentAccounts.map(a => {
+                                            const entityName = entities.find(e => e.id === a.entity_id)?.name || 'Unknown Entity';
+                                            return (
+                                                <option key={a.id} value={a.id}>
+                                                    {entityName} - {a.name} ({a.currency})
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
 

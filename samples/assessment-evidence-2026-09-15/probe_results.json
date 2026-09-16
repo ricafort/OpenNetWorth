@@ -1,0 +1,862 @@
+[
+  {
+    "name": "starter_real_pdf_link_reimport",
+    "status": "OBSERVED",
+    "observed": {
+      "balance_cents": 88312,
+      "before": {
+        "transactions": 4,
+        "postings": 8
+      },
+      "after": {
+        "transactions": 4,
+        "postings": 8
+      },
+      "receipt_status": "linked",
+      "csv_approval_retry": {
+        "accepted": false,
+        "error": "Idempotency conflict: A transaction with idempotency key \"doc:5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9:prop:prop-doc-bc7dd665-3941-4c17-b7c6-b87bb26139bb-r2\" already exists with different financial or material details."
+      },
+      "linked_standalone_approval": {
+        "accepted": false,
+        "error": "Cannot approve proposal \"prop-9135e0bc-8d08-4351-871c-92eb04a978f5\": this proposal is already linked to existing transaction \"4fe31c62-68a4-43a9-a068-cd251e8a27c3\" as supporting evidence."
+      }
+    }
+  },
+  {
+    "name": "all_nine_edge_cases",
+    "status": "OBSERVED",
+    "observed": [
+      {
+        "file": "ambiguous_dates.csv",
+        "rows": [
+          {
+            "date": "2025-08-07",
+            "amount": -1200,
+            "event": "expense",
+            "description": "Australian date means 7 August",
+            "findings": []
+          },
+          {
+            "date": "2025-07-08",
+            "amount": -1300,
+            "event": "expense",
+            "description": "Australian date means 8 July",
+            "findings": []
+          }
+        ],
+        "internal": 0,
+        "external": 0,
+        "approval": {
+          "accepted": true,
+          "result": {
+            "approved_count": 2,
+            "transaction_ids": [
+              "402a997d-97fb-4a16-a7c6-c1cd13bfca2a",
+              "488d719e-0bb6-4b7e-8fdf-9c0b0364c2ed"
+            ]
+          }
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 3,
+          "postings": 6
+        },
+        "balance_cents": 97500
+      },
+      {
+        "file": "currency_rounding_jpy.csv",
+        "rows": [
+          {
+            "date": "2025-07-03",
+            "amount": -500,
+            "event": "expense",
+            "description": "Fictional JPY purchase",
+            "findings": []
+          }
+        ],
+        "internal": 0,
+        "external": 0,
+        "approval": {
+          "accepted": true,
+          "result": {
+            "approved_count": 1,
+            "transaction_ids": [
+              "8c7338a3-1672-49a3-b3c4-b1d4f13d70fc"
+            ]
+          }
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 2,
+          "postings": 4
+        },
+        "balance_cents": 99500
+      },
+      {
+        "file": "duplicate_identical_rows.csv",
+        "rows": [
+          {
+            "date": "2025-07-03",
+            "amount": -2200,
+            "event": "expense",
+            "description": "Waratah Office Supplies paper ream",
+            "findings": []
+          },
+          {
+            "date": "2025-07-03",
+            "amount": -2200,
+            "event": "expense",
+            "description": "Waratah Office Supplies paper ream",
+            "findings": [
+              {
+                "severity": "warning",
+                "code": "SUSPECTED_DUPLICATE_INTERNAL",
+                "message": "Row matches earlier row #2 in this file with identical date and amount.",
+                "field": "row"
+              }
+            ]
+          }
+        ],
+        "internal": 1,
+        "external": 0,
+        "approval": {
+          "accepted": true,
+          "result": {
+            "approved_count": 2,
+            "transaction_ids": [
+              "3a30a48c-0fba-412f-bf0b-aa2b99ed2daa",
+              "f8a32a16-69d2-4080-bbec-6abb1162fca5"
+            ]
+          }
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 3,
+          "postings": 6
+        },
+        "balance_cents": 95600
+      },
+      {
+        "file": "formula_like_description.csv",
+        "rows": [
+          {
+            "date": "2025-07-03",
+            "amount": -100,
+            "event": "expense",
+            "description": "=1+1",
+            "findings": []
+          }
+        ],
+        "internal": 0,
+        "external": 0,
+        "approval": {
+          "accepted": true,
+          "result": {
+            "approved_count": 1,
+            "transaction_ids": [
+              "51295561-876d-4c47-91b8-e19149c3c825"
+            ]
+          }
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 2,
+          "postings": 4
+        },
+        "balance_cents": 99900
+      },
+      {
+        "file": "incoming_same_amount.csv",
+        "rows": [
+          {
+            "date": "2025-07-03",
+            "amount": 2200,
+            "event": "income",
+            "description": "Incoming payment is not receipt expense",
+            "findings": []
+          }
+        ],
+        "internal": 0,
+        "external": 0,
+        "approval": {
+          "accepted": true,
+          "result": {
+            "approved_count": 1,
+            "transaction_ids": [
+              "b5b5e829-64c3-4113-ae4f-7fe0d6009777"
+            ]
+          }
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 2,
+          "postings": 4
+        },
+        "balance_cents": 102200
+      },
+      {
+        "file": "invalid_amounts.csv",
+        "rows": [
+          {
+            "date": "2025-07-07",
+            "amount": 0,
+            "event": "expense",
+            "description": "Trailing characters",
+            "findings": [
+              {
+                "severity": "error",
+                "code": "INVALID_AMOUNT",
+                "message": "Invalid monetary value: \"12oops\". Entire value must be a valid numeric amount.",
+                "field": "amount"
+              }
+            ]
+          },
+          {
+            "date": "2025-07-08",
+            "amount": 0,
+            "event": "expense",
+            "description": "Two decimal separators",
+            "findings": [
+              {
+                "severity": "error",
+                "code": "INVALID_AMOUNT",
+                "message": "Invalid monetary value: \"1.2.3\". Entire value must be a valid numeric amount.",
+                "field": "amount"
+              }
+            ]
+          },
+          {
+            "date": "2025-07-09",
+            "amount": 0,
+            "event": "expense",
+            "description": "Bad thousands grouping",
+            "findings": [
+              {
+                "severity": "error",
+                "code": "INVALID_AMOUNT",
+                "message": "Invalid monetary value: \"1,2,3.00\". Entire value must be a valid numeric amount.",
+                "field": "amount"
+              }
+            ]
+          }
+        ],
+        "internal": 0,
+        "external": 0,
+        "approval": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-doc-1de81e10-8019-4ef0-b1ab-4fbec0bf5916-r2\" because it contains unresolved error findings."
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "balance_cents": 100000
+      },
+      {
+        "file": "invalid_dates.csv",
+        "rows": [
+          {
+            "date": "1970-01-01",
+            "amount": -2200,
+            "event": "expense",
+            "description": "Impossible date",
+            "findings": [
+              {
+                "severity": "error",
+                "code": "INVALID_DATE",
+                "message": "Date \"31/02/2025\" is not a valid calendar day.",
+                "field": "date"
+              }
+            ]
+          },
+          {
+            "date": "1970-01-01",
+            "amount": -1500,
+            "event": "expense",
+            "description": "Missing date",
+            "findings": [
+              {
+                "severity": "error",
+                "code": "INVALID_DATE",
+                "message": "Date field is empty or missing.",
+                "field": "date"
+              }
+            ]
+          }
+        ],
+        "internal": 0,
+        "external": 0,
+        "approval": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-doc-9fb39f47-6e62-4641-ba9e-5998b8f2046c-r2\" because it contains unresolved error findings."
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "balance_cents": 100000
+      },
+      {
+        "file": "legitimate_same_day_same_amount.csv",
+        "rows": [
+          {
+            "date": "2025-08-09",
+            "amount": -850,
+            "event": "expense",
+            "description": "Banksia Cafe two separate purchases",
+            "findings": []
+          },
+          {
+            "date": "2025-08-09",
+            "amount": -850,
+            "event": "expense",
+            "description": "Banksia Cafe two separate purchases",
+            "findings": [
+              {
+                "severity": "warning",
+                "code": "SUSPECTED_DUPLICATE_INTERNAL",
+                "message": "Row matches earlier row #2 in this file with identical date and amount.",
+                "field": "row"
+              }
+            ]
+          }
+        ],
+        "internal": 1,
+        "external": 0,
+        "approval": {
+          "accepted": true,
+          "result": {
+            "approved_count": 2,
+            "transaction_ids": [
+              "6b5e035d-5d58-4395-a260-8e74040d0954",
+              "86bcfe66-c246-446c-853a-14b22e6f6b95"
+            ]
+          }
+        },
+        "before": {
+          "transactions": 1,
+          "postings": 2
+        },
+        "after": {
+          "transactions": 3,
+          "postings": 6
+        },
+        "balance_cents": 98300
+      },
+      {
+        "file": "overlap_with_starter.csv",
+        "rows": [
+          {
+            "date": "2025-07-03",
+            "amount": -2200,
+            "event": "expense",
+            "description": "Waratah Office Supplies paper ream",
+            "findings": [
+              {
+                "severity": "warning",
+                "code": "POSSIBLE_DUPLICATE_EXISTING",
+                "message": "A posted transaction (\"Waratah Office Supplies paper ream\") with matching date and amount already exists on this account.",
+                "field": "row"
+              }
+            ]
+          },
+          {
+            "date": "2025-07-04",
+            "amount": -1500,
+            "event": "expense",
+            "description": "Waratah Office Supplies pens",
+            "findings": [
+              {
+                "severity": "warning",
+                "code": "POSSIBLE_DUPLICATE_EXISTING",
+                "message": "A posted transaction (\"Waratah Office Supplies pens\") with matching date and amount already exists on this account.",
+                "field": "row"
+              }
+            ]
+          }
+        ],
+        "internal": 0,
+        "external": 2,
+        "approval": {
+          "accepted": true,
+          "result": {
+            "approved_count": 2,
+            "transaction_ids": [
+              "f8a3fc3c-7007-488a-89c3-9d4087175559",
+              "9fabac92-b538-4e7e-838a-a204cfb51bd8"
+            ]
+          }
+        },
+        "before": {
+          "transactions": 4,
+          "postings": 8
+        },
+        "after": {
+          "transactions": 6,
+          "postings": 12
+        },
+        "balance_cents": 84612
+      }
+    ]
+  },
+  {
+    "name": "invalid_date_and_amount_correction",
+    "status": "OBSERVED",
+    "observed": [
+      {
+        "file": "invalid_dates.csv",
+        "updated_date": "2025-07-03",
+        "updated_amount": -2200,
+        "findings": [
+          {
+            "severity": "error",
+            "code": "INVALID_DATE",
+            "message": "Date \"31/02/2025\" is not a valid calendar day.",
+            "field": "date"
+          }
+        ],
+        "approval": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-doc-5a60ef4a-9fd8-4545-bc6d-2e3c182c4617-r2\" because it contains unresolved error findings."
+        }
+      },
+      {
+        "file": "invalid_amounts.csv",
+        "updated_date": "2025-07-03",
+        "updated_amount": -2200,
+        "findings": [
+          {
+            "severity": "error",
+            "code": "INVALID_AMOUNT",
+            "message": "Invalid monetary value: \"12oops\". Entire value must be a valid numeric amount.",
+            "field": "amount"
+          }
+        ],
+        "approval": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-doc-06657113-baad-4f1a-8dc4-4c03b3c0b8af-r2\" because it contains unresolved error findings."
+        }
+      }
+    ]
+  },
+  {
+    "name": "mismatched_entity_approval",
+    "status": "OBSERVED",
+    "observed": {
+      "outcome": {
+        "accepted": false,
+        "error": "Cross-entity transaction rejected: Account \"Checking\" belongs to entity \"54ccb901-1bf9-4b83-b11a-afc1d030781a\", while other postings in this transaction belong to entity \"70dc3df0-45e0-410e-930c-7aa0e3c1f54d\". In Slice 1C, all postings in a transaction must belong to the same sovereign entity."
+      },
+      "splits": []
+    }
+  },
+  {
+    "name": "same_file_different_account",
+    "status": "OBSERVED",
+    "observed": {
+      "same_document": true,
+      "requested_account": "1ad0c148-cd88-4208-ac72-8ae83a52628b",
+      "returned_account": "45567014-9bad-402c-b25f-e9f43c226e10",
+      "returned_status": "approved",
+      "approval": {
+        "accepted": false,
+        "error": "Cannot approve proposal \"prop-doc-2be0236a-34da-4c0f-8e47-cb47a423f33d-r2\": reviewed account \"45567014-9bad-402c-b25f-e9f43c226e10\" does not match approval target account \"1ad0c148-cd88-4208-ac72-8ae83a52628b\"."
+      }
+    }
+  },
+  {
+    "name": "all_real_pdfs_and_unpaid_gate",
+    "status": "OBSERVED",
+    "observed": [
+      {
+        "file": "credit_card_statement.pdf",
+        "supported": false,
+        "proposal": {
+          "supplier": null,
+          "date": "2026-09-15",
+          "currency": "",
+          "amount": 0,
+          "findings": [
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "This document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            },
+            {
+              "severity": "error",
+              "code": "MISSING_CURRENCY",
+              "message": "Document currency could not be identified with confidence. Retained as unresolved until reviewed."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Supplier could not be identified with confidence. Retained for manual review."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Document could not be matched with a specialized tax parser. Retained raw text with PII redactions for general review."
+            },
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "Document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            }
+          ]
+        },
+        "unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-265835b8-9060-49a0-945c-1dd9909716ea\" because it contains unresolved error findings."
+        },
+        "forced_paid": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-265835b8-9060-49a0-945c-1dd9909716ea\" because it contains unresolved error findings."
+        }
+      },
+      {
+        "file": "household_bank_statement.pdf",
+        "supported": false,
+        "proposal": {
+          "supplier": null,
+          "date": "2026-09-15",
+          "currency": "",
+          "amount": 0,
+          "findings": [
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "This document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            },
+            {
+              "severity": "error",
+              "code": "MISSING_CURRENCY",
+              "message": "Document currency could not be identified with confidence. Retained as unresolved until reviewed."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Supplier could not be identified with confidence. Retained for manual review."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Document could not be matched with a specialized tax parser. Retained raw text with PII redactions for general review."
+            },
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "Document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            }
+          ]
+        },
+        "unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-204aed66-9fcc-4e4a-826c-18ec701be3b6\" because it contains unresolved error findings."
+        },
+        "forced_paid": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-204aed66-9fcc-4e4a-826c-18ec701be3b6\" because it contains unresolved error findings."
+        }
+      },
+      {
+        "file": "invoice_unpaid_330.pdf",
+        "supported": true,
+        "proposal": {
+          "supplier": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION",
+          "date": "2025-09-20",
+          "currency": "DUE",
+          "amount": -33000,
+          "findings": [
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+            },
+            {
+              "severity": "warning",
+              "code": "CURRENCY_MISMATCH",
+              "message": "Document currency (DUE) does not match payment account currency (AUD). Approval will be blocked until payment account matches."
+            }
+          ]
+        },
+        "unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-1cdf4b12-90c6-4e07-bd6d-4766c4d9b2c0\": reviewed currency \"DUE\" does not match approval target account currency \"AUD\"."
+        },
+        "paid_invalid_currency": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-1cdf4b12-90c6-4e07-bd6d-4766c4d9b2c0\": reviewed currency \"DUE\" does not match approval target account currency \"AUD\"."
+        },
+        "corrected_unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-1cdf4b12-90c6-4e07-bd6d-4766c4d9b2c0\": payment must be explicitly confirmed before recording an expense."
+        },
+        "corrected_confirmed": {
+          "accepted": true,
+          "result": {
+            "approved_count": 1,
+            "transaction_ids": [
+              "290084c6-1dee-487b-aa9b-055419885f11"
+            ]
+          }
+        }
+      },
+      {
+        "file": "mortgage_statements_and_schedule.pdf",
+        "supported": false,
+        "proposal": {
+          "supplier": null,
+          "date": "2026-09-15",
+          "currency": "",
+          "amount": 0,
+          "findings": [
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "This document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            },
+            {
+              "severity": "error",
+              "code": "MISSING_CURRENCY",
+              "message": "Document currency could not be identified with confidence. Retained as unresolved until reviewed."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Supplier could not be identified with confidence. Retained for manual review."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Document could not be matched with a specialized tax parser. Retained raw text with PII redactions for general review."
+            },
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "Document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            }
+          ]
+        },
+        "unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-af41aec8-bad6-49a2-9bcf-48abc9d26b2d\" because it contains unresolved error findings."
+        },
+        "forced_paid": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-af41aec8-bad6-49a2-9bcf-48abc9d26b2d\" because it contains unresolved error findings."
+        }
+      },
+      {
+        "file": "property_manager_statement.pdf",
+        "supported": false,
+        "proposal": {
+          "supplier": null,
+          "date": "2026-09-15",
+          "currency": "",
+          "amount": 0,
+          "findings": [
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "This document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            },
+            {
+              "severity": "error",
+              "code": "MISSING_CURRENCY",
+              "message": "Document currency could not be identified with confidence. Retained as unresolved until reviewed."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Supplier could not be identified with confidence. Retained for manual review."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "These are document amounts only. Missing amounts and tax treatment still need checking."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Money paid to the rental owner is a cash payment, not a confirmed taxable rental profit. Expense amounts are not confirmed tax deductions."
+            },
+            {
+              "severity": "error",
+              "code": "UNSUPPORTED_LAYOUT",
+              "message": "Document does not match the supported text-based supplies invoice layout and has been retained as unresolved."
+            }
+          ]
+        },
+        "unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-ae2c9261-aef5-48ca-97a7-7a5da4be505f\" because it contains unresolved error findings."
+        },
+        "forced_paid": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-ae2c9261-aef5-48ca-97a7-7a5da4be505f\" because it contains unresolved error findings."
+        }
+      },
+      {
+        "file": "receipt_business_supplies_110.pdf",
+        "supported": true,
+        "proposal": {
+          "supplier": "Waratah Office Supplies",
+          "date": "2025-07-11",
+          "currency": "AUD",
+          "amount": -11000,
+          "findings": [
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+            }
+          ]
+        },
+        "unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-370ae636-06b6-4b0c-a19a-a12314e71345\": payment must be explicitly confirmed before recording an expense."
+        }
+      },
+      {
+        "file": "receipt_office_supplies_22.pdf",
+        "supported": true,
+        "proposal": {
+          "supplier": "Waratah Office Supplies",
+          "date": "2025-07-03",
+          "currency": "AUD",
+          "amount": -2200,
+          "findings": [
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+            }
+          ]
+        },
+        "unconfirmed": {
+          "accepted": false,
+          "error": "Cannot approve proposal \"prop-eda2ce87-8928-41f1-af24-4646c003490f\": payment must be explicitly confirmed before recording an expense."
+        }
+      }
+    ]
+  },
+  {
+    "name": "full_quarter_service_import_and_naive_approval",
+    "status": "OBSERVED",
+    "observed": {
+      "accounts": [
+        {
+          "account": "HH-EVERYDAY",
+          "rows": 62,
+          "internal": 1,
+          "approval": true,
+          "closing_signed_cents": 2626915,
+          "expected_closing": 2626915
+        },
+        {
+          "account": "HH-SAVINGS",
+          "rows": 6,
+          "internal": 0,
+          "approval": true,
+          "closing_signed_cents": 2829400,
+          "expected_closing": 2829400
+        },
+        {
+          "account": "HH-CARD",
+          "rows": 29,
+          "internal": 0,
+          "approval": true,
+          "closing_signed_cents": 0,
+          "expected_closing": 0
+        },
+        {
+          "account": "HH-RENTAL",
+          "rows": 6,
+          "internal": 0,
+          "approval": true,
+          "closing_signed_cents": 400016,
+          "expected_closing": 400016
+        },
+        {
+          "account": "BIZ-BANK",
+          "rows": 16,
+          "internal": 0,
+          "approval": true,
+          "closing_signed_cents": 3457500,
+          "expected_closing": 3457500
+        }
+      ],
+      "naive_income_expenses": [
+        {
+          "entity": "Household",
+          "income_cents": 4485670,
+          "expense_cents": 3069339
+        },
+        {
+          "entity": "Company",
+          "income_cents": 1650000,
+          "expense_cents": 192500
+        }
+      ],
+      "alternative_rows": 62,
+      "alternative_existing_matches": 62
+    }
+  },
+  {
+    "name": "actual_incoming_fixture_cannot_match_expense_receipt",
+    "status": "OBSERVED",
+    "observed": {
+      "candidates": 0,
+      "forced": {
+        "accepted": false,
+        "error": "Transaction \"e19633e4-61dc-4827-9191-6d4ce2ff21f9\" does not have a payment account posting matching proposal amount (-2200 cents), currency (AUD), and direction (expense)."
+      },
+      "before": {
+        "transactions": 2,
+        "postings": 4
+      }
+    }
+  },
+  {
+    "name": "mixed_valid_invalid_batch_rolls_back",
+    "status": "OBSERVED",
+    "observed": {
+      "outcome": {
+        "accepted": false,
+        "error": "Cannot approve proposal \"prop-doc-6e0132d1-bbd5-4126-bcf2-131e42a19f07-r3\" because it contains unresolved error findings."
+      },
+      "before": {
+        "transactions": 1,
+        "postings": 2
+      },
+      "after": {
+        "transactions": 1,
+        "postings": 2
+      }
+    }
+  }
+]

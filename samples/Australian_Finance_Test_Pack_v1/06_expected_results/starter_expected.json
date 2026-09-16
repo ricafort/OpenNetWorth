@@ -1,0 +1,19 @@
+{
+  "scenario": "fresh isolated vault; opening Everyday Checking AUD 1000; Business Operating AUD 500",
+  "household_rows": 3,
+  "household_expense_cents": 11688,
+  "household_closing_cents": 88312,
+  "business_rows": 1,
+  "business_expense_cents": 11000,
+  "business_closing_cents": 39000,
+  "household_office_supplies_cents": 3700,
+  "household_utilities_cents": 7988,
+  "receipt_linking_additional_postings": 0,
+  "receipt_linking_balance_change_cents": 0,
+  "receipt_coverage_household": {
+    "with_receipt": 1,
+    "without_receipt": 2
+  },
+  "unpaid_invoice_total_cents": 33000,
+  "unpaid_invoice_expected_cash_effect_cents": 0
+}

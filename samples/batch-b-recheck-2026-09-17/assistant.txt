@@ -1,0 +1,60 @@
+Browser tab: 5, Title: "Board of Mentors | OpenNetWorth", URL: "http://localhost:4007/mentors".
+0 AXWebArea Board of Mentors | OpenNetWorth, URL: localhost:4007/mentors
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 container
+			4 link Description: Dashboard, Value: localhost:4007/
+			5 link Description: Accounting My finances, Value: localhost:4007/accounting
+			6 link Description: Assets What I own, Value: localhost:4007/assets
+			7 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			8 link Description: Goals, Value: localhost:4007/goals
+			9 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			10 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			11 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			12 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			13 link Description: Privacy, Value: localhost:4007/privacy
+		14 text ON Local Vault Owner 🔒 100% On-Device
+		15 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		16 button Light Mode
+		17 button Stealth Mode
+		18 button System Theme
+		19 button Blur Values
+		20 text v 1.0.0
+	52 container
+		53 heading AI Mentors, Value: 2
+			54 text AI Mentors
+		55 text Consult your private board (Multi-select active).
+		56 button Mentor Controls
+		57 text STANDARD BOARD
+		58 button Long-Term Thinker Focuses on the power of time and consistent discipline.
+			59 text Long-Term Thinker
+			60 text Focuses on the power of time and consistent discipline.
+		61 button Risk Guardian Prioritizes capital preservation and resilience against shocks.
+			62 text Risk Guardian
+			63 text Prioritizes capital preservation and resilience against shocks.
+		64 button Growth Optimist Looks for underutilized resources and creative expansion.
+			65 text Growth Optimist
+			66 text Looks for underutilized resources and creative expansion.
+		67 button Stoic Minimalist Finds freedom in simplicity and detachment from comparison.
+			68 text Stoic Minimalist
+			69 text Finds freedom in simplicity and detachment from comparison.
+		70 button ADD YOUR OWN MENTOR
+		71 text Board Mode:
+		72 text  Select multiple mentors to triangulate wisdom. Responses are provided individually, followed by a combined summary.
+		73 heading Board Consultation, Value: 3
+			74 text Board Consultation
+		75 text SINGLE PERSPECTIVE
+		76 button REFLECT
+		77 button LEARN
+		94 text How much did I spend on 2026-09-16? LONG-TERM THINKER On 2026-09-16, you spent **A$25.00** for Alex (transfers and cancelled transactions excluded).
+
+That amount is small in isolation, but time turns habits into outcomes. With a net worth of **-649.35 USD**—meaning liabilities exceed assets by that amount—the lesson isn’t about one A$25 charge; it’s about consistency. Every expense either supports your long-term stability or quietly erodes it. Track the pattern, protect cash flow, and let discipline compound.
+
+Educational perspective only. Not financial advice. Verified Facts TEST Alex  |  2026-09-16 Total Expenses ( AUD ) A$25.00 Based on  2  supporting transactions.
+		95 link Description: View Source Records →, Value: localhost:4007/accounting?view=reports
+		93 text field (settable)
+	25 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		26 image
+	51 text Board of Mentors | OpenNetWorth
+
+The focused UI element is 93 text field (settable)

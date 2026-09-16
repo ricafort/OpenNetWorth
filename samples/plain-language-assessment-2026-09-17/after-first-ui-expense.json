@@ -1,0 +1,99 @@
+{
+  "success": true,
+  "entities": [
+    {
+      "id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "name": "TEST Alex",
+      "type": "person",
+      "currency": "USD",
+      "parent_entity_id": null,
+      "created_at": "2026-09-16T12:55:09.935Z",
+      "updated_at": "2026-09-16T12:55:09.935Z"
+    },
+    {
+      "id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+      "name": "TEST Alex Business",
+      "type": "business",
+      "currency": "USD",
+      "parent_entity_id": null,
+      "created_at": "2026-09-16T12:55:09.95Z",
+      "updated_at": "2026-09-16T12:55:09.95Z"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "8cfc3de5-5565-42d3-8b8e-75eb1dea399c",
+      "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "name": "TEST Everyday",
+      "type": "asset",
+      "sub_type": "checking",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-16T12:55:42.66Z",
+      "updated_at": "2026-09-16T12:55:42.66Z",
+      "balance_cents": -2200,
+      "formatted_balance": "-A$22.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "acc-exp-87e9194f-afed-4bae-8d3d-5a362b2395d2-other-aud",
+      "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "name": "Other",
+      "type": "expense",
+      "sub_type": "other",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-16T12:55:52.493Z",
+      "updated_at": "2026-09-16T12:55:52.493Z",
+      "balance_cents": 2200,
+      "formatted_balance": "A$22.00",
+      "as_of_date": "2026-09-16"
+    }
+  ],
+  "net_worth": null,
+  "period_income_expenses": null,
+  "transactions": [
+    {
+      "id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+      "date": "2026-09-16",
+      "description": "Preserve this note",
+      "payee_or_payer": "Officeworks TEST",
+      "status": "posted",
+      "origin": "manual",
+      "idempotency_key": "ea5a6071-b375-44ff-8da8-4071a636aebf",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-16T12:55:52.493Z",
+      "updated_at": "2026-09-16T12:55:52.493Z",
+      "postings": [
+        {
+          "id": "9459effc-7955-4a3f-940a-b317c3c3fd0a",
+          "transaction_id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+          "account_id": "acc-exp-87e9194f-afed-4bae-8d3d-5a362b2395d2-other-aud",
+          "amount_cents": 2200,
+          "currency": "AUD",
+          "memo": "Preserve this note"
+        },
+        {
+          "id": "90f2b128-6d33-4f4f-b57e-dc17229844ae",
+          "transaction_id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+          "account_id": "8cfc3de5-5565-42d3-8b8e-75eb1dea399c",
+          "amount_cents": -2200,
+          "currency": "AUD",
+          "memo": "Payment to Officeworks TEST"
+        }
+      ]
+    }
+  ],
+  "total_count": 1
+}

@@ -1,0 +1,57 @@
+Browser tab: 5, Title: "OpenNetWorth | 100% Private, Local-First Financial Control Room", URL: "http://localhost:4007/freedom".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~		24 text Design your exit strategy from debt. Payoff Strategy
++		27 button Avalanche
++		28 button Snowball
++		29 button Minimum
++		30 text Highest interest rate first. Mathematically optimal. Extra Monthly Payment $
++		31 stepper (settable, integer) 500
++		32 container
++			33 text YOUR FREEDOM DATE
++			34 heading December 17, 2026, Value: 2
++				35 text December 17, 2026
++			36 text EFFECTIVE APR 10.0% (Weighted Avg) MONTHLY BURN $5 lost to interest Time to Payoff 2  months Total Interest $6 Total Paid $656
++		37 heading Payoff Timeline, Value: 3
++			38 text Payoff Timeline
++		39 container
++			40 text Nov 26
++		41 heading STRATEGY IMPACT, Value: 3
++			42 text STRATEGY IMPACT
++		43 text Time Saved 12  months Interest Saved $35 "Compound interest is the eighth wonder of the world. He who understands it, earns it... he who doesn't... pays it."
++		44 heading Payoff Schedule, Value: 3
++			45 text Payoff Schedule
++		46 table
++			47 row
++				48 cell
++					49 text Month
++				50 cell
++					51 text Total Payment
++				52 cell
++					53 text Principal
++				54 cell
++					55 text Interest
++				56 cell
++					57 text Remaining Balance
++			58 row
++				59 cell
++					60 text 2026-10
++				61 cell
++					62 text $550
++				63 cell
++					64 text $545
++				65 cell
++					66 text $5
++				67 cell
++					68 text $105
++			69 row
++				70 cell
++					71 text 2026-11
++				72 cell
++					73 text $106
++				74 cell
++					75 text $105
++				76 cell
++					77 text $1
++				78 cell
++					79 text $0
+The focused UI element is 0 AXWebArea OpenNetWorth | 100% Private, Local-First Financial Control Room, URL: localhost:4007/freedom

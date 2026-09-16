@@ -2,7 +2,7 @@
 
 import { useState, ChangeEvent, useEffect } from 'react';
 import { Download, Upload, Trash2, AlertTriangle, FileJson } from 'lucide-react';
-import { exportAllData, importData, clearAllData } from '@/infrastructure/local_driver';
+import { exportAuthoritativeVault, importData, clearAllData } from '@/infrastructure/local_driver';
 
 export default function DataManagement() {
     const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -16,9 +16,11 @@ export default function DataManagement() {
         }
     }, []);
 
-    const handleExport = () => {
+    const handleExport = async () => {
         try {
-            const data = exportAllData();
+            // Why: Use authoritative export from SQLite snapshot (Version 2) to ensure
+            // all modern accounting and document tables are included.
+            const data = await exportAuthoritativeVault();
             const blob = new Blob([data], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -29,7 +31,7 @@ export default function DataManagement() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            // Save export date
+            // Save export date ONLY AFTER download trigger succeeds
             const now = new Date().toLocaleString();
             localStorage.setItem('last_export_date', now);
             setLastExportDate(now);

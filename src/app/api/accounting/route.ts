@@ -52,8 +52,10 @@ import {
     recordLoanRepayment,
     recordAssetValuation,
     correctTransaction,
-    listTransactions
+    listTransactions,
+    countTransactions
 } from '@/lib/domain/accounting/transactionService';
+import { saveDraft, getDrafts, deleteDraft } from '@/lib/domain/accounting/draftService';
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ScopeType } from '@/lib/domain/accounting/types';
 
@@ -69,6 +71,16 @@ export async function GET(request: Request) {
         const startDate = url.searchParams.get('start_date') || undefined;
         const endDate = url.searchParams.get('end_date') || undefined;
         const includeTransactions = url.searchParams.get('include_transactions') === 'true';
+        const limitParam = url.searchParams.get('limit');
+        const fetchLimit = limitParam ? parseInt(limitParam, 10) : 500;
+        const offsetParam = url.searchParams.get('offset');
+        const fetchOffset = offsetParam ? parseInt(offsetParam, 10) : 0;
+
+        // Drafts query (M1-DRAFT-01, Clarification 3)
+        if (view === 'drafts') {
+            const drafts = getDrafts(db, entityId && entityId !== 'all' ? { entity_id: entityId } : undefined);
+            return NextResponse.json({ success: true, drafts });
+        }
 
         // Slice 1D: View-specific queries
         if (view === 'drilldown') {
@@ -106,9 +118,34 @@ export async function GET(request: Request) {
         }
 
         if (view === 'reports') {
+            const scopeId = url.searchParams.get('scope_id') || entityId;
             const reportType = url.searchParams.get('report_type');
+
+            // Safe handling for 'all' scope in reports (Clarification 1)
+            if (scopeId === 'all' || entityId === 'all') {
+                const allEnts = listEntities(db);
+                const componentEntities = allEnts.map(ent => ({
+                    entity: ent,
+                    net_worth: getEntityNetWorth(db, ent.id, asOfDate),
+                    accounts: listAccounts(db, ent.id).map(acc => {
+                        const bal = getAccountBalance(db, acc.id, asOfDate);
+                        return {
+                            ...acc,
+                            balance_cents: bal.balance_cents,
+                            formatted_balance: bal.formatted_balance,
+                            as_of_date: bal.as_of_date
+                        };
+                    })
+                }));
+                return NextResponse.json({
+                    success: true,
+                    is_everything: true,
+                    component_entities: componentEntities,
+                    report: null
+                });
+            }
+
             if (reportType === 'scope_net_worth') {
-                const scopeId = url.searchParams.get('scope_id') || entityId;
                 const scopeType = (url.searchParams.get('scope_type') || 'individual') as ScopeType;
                 if (!scopeId) {
                     return NextResponse.json({ error: 'Missing required parameter: scope_id' }, { status: 400 });
@@ -155,7 +192,7 @@ export async function GET(request: Request) {
         const entities = listEntities(db);
 
         // If specific entity requested, return scoped accounts, calculated balances, net worth, and period cash flow
-        if (entityId) {
+        if (entityId && entityId !== 'all') {
             const entity = getEntity(db, entityId);
             if (!entity) {
                 return NextResponse.json({ error: `Entity not found: ${entityId}` }, { status: 404 });
@@ -174,8 +211,9 @@ export async function GET(request: Request) {
 
             const netWorth = getEntityNetWorth(db, entityId, asOfDate);
             const incomeExpenses = getPeriodIncomeAndExpenses(db, entityId, startDate, endDate);
+            const totalCount = countTransactions(db, { entityId, startDate, endDate });
             const transactions = includeTransactions
-                ? listTransactions(db, { entityId, startDate, endDate, limit: 100 })
+                ? listTransactions(db, { entityId, startDate, endDate, limit: fetchLimit, offset: fetchOffset })
                 : undefined;
 
             return NextResponse.json({
@@ -184,21 +222,38 @@ export async function GET(request: Request) {
                 accounts: accountsWithBalances,
                 net_worth: netWorth,
                 period_income_expenses: incomeExpenses,
-                transactions
+                transactions,
+                total_count: totalCount
             });
         }
 
         // Default: return all entities, accounts, and optional transactions
         const allAccounts = listAccounts(db);
+        const accountsWithBalances = allAccounts.map(acc => {
+            const bal = getAccountBalance(db, acc.id, asOfDate);
+            return {
+                ...acc,
+                balance_cents: bal.balance_cents,
+                formatted_balance: bal.formatted_balance,
+                as_of_date: bal.as_of_date
+            };
+        });
+
+        const totalCount = countTransactions(db, { startDate, endDate });
         const transactions = includeTransactions
-            ? listTransactions(db, { limit: 100 })
+            ? listTransactions(db, { startDate, endDate, limit: fetchLimit, offset: fetchOffset })
             : undefined;
 
+        // Note: Full cross-entity consolidation rules are complex (e.g. investments vs underlying assets).
+        // For the MVP "Everything" view, we return null for net_worth to prompt the UI to show component totals instead of a misleading grand total.
         return NextResponse.json({
             success: true,
             entities,
-            accounts: allAccounts,
-            transactions
+            accounts: accountsWithBalances,
+            net_worth: null, 
+            period_income_expenses: null,
+            transactions,
+            total_count: totalCount
         });
     } catch (error: any) {
         console.error('Accounting API GET Error:', error);
@@ -342,6 +397,34 @@ export async function POST(request: Request) {
             if (!rate) return NextResponse.json({ error: 'Missing exchange rate payload' }, { status: 400 });
             const saved = setExchangeRate(db, rate);
             return NextResponse.json({ success: true, exchange_rate: saved }, { status: 201 });
+        }
+
+        // 10. Save Draft (M1-DRAFT-01, Clarification 3)
+        // Why this exists:
+        // Persists unposted/unresolved financial tasks (e.g. personally paid business expenses)
+        // directly into the authoritative SQLite vault so drafts survive cross-browser reopening.
+        // Validates server-side while allowing genuinely unknown facts to remain null.
+        if (action === 'save_draft') {
+            const { draft } = body;
+            if (!draft || typeof draft !== 'object') {
+                return NextResponse.json({ error: 'Missing draft payload' }, { status: 400 });
+            }
+            try {
+                const saved = saveDraft(db, draft);
+                return NextResponse.json({ success: true, draft: saved });
+            } catch (err: any) {
+                return NextResponse.json({ error: err.message }, { status: 400 });
+            }
+        }
+
+        // 11. Delete Draft
+        // Why this exists:
+        // Discards or cleans up finalized drafts once converted to ledger postings or rejected.
+        if (action === 'delete_draft') {
+            const { id } = body;
+            if (!id) return NextResponse.json({ error: 'Missing draft id' }, { status: 400 });
+            deleteDraft(db, id);
+            return NextResponse.json({ success: true, deleted_id: id });
         }
 
         return NextResponse.json({ error: `Unsupported action: ${action}` }, { status: 400 });

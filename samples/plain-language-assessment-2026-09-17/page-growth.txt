@@ -1,0 +1,135 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments" [active]:
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Your finances" [level=1]
+  - paragraph: See your personal and business finances together.
+  - generic: "Viewing:"
+  - combobox:
+    - option "All my finances" [selected]
+    - option "TEST Alex (Personal)"
+    - option "TEST Alex Business (Business)"
+  - button "Transactions":
+    - generic: Transactions
+  - button "Accounts":
+    - generic: Accounts
+  - button "Reports":
+    - generic: Reports
+  - button "Documents":
+    - generic: Documents
+  - button "Back to Document Inbox":
+  - heading "receipt_office_supplies_22.pdf" [level=2]
+  - generic: "SHA-256: f63b3d1d...c91c36f3"
+  - paragraph: Review column extractions, duplicate flags, and confirm atomic ledger entries.
+  - generic: "Target Bank Account:"
+  - combobox:
+    - option "TEST Business Bank (AUD)"
+    - option "TEST Everyday (AUD)"
+    - option "TEST Home (AUD)"
+    - option "TEST Household CSV (AUD)" [selected]
+    - option "TEST Savings (AUD)"
+    - option "TEST Today Balance (AUD)"
+    - option "TEST USD (USD)"
+    - option "TEST Yen (JPY)"
+  - generic: Total Extracted
+  - generic: 1 rows
+  - generic: Unreviewed
+  - generic: 0 pending
+  - generic: Posted to Ledger
+  - generic: 0 approved
+  - generic: Linked as Evidence
+  - generic: 1 linked
+  - generic: Issues & Duplicates
+  - generic: 1 flagged
+  - button "All (1)"
+  - button "Pending (0)"
+  - button "Posted (0)"
+  - button "Linked (1)"
+  - button "Issues (1)"
+  - button "Deselect All"
+  - button "Approve Selected (0)" [disabled]:
+    - generic: Approve Selected (0)
+  - table:
+    - rowgroup:
+      - row "Date Description / Payee Inflow / Outflow Counterpart Category Payment Confirmed Flags & Status Evidence Source Actions":
+        - columnheader:
+          - checkbox
+        - columnheader "Date"
+        - columnheader "Description / Payee"
+        - columnheader "Inflow / Outflow"
+        - columnheader "Counterpart Category"
+        - columnheader "Payment Confirmed"
+        - columnheader "Flags & Status"
+        - columnheader "Evidence Source"
+        - columnheader "Actions"
+    - rowgroup:
+      - 'row "2025-07-03 Waratah Office Supplies - Printer paper ream -$22.00 office supplies Evidence Linked Linked to existing transaction SYNTHETIC SAMPLE - NOT A REAL TRANSACTION Waratah Office Supplies Invoice and payment receipt Invoice: WOS-0703 Date: 03/07/2025 10:34 Billed to: Alex Nguyen All amounts in Australian dollars (AUD). Fictional supplier. Australian Business Number (ABN) omitted. Description Amount Printer paper ream $22.00 TOTAL PAID $22.00 Includes goods and services tax (GST): $2.00 Linked"':
+        - cell:
+          - checkbox [disabled]
+        - cell "2025-07-03"
+        - cell "Waratah Office Supplies - Printer paper ream"
+        - cell "-$22.00"
+        - cell "office supplies"
+        - cell "Evidence Linked":
+          - text: Evidence Linked
+        - cell "Linked to existing transaction":
+          - text: Linked to existing transaction
+        - 'cell "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION Waratah Office Supplies Invoice and payment receipt Invoice: WOS-0703 Date: 03/07/2025 10:34 Billed to: Alex Nguyen All amounts in Australian dollars (AUD). Fictional supplier. Australian Business Number (ABN) omitted. Description Amount Printer paper ream $22.00 TOTAL PAID $22.00 Includes goods and services tax (GST): $2.00"':
+          - 'generic "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION Waratah Office Supplies Invoice and payment receipt Invoice: WOS-0703 Date: 03/07/2025 10:34 Billed to: Alex Nguyen All amounts in Australian dollars (AUD). Fictional supplier. Australian Business Number (ABN) omitted. Description Amount Printer paper ream $22.00 TOTAL PAID $22.00 Includes goods and services tax (GST): $2.00"'
+        - cell "Linked":
+          - text: Linked
+- button "Open Next.js Dev Tools":
+  - text: Compiling
+  - generic: .
+  - generic: .
+  - generic: .
+- alert

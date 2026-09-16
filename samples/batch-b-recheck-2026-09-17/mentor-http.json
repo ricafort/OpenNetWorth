@@ -1,0 +1,51 @@
+{
+  "response": "### Mentor (Wisdom) Perspective\n\nLooking at your deterministic facts for TEST Alex during 2026-09-16, your expenses were: A$25.00.\n\n*\"Focus on the controllable variables: your savings rate, debt elimination velocity, and keeping your capital protected against unexpected shocks.\"*\n\n> 💡 *Tip: Local LLM is currently offline or loading. Start LM Studio (port 1234) or Ollama (run `ollama run llama3.2`) to enable live private AI chat on your machine.*\n\nEducational perspective only. Not financial advice.",
+  "isOfflineFallback": true,
+  "facts": {
+    "type": "spending",
+    "periodLabel": "2026-09-16",
+    "entityName": "TEST Alex",
+    "totals": {
+      "AUD": 2500
+    },
+    "formattedTotals": {
+      "AUD": "A$25.00"
+    },
+    "transactionIds": [
+      "fed5f4b8-9320-441c-a9ba-7166e4bb81bb",
+      "19f3eae0-7853-40a3-a07a-20da985c3696"
+    ],
+    "categories": [
+      {
+        "account_id": "acc-inc-87e9194f-afed-4bae-8d3d-5a362b2395d2-salary-aud",
+        "account_name": "Salary",
+        "type": "income",
+        "sub_type": "salary",
+        "currency": "AUD",
+        "total_cents": 100000,
+        "formatted_total": "A$1,000.00",
+        "transaction_count": 1
+      },
+      {
+        "account_id": "acc-exp-87e9194f-afed-4bae-8d3d-5a362b2395d2-loan_interest-aud",
+        "account_name": "Loan Interest",
+        "type": "expense",
+        "sub_type": "loan_interest",
+        "currency": "AUD",
+        "total_cents": 2000,
+        "formatted_total": "A$20.00",
+        "transaction_count": 1
+      },
+      {
+        "account_id": "acc-exp-87e9194f-afed-4bae-8d3d-5a362b2395d2-bank_fee-aud",
+        "account_name": "Bank Fee",
+        "type": "expense",
+        "sub_type": "bank_fee",
+        "currency": "AUD",
+        "total_cents": 500,
+        "formatted_total": "A$5.00",
+        "transaction_count": 1
+      }
+    ]
+  }
+}

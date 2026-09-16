@@ -12,16 +12,23 @@ function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
+/**
+ * Sidebar Navigation Structure
+ * Why this structure exists:
+ * Keeps original feature names for continuity while providing clear,
+ * layman subtitles (e.g. Accounting -> My finances, Growth Engine -> Investments)
+ * to help users instantly understand the destination of each section.
+ */
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Accounting', href: '/accounting', icon: BookOpen },
-    { name: 'Assets', href: '/assets', icon: Wallet },
-    { name: 'Liabilities', href: '/liabilities', icon: CreditCard },
+    { name: 'Accounting', href: '/accounting', icon: BookOpen, subtitle: 'My finances' },
+    { name: 'Assets', href: '/assets', icon: Wallet, subtitle: 'What I own' },
+    { name: 'Liabilities', href: '/liabilities', icon: CreditCard, subtitle: 'What I owe' },
     { name: 'Goals', href: '/goals', icon: Target },
-    { name: 'Cash Flow', href: '/cashflow', icon: DollarSign },
-    { name: 'Growth Engine', href: '/portfolio', icon: TrendingUp },
-    { name: 'Freedom', href: '/freedom', icon: Calendar },
-    { name: 'Mentors', href: '/mentors', icon: Users },
+    { name: 'Cash Flow', href: '/cashflow', icon: DollarSign, subtitle: 'Money in & out' },
+    { name: 'Growth Engine', href: '/portfolio', icon: TrendingUp, subtitle: 'Investments' },
+    { name: 'Freedom', href: '/freedom', icon: Calendar, subtitle: 'Debt payoff' },
+    { name: 'Mentors', href: '/mentors', icon: Users, subtitle: 'AI Assistant' },
     { name: 'Privacy', href: '/privacy', icon: Shield },
 ];
 
@@ -106,15 +113,25 @@ export default function Sidebar() {
                                     href={finalHref}
                                     onClick={() => setIsMobileOpen(false)}
                                     className={cn(
-                                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
                                         isActive
                                             ? "bg-blue-50 text-blue-700 shadow-sm"
                                             : "text-muted-foreground hover:bg-muted hover:text-foreground"
                                     )}
                                     data-tour={`sidebar-${item.name.toLowerCase().replace(' ', '')}`}
                                 >
-                                    <item.icon size={20} className={cn(isActive ? "text-blue-600" : "text-slate-400 group-hover:text-muted-foreground")} />
-                                    {item.name}
+                                    <item.icon size={20} className={cn(isActive ? "text-blue-600" : "text-slate-400 group-hover:text-muted-foreground", "shrink-0")} />
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="leading-snug">{item.name}</span>
+                                        {item.subtitle && (
+                                            <span className={cn(
+                                                "text-[10px] font-normal leading-none",
+                                                isActive ? "text-blue-600/80" : "text-muted-foreground/70"
+                                            )}>
+                                                {item.subtitle}
+                                            </span>
+                                        )}
+                                    </div>
                                 </Link>
                             );
                         })}

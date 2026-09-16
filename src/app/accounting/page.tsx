@@ -1,4 +1,5 @@
 import { AccountingPage } from '@/features/accounting/components/AccountingPage';
+import { Suspense } from 'react';
 
 export const metadata = {
     title: 'Accounting Engine | OpenNetWorth',
@@ -6,5 +7,9 @@ export const metadata = {
 };
 
 export default function Page() {
-    return <AccountingPage />;
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <AccountingPage />
+        </Suspense>
+    );
 }

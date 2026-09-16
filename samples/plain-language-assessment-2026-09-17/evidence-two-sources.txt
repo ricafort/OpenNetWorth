@@ -1,0 +1,199 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Your finances" [level=1]
+  - paragraph: See your personal and business finances together.
+  - generic: "Viewing:"
+  - combobox:
+    - option "All my finances"
+    - option "TEST Alex (Personal)" [selected]
+    - option "TEST Alex Business (Business)"
+  - button "Transactions":
+    - generic: Transactions
+  - button "Accounts":
+    - generic: Accounts
+  - button "Reports":
+    - generic: Reports
+  - button "Documents":
+    - generic: Documents
+  - generic: Accounting Scope
+  - combobox:
+    - option "Individual Entity (Ownership Share %)" [selected]
+    - option "Household Unit (100% De-duplicated)"
+  - generic: As Of Valuation Date
+  - textbox: 2026-09-16
+  - generic: Period Start / End
+  - textbox:
+    - /placeholder: Start
+  - generic: to
+  - textbox:
+    - /placeholder: End
+  - button "Revalue Asset":
+    - generic: Revalue Asset
+  - button "Exchange Rates":
+    - generic: Exchange Rates
+  - button "Refresh All Reports":
+  - generic: Exchange rate USD/AUD updated to 1.5.
+  - button "Your finances by owner":
+    - generic: Your finances by owner
+  - button "Cash Flow vs Accrual Performance":
+    - generic: Cash Flow vs Accrual Performance
+  - button "Ledger Drill-Down & Evidence Links":
+    - generic: Ledger Drill-Down & Evidence Links
+  - heading "Chronological Ledger Traceability (M1-EVID-01, M1-EVID-02)" [level=3]
+  - paragraph: Every displayed balance is traceable to individual journal postings with running balances and evidence citations.
+  - generic: "Account:"
+  - combobox:
+    - option "-- Select an account --"
+    - option "TEST Everyday (asset · AUD)"
+    - option "TEST Home (asset · AUD)"
+    - option "TEST Household CSV (asset · AUD)" [selected]
+    - option "TEST Savings (asset · AUD)"
+    - option "TEST Today Balance (asset · AUD)"
+    - option "TEST USD (asset · USD)"
+    - option "TEST Yen (asset · JPY)"
+    - option "Opening Balance Equity (equity · AUD)"
+    - option "Opening Balance Equity (equity · JPY)"
+    - option "Opening Balance Equity (equity · USD)"
+    - option "Bank Fee (expense · AUD)"
+    - option "Loan Interest (expense · AUD)"
+    - option "Office Supplies (expense · AUD)"
+    - option "Other (expense · AUD)"
+    - option "Utilities (expense · AUD)"
+    - option "Salary (income · AUD)"
+    - option "TEST Credit Card (liability · AUD)"
+    - option "TEST Mortgage (liability · AUD)"
+    - option "TEST Business Bank (asset · AUD)"
+    - option "Opening Balance Equity (equity · AUD)"
+    - option "Office Supplies (expense · AUD)"
+  - generic: Account
+  - generic: TEST Household CSV
+  - generic: Normal Balance
+  - generic: Debit Normal
+  - generic: Opening Balance
+  - generic: A$0.00
+  - generic: Closing Balance
+  - generic: A$883.12
+  - table:
+    - rowgroup:
+      - row "Date Description / Payee Origin Debit / Credit Running Balance Evidence":
+        - columnheader "Date"
+        - columnheader "Description / Payee"
+        - columnheader "Origin"
+        - columnheader "Debit / Credit"
+        - columnheader "Running Balance"
+        - columnheader "Evidence"
+    - rowgroup:
+      - row "2025-06-30 Opening Balance - TEST Household CSV opening_balance A$1,000.00 A$1,000.00 None":
+        - cell "2025-06-30"
+        - cell "Opening Balance - TEST Household CSV":
+          - generic: Opening Balance - TEST Household CSV
+        - cell "opening_balance"
+        - cell "A$1,000.00"
+        - cell "A$1,000.00"
+        - cell "None"
+      - row "2025-07-03 Waratah Office Supplies paper ream Waratah Office Supplies paper ream document_extraction -A$22.00 A$978.00 Evidence":
+        - cell "2025-07-03"
+        - cell "Waratah Office Supplies paper ream Waratah Office Supplies paper ream":
+          - generic: Waratah Office Supplies paper ream
+          - generic: Waratah Office Supplies paper ream
+        - cell "document_extraction"
+        - cell "-A$22.00"
+        - cell "A$978.00"
+        - cell "Evidence":
+          - button "Evidence" [active]:
+            - generic: Evidence
+      - row "2025-07-04 Waratah Office Supplies pens Waratah Office Supplies pens document_extraction -A$15.00 A$963.00 Evidence":
+        - cell "2025-07-04"
+        - cell "Waratah Office Supplies pens Waratah Office Supplies pens":
+          - generic: Waratah Office Supplies pens
+          - generic: Waratah Office Supplies pens
+        - cell "document_extraction"
+        - cell "-A$15.00"
+        - cell "A$963.00"
+        - cell "Evidence":
+          - button "Evidence":
+            - generic: Evidence
+      - row "2025-07-06 Blue Wren Broadband BPAY Blue Wren Broadband BPAY document_extraction -A$79.88 A$883.12 Evidence":
+        - cell "2025-07-06"
+        - cell "Blue Wren Broadband BPAY Blue Wren Broadband BPAY":
+          - generic: Blue Wren Broadband BPAY
+          - generic: Blue Wren Broadband BPAY
+        - cell "document_extraction"
+        - cell "-A$79.88"
+        - cell "A$883.12"
+        - cell "Evidence":
+          - button "Evidence":
+            - generic: Evidence
+  - heading "Structured Evidence Metadata" [level=3]
+  - button:
+  - generic: "Citation #1"
+  - link "View Original":
+    - /url: /api/documents/raw?id=doc-de6d693c-189d-412b-bc57-247571ff7ae7
+    - text: View Original
+  - generic: Document ID
+  - text: doc-de6d693c-189d-412b-bc57-247571ff7ae7
+  - generic: Content Hash (SHA-256)
+  - text: 5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9
+  - generic: "Citation #2"
+  - link "View Original":
+    - /url: /api/documents/raw?id=doc-68eb1672-7f65-4b03-9628-e25cf54ec6fc
+    - text: View Original
+  - generic: Document ID
+  - text: doc-68eb1672-7f65-4b03-9628-e25cf54ec6fc
+  - generic: Content Hash (SHA-256)
+  - text: f63b3d1de20b82b7603a69a20eff54a2316142da914a65d78fd9dcdac91c36f3
+  - paragraph: This metadata links the transaction ledger directly to the verified source document snippets.
+  - button "Close"
+- button "Open Next.js Dev Tools":
+- alert

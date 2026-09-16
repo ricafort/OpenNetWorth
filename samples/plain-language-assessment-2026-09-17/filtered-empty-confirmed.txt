@@ -1,0 +1,130 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Your finances" [level=1]
+  - paragraph: See your personal and business finances together.
+  - generic: "Viewing:"
+  - combobox:
+    - option "All my finances"
+    - option "TEST Alex (Personal)" [selected]
+    - option "TEST Alex Business (Business)"
+  - button "Transactions":
+    - generic: Transactions
+  - button "Accounts":
+    - generic: Accounts
+  - button "Reports":
+    - generic: Reports
+  - button "Documents":
+    - generic: Documents
+  - generic: "Date range:"
+  - textbox: 2001-01-01
+  - generic: to
+  - textbox [active]: 2001-01-31
+  - button "Refresh transactions":
+  - button "Add transaction":
+    - generic: Add transaction
+  - generic: Period Income
+  - generic: $0.00
+  - generic: Accrual income recognized in period
+  - generic: Period Expenses
+  - generic: $0.00
+  - generic: Accrual expenses recognized in period
+  - generic: Income Minus Expenses
+  - generic: $0.00
+  - generic: Net period earnings / retained savings
+  - heading "Transactions" [level=3]
+  - heading "Start with a bank statement" [level=4]
+  - paragraph: Import your transactions, then review them before saving.
+  - button "Import a statement"
+  - button "Add transaction"
+  - heading "Unresolved Drafts (2)" [level=4]
+  - generic: Action Required
+  - text: Roundtrip preserve amount and source
+  - generic: — TEST correct JPY500
+  - generic: 2026-09-16
+  - generic: •
+  - text: "Business:"
+  - strong: TEST Alex Business
+  - generic: •
+  - text: "Payer:"
+  - strong: TEST Alex
+  - generic: •
+  - text: "Account:"
+  - strong: TEST Yen
+  - generic: •
+  - generic: "Reimbursement: yes"
+  - generic: ¥5
+  - button "Edit"
+  - generic: •
+  - button "Discard"
+  - text: Personally paid business expense
+  - generic: — TEST JPY draft
+  - generic: 2026-09-16
+  - generic: •
+  - text: "Business:"
+  - strong: TEST Alex Business
+  - generic: •
+  - text: "Payer:"
+  - strong: TEST Alex
+  - generic: •
+  - text: "Account:"
+  - strong: TEST Yen
+  - generic: •
+  - generic: "Reimbursement: not_sure"
+  - generic: $500.00
+  - button "Edit"
+  - generic: •
+  - button "Discard"
+  - paragraph: These drafts do not affect your posted balances. Cross-entity automation (Owner's Draw / Due To) will be available in a future update to resolve these correctly.
+- button "Open Next.js Dev Tools":
+- alert

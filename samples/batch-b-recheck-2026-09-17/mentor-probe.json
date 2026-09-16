@@ -1,0 +1,56 @@
+{
+  "result": {
+    "response": "Assessor stub: no model inference.",
+    "facts": {
+      "type": "spending",
+      "periodLabel": "2026-09-16",
+      "entityName": "Assessor Person",
+      "totals": {
+        "AUD": 2500,
+        "JPY": 1250
+      },
+      "formattedTotals": {
+        "AUD": "A$25.00",
+        "JPY": "¥1,250"
+      },
+      "transactionIds": [
+        "81e31ce2-2651-4ffc-9170-8a815d46f604",
+        "16e40a6a-4776-4b30-899a-05880277af3d",
+        "eb23899c-1d47-492c-9be9-801c6f028466"
+      ],
+      "categories": [
+        {
+          "account_id": "acc-exp-3bba7427-bd8e-4057-8531-e65d3f3fefd1-living_expense-aud",
+          "account_name": "Living Expense",
+          "type": "expense",
+          "sub_type": "living_expense",
+          "currency": "AUD",
+          "total_cents": 2500,
+          "formatted_total": "A$25.00",
+          "transaction_count": 1
+        },
+        {
+          "account_id": "acc-exp-3bba7427-bd8e-4057-8531-e65d3f3fefd1-living_expense-jpy",
+          "account_name": "Living Expense",
+          "type": "expense",
+          "sub_type": "living_expense",
+          "currency": "JPY",
+          "total_cents": 1250,
+          "formatted_total": "¥1,250",
+          "transaction_count": 1
+        },
+        {
+          "account_id": "acc-inc-3bba7427-bd8e-4057-8531-e65d3f3fefd1-salary-aud",
+          "account_name": "Salary",
+          "type": "income",
+          "sub_type": "salary",
+          "currency": "AUD",
+          "total_cents": 100000,
+          "formatted_total": "A$1,000.00",
+          "transaction_count": 1
+        }
+      ]
+    }
+  },
+  "prompt": "You are an AI-simulated financial wisdom persona inspired by the philosophy of: Financial Mentor (Wisdom & Strategy).\nPersonality & Philosophy: Thoughtful financial guidance.\n\nYour Goal:\n- MODE = 'learn': Provide educational explanations of financial concepts, metrics, and debt/wealth mechanics.\n- MODE = 'reflect': Provide philosophical, mindset, and risk-management reflections on the user's financial posture.\n\nUSER FINANCIAL SNAPSHOT:\n- Preferred Currency: AUD\n- Net Worth: 987,654,321 AUD\n- Total Assets: 987,654,321 AUD\n- Total Liabilities: 0 AUD\n\nDETERMINISTIC FACTS FOR SPENDING QUERY:\n- Entity Scope: Assessor Person\n- Date Scope: 2026-09-16\n- Total Expenses: A$25.00, ¥1,250\nNote: Transfers and cancelled transactions are excluded. Mixed currencies are kept separate.\n\n\nSTRICT CONSTRAINTS:\n- Keep your reply concise, punchy, and structured (under 160 words).\n- Speak directly in the first person as this mentor persona.\n- Reference their numbers where helpful to provide tailored perspective.\n- Always include this exact disclaimer at the bottom: \"Educational perspective only. Not financial advice.\""
+}

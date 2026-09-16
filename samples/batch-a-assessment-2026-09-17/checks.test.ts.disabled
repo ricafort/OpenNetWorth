@@ -1,0 +1,31 @@
+import {initAccountingSchema} from '../../src/lib/domain/accounting/schema';
+import {it} from 'vitest';
+import fs from 'node:fs';
+import Database from 'better-sqlite3';
+import {GET,POST} from '../../src/app/api/vault/route';
+import {createTestDb,setTestDb} from '../../src/infrastructure/sqlite/db';
+import {saveDraft} from '../../src/lib/domain/accounting/draftService';
+
+const dir='samples/batch-a-assessment-2026-09-17';
+const results:any[]=[];
+async function get(){return (await GET(new Request('http://test/api/vault'))).json();}
+async function post(body:any){const r=await POST(new Request('http://test/api/vault',{method:'POST',body:JSON.stringify(body)}));return {status:r.status,body:await r.json()};}
+async function probe(name:string,v:any){const db=createTestDb();initAccountingSchema(db);setTestDb(db);db.prepare("INSERT INTO m1_entities(id,name,type,currency,created_at,updated_at) VALUES('destination-sentinel','Destination sentinel','person','AUD','2026-09-17','2026-09-17')").run();const before=(await get()).vault;const r=await post({action:'bulk_restore',schemaVersion:2,vault:v});results.push({name,...r});const back=(await get()).vault;if(r.status===200){const diffs=[];for(const k of Object.keys(v)){if(Array.isArray(v[k])){const sort=(a:any[])=>[...a].sort((x,y)=>String(x.id).localeCompare(String(y.id)));if(JSON.stringify(sort(v[k]))!==JSON.stringify(sort(back[k]||[])))diffs.push(k);}}results.push({name:name+' changed collections',diffs});}else{results.push({name:name+' rejected without mutation',unchanged:JSON.stringify(before)===JSON.stringify(back)});}db.close();}
+async function main(){
+const source=new Database(dir+'/source.sqlite',{readonly:true});setTestDb(source);const snapshot=await get();fs.writeFileSync(dir+'/archive.json',JSON.stringify(snapshot,null,2));source.close();
+await probe('Unmodified populated export',snapshot.vault);
+const nonJpy=JSON.parse(JSON.stringify(snapshot.vault).replaceAll('"JPY"','"AUD"'));
+await probe('Diagnostic: only JPY replaced with AUD',nonJpy);
+for(const p of nonJpy.proposals)if(!p.original_currency)p.original_currency='AUD';
+await probe('Diagnostic: JPY and unresolved proposal currency replaced',nonJpy);
+const clean=structuredClone(nonJpy);for(const k of ['documents','document_jobs','proposals','csv_mappings'])clean[k]=[];clean.transactions.forEach((t:any)=>t.evidence_refs=null);clean.drafts.forEach((d:any)=>{d.source_document_id=null;});
+await probe('Accounting-only round trip',clean);
+const noEntries=structuredClone(clean);noEntries.journal_entries=[];await probe('Invalid posted transactions without postings',noEntries);
+const wrongCurrency=structuredClone(clean);wrongCurrency.journal_entries.forEach((j:any)=>j.currency='USD');await probe('Invalid journal/account currency mismatch',wrongCurrency);
+const brokenEvidence=structuredClone(clean);brokenEvidence.transactions[0].evidence_refs=JSON.stringify([{document_id:'missing-document',content_hash:'fake'}]);await probe('Invalid embedded evidence reference',brokenEvidence);
+const unknown=structuredClone(clean);const db=createTestDb();initAccountingSchema(db);setTestDb(db);results.push({name:'Unknown version 99',...await post({action:'bulk_restore',schemaVersion:99,vault:unknown})});db.close();
+const ddb=new Database(dir+'/source.sqlite');setTestDb(ddb);const id='test-correct-jpy-roundtrip';const draft=ddb.prepare('SELECT * FROM m1_drafts WHERE id=?').get(id) as any;const full={...draft,currency:'JPY',amount_cents:500,source_transaction_id:nonJpy.transactions[0].id,source_document_id:snapshot.vault.documents[0].id};const saved=saveDraft(ddb,full);results.push({name:'Valid JPY draft and source references',draft:saved});const partial=saveDraft(ddb,{id,description:'Assessor partial description only'});results.push({name:'Partial draft description update',draft:partial});saveDraft(ddb,full);ddb.close();
+fs.writeFileSync(dir+'/checks-results.json',JSON.stringify(results,null,2));console.log(JSON.stringify(results,null,2));}
+it('assessor probes', async()=>{await main();});
+
+

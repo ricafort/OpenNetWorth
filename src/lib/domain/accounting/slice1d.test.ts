@@ -1322,57 +1322,67 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
             });
             expect(retrySame.id).toBe(tx.id);
 
-            // 2. Modifying document_id triggers ConflictError
-            expect(() => {
-                recordIncome(db, {
-                    entity_id: entity.id,
-                    bank_account_id: bank.id,
-                    amount_cents: 50000,
-                    date: '2026-02-15',
-                    description: 'Audit Retainer',
-                    idempotency_key: idemKey,
-                    evidence_refs: [{ ...structuredRefA, document_id: 'doc-invoice-999' }]
-                });
-            }).toThrow(ConflictError);
+            // 2. Modifying document_id returns existing tx without conflict (Fix A-E Idempotency)
+            const result2 = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 50000,
+                date: '2026-02-15',
+                description: 'Audit Retainer',
+                idempotency_key: idemKey,
+                evidence_refs: [{ ...structuredRefA, document_id: 'doc-invoice-999' }]
+            });
+            expect(result2.id).toBe(tx.id);
+            const storedEvidenceJson2 = (db.prepare('SELECT evidence_refs FROM m1_transactions WHERE id = ?').get(tx.id) as { evidence_refs: string }).evidence_refs;
+            const refs2 = JSON.parse(storedEvidenceJson2);
+            expect(refs2).toHaveLength(1);
+            expect(refs2[0]).toMatchObject({
+                document_id: structuredRefA.document_id,
+                content_hash: structuredRefA.content_hash,
+            });
 
-            // 3. Modifying content_hash triggers ConflictError
-            expect(() => {
-                recordIncome(db, {
-                    entity_id: entity.id,
-                    bank_account_id: bank.id,
-                    amount_cents: 50000,
-                    date: '2026-02-15',
-                    description: 'Audit Retainer',
-                    idempotency_key: idemKey,
-                    evidence_refs: [{ ...structuredRefA, content_hash: 'sha256-tampered-hash' }]
-                });
-            }).toThrow(ConflictError);
+            // 3. Modifying content_hash returns existing tx without conflict (Fix A-E Idempotency)
+            const result3 = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 50000,
+                date: '2026-02-15',
+                description: 'Audit Retainer',
+                idempotency_key: idemKey,
+                evidence_refs: [{ ...structuredRefA, content_hash: 'sha256-tampered-hash' }]
+            });
+            expect(result3.id).toBe(tx.id);
+            const storedEvidenceJson3 = (db.prepare('SELECT evidence_refs FROM m1_transactions WHERE id = ?').get(tx.id) as { evidence_refs: string }).evidence_refs;
+            const refs3 = JSON.parse(storedEvidenceJson3);
+            expect(refs3).toHaveLength(1);
+            expect(refs3[0]).toMatchObject({
+                document_id: structuredRefA.document_id,
+                content_hash: structuredRefA.content_hash,
+            });
 
-            // 4. Modifying page triggers ConflictError
-            expect(() => {
-                recordIncome(db, {
-                    entity_id: entity.id,
-                    bank_account_id: bank.id,
-                    amount_cents: 50000,
-                    date: '2026-02-15',
-                    description: 'Audit Retainer',
-                    idempotency_key: idemKey,
-                    evidence_refs: [{ ...structuredRefA, page: 5 }]
-                });
-            }).toThrow(ConflictError);
+            // 4. Modifying page returns existing tx without conflict (Fix A-E Idempotency)
+            const result4 = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 50000,
+                date: '2026-02-15',
+                description: 'Audit Retainer',
+                idempotency_key: idemKey,
+                evidence_refs: [{ ...structuredRefA, page: 5 }]
+            });
+            expect(result4.id).toBe(tx.id);
 
-            // 5. Modifying bounding_box triggers ConflictError
-            expect(() => {
-                recordIncome(db, {
-                    entity_id: entity.id,
-                    bank_account_id: bank.id,
-                    amount_cents: 50000,
-                    date: '2026-02-15',
-                    description: 'Audit Retainer',
-                    idempotency_key: idemKey,
-                    evidence_refs: [{ ...structuredRefA, bounding_box: [50, 100, 450, 700] }]
-                });
-            }).toThrow(ConflictError);
+            // 5. Modifying bounding_box returns existing tx without conflict (Fix A-E Idempotency)
+            const result5 = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: bank.id,
+                amount_cents: 50000,
+                date: '2026-02-15',
+                description: 'Audit Retainer',
+                idempotency_key: idemKey,
+                evidence_refs: [{ ...structuredRefA, bounding_box: [50, 100, 450, 700] }]
+            });
+            expect(result5.id).toBe(tx.id);
 
             // 6. Explicit support for legacy string references
             const legacyTx = recordIncome(db, {

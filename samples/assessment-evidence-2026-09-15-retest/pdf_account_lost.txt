@@ -1,0 +1,118 @@
+Browser tab: 13, Title: "Accounting Engine | OpenNetWorth", URL: "http://localhost:4005/accounting".
+0 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4005/accounting
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 link Description: Dashboard, Value: localhost:4005/
+		4 link Description: Accounting, Value: localhost:4005/accounting
+		5 link Description: Assets, Value: localhost:4005/assets
+		6 link Description: Liabilities, Value: localhost:4005/liabilities
+		7 link Description: Goals, Value: localhost:4005/goals
+		8 link Description: Cash Flow, Value: localhost:4005/cashflow
+		9 link Description: Growth Engine, Value: localhost:4005/portfolio
+		10 link Description: Freedom, Value: localhost:4005/freedom
+		11 link Description: Mentors, Value: localhost:4005/mentors
+		12 link Description: Privacy, Value: localhost:4005/privacy
+		13 text ON Local Vault Owner 🔒 100% On-Device
+		14 link Description: Backup / Restore Vault, Value: localhost:4005/privacy
+		15 button Light Mode
+		16 button Stealth Mode
+		17 button System Theme
+		18 button Blur Values
+		19 text v 1.0.0
+	20 container
+		21 heading Sovereign Accounting Engine, Value: 1
+			22 text Sovereign Accounting Engine
+		23 text LEDGER ACTIVE Local-first, double-entry financial ledger with exact minor-unit integer cents arithmetic. No floating-point rounding errors, no untraced balances.
+		24 button Daily Events & Ledger
+		25 button Accounts & Balances
+		26 button Reports & Traceability
+		27 button Document Inbox & Imports
+		144 button Back to Document Inbox
+		145 heading invoice_unpaid_330.pdf, Value: 2
+			146 text invoice_unpaid_330.pdf
+		147 text SHA-256:  5283e10d...8cea07d2 Review column extractions, duplicate flags, and confirm atomic ledger entries. Target Bank Account:
+		148 pop up button (collapsed, settable) Value: Business Operating (AUD), Secondary Actions: Expand
+			149 menu
+				150 (selected) Business Operating (AUD)
+				151 Everyday Checking (AUD)
+				152 Everyday Checking (AUD)
+				153 High Interest Savings (AUD)
+		154 text Total Extracted 1  rows Unreviewed 1  pending Posted to Ledger 0  approved Linked as Evidence 0  linked Issues & Duplicates 1  flagged
+		155 button All (1)
+			156 text All (
+			157 text 1
+			158 text )
+		159 button Pending (1)
+			160 text Pending (
+			161 text 1
+			162 text )
+		163 button Posted (0)
+			164 text Posted (
+			165 text 0
+			166 text )
+		167 button Linked (0)
+			168 text Linked (
+			169 text 0
+			170 text )
+		171 button Issues (1)
+			172 text Issues (
+			173 text 1
+			174 text )
+		175 button Deselect All
+		176 button (disabled) Approve Selected (0)
+			177 text Approve Selected ( 0 )
+		178 table
+			179 row
+				180 cell
+					181 checkbox (settable, integer) 0
+				194 cell
+					195 text Date
+				196 cell
+					197 text Description / Payee
+				198 cell
+					199 text Inflow / Outflow
+				200 cell
+					201 text Counterpart Category
+				202 cell
+					203 text Payment Confirmed
+				204 cell
+					205 text Flags & Status
+				206 cell
+					207 text Evidence Source
+				208 cell
+					209 text Actions
+			182 row
+				183 cell
+					184 checkbox (disabled, settable, integer) 0
+				210 cell
+					211 text 2025-09-20
+				212 cell
+					213 text SYNTHETIC SAMPLE - NOT A REAL TRANSACTION - Printer maintenance service
+				214 cell
+					215 text - $ 330.00
+				185 cell
+					186 pop up button (disabled, collapsed, settable) Value: Office Supplies, Secondary Actions: Expand
+						187 menu
+							216 (disabled) Living Expense
+							217 (disabled) Office Supplies
+							218 (disabled) Groceries
+							219 (disabled) Utilities
+							220 (disabled) Rent
+							221 (disabled) Transportation
+							222 (disabled) Entertainment
+							223 (disabled) Healthcare
+							224 (disabled) Interest / Finance
+							225 (disabled) Insurance
+				188 cell
+					189 container
+						190 checkbox (settable, integer) Description: Paid, Value: 0
+						226 text Paid
+				227 cell
+					228 text Document currency could not be identified with confidence. Retained as unresolved until reviewed.
+				191 cell
+					192 button Edit, Help: Edit proposal fields
+					193 button Link, Help: Link this receipt/invoice as supporting evidence to an existing bank transaction
+	142 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		143 image
+
+The focused UI element is 0 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4005/accounting

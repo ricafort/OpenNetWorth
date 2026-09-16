@@ -1,0 +1,76 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+stderr | samples/batch-a-final-2026-09-17/acceptance.test.ts > unmodified populated export restores successfully into fresh database
+Vault POST Error: ValidationError: Transaction "5594bfe0-c2b8-4d3b-99c5-9bc092bdcd81" evidence references non-existent document_id "{"bounding_box":null,"content_hash":"5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9","document_id":"doc-de6d693c-189d-412b-bc57-247571ff7ae7","label":null,"page":null,"table_or_cell_ref":null,"type":"structured"}"
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:707:39)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at post (D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:14:48)
+    at D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:17:107
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | samples/batch-a-final-2026-09-17/acceptance.test.ts > rejects missing postings without changing destination
+Vault POST Error: ValidationError: Transaction "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544" is missing required double-entry journal postings (found 0, minimum 2 required)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:662:27)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at post (D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:14:48)
+    at D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:23:204
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | samples/batch-a-final-2026-09-17/acceptance.test.ts > rejects journal/account currency mismatch without changing destination
+Vault POST Error: ValidationError: Journal entry "9459effc-7955-4a3f-940a-b317c3c3fd0a" currency (USD) does not match account "Other" currency (AUD)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:722:27)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at post (D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:14:48)
+    at D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:23:204
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | samples/batch-a-final-2026-09-17/acceptance.test.ts > rejects nonexistent document reference without changing destination
+Vault POST Error: ValidationError: Transaction "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544" evidence references non-existent document_id "missing-document"
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:707:39)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at post (D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:14:48)
+    at D:/LocalVersions/OpenNetWorth/samples/batch-a-final-2026-09-17/acceptance.test.ts:23:204
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+ ❯ samples/batch-a-final-2026-09-17/acceptance.test.ts (9 tests | 1 failed) 89ms
+   × unmodified populated export restores successfully into fresh database 15ms
+   ✓ diagnostic normalized evidence restores JPY and unresolved proposal faithfully 17ms
+   ✓ rejects missing postings without changing destination 11ms
+   ✓ rejects journal/account currency mismatch without changing destination 12ms
+   ✓ rejects nonexistent document reference without changing destination 10ms
+   ✓ rejects unsupported archive version without mutation 4ms
+   ✓ description-only update preserves JPY amount/currency and both sources 7ms
+   ✓ currency-only mismatch against retained payment account is rejected without mutation 8ms
+   ✓ explicit source clearing preserves unrelated financial facts 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  samples/batch-a-final-2026-09-17/acceptance.test.ts > unmodified populated export restores successfully into fresh database
+AssertionError: Transaction "5594bfe0-c2b8-4d3b-99c5-9bc092bdcd81" evidence references non-existent document_id "{"bounding_box":null,"content_hash":"5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9","document_id":"doc-de6d693c-189d-412b-bc57-247571ff7ae7","label":null,"page":null,"table_or_cell_ref":null,"type":"structured"}": expected 400 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 400
+
+ ❯ samples/batch-a-final-2026-09-17/acceptance.test.ts:17:247
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 passed (9)
+   Start at  01:10:55
+   Duration  431ms (transform 92ms, setup 0ms, import 156ms, tests 89ms, environment 0ms)
+

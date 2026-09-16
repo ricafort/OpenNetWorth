@@ -76,8 +76,9 @@ export const DOCUMENT_SCHEMA_DDL = `
         evidence_json TEXT NOT NULL, -- JSON EvidenceReference
         extraction_version TEXT NOT NULL,
         validation_findings TEXT, -- JSON array of ValidationFinding
-        review_status TEXT NOT NULL DEFAULT 'unreviewed' CHECK (review_status IN ('unreviewed', 'approved', 'rejected', 'modified')),
+        review_status TEXT NOT NULL DEFAULT 'unreviewed' CHECK (review_status IN ('unreviewed', 'approved', 'rejected', 'modified', 'linked')),
         related_proposal_ids TEXT, -- JSON array of related proposal IDs
+        linked_transaction_id TEXT, -- Target transaction when linked as supporting evidence (Slice 1G)
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
@@ -88,6 +89,7 @@ export const DOCUMENT_SCHEMA_DDL = `
     CREATE INDEX IF NOT EXISTS idx_m1_csv_mappings_sig ON m1_csv_mappings(header_signature);
     CREATE INDEX IF NOT EXISTS idx_m1_proposals_doc ON m1_proposals(document_id);
     CREATE INDEX IF NOT EXISTS idx_m1_proposals_status ON m1_proposals(review_status);
+    CREATE INDEX IF NOT EXISTS idx_m1_proposals_linked_tx ON m1_proposals(linked_transaction_id);
     CREATE INDEX IF NOT EXISTS idx_m1_document_jobs_state ON m1_document_jobs(state);
 `;
 
@@ -95,12 +97,15 @@ export const DOCUMENT_SCHEMA_DDL = `
  * Applies transactional migrations to the document schema for existing databases.
  * 
  * Why this exists:
- * When upgrading existing databases that already have `m1_documents` created without
- * `raw_content` or without `m1_csv_mappings`, this ensures safe, non-destructive migration.
+ * When upgrading existing databases that already have `m1_documents` or `m1_proposals`,
+ * this ensures safe, non-destructive migration to support raw content, CSV mappings,
+ * and receipt-to-transaction linking (`linked_transaction_id` and `'linked'` status).
  * 
  * Tricky logic:
- * Checks table column definitions using `PRAGMA table_info` before attempting `ALTER TABLE`.
- * Runs inside a transaction to guarantee atomicity.
+ * - Checks table column definitions using `PRAGMA table_info` before attempting `ALTER TABLE`.
+ * - If `m1_proposals` table CHECK constraint does not include `'linked'`, migrates the table
+ *   atomically via a temporary table so SQLite CHECK constraints allow `'linked'`.
+ * - Runs inside a transaction to guarantee atomicity.
  * 
  * TODO: Add schema version table tracking if future document migrations require multi-step data transformations.
  */
@@ -118,17 +123,94 @@ export function migrateDocumentSchema(db: Database.Database): void {
                 db.prepare("ALTER TABLE m1_documents ADD COLUMN raw_content TEXT").run();
             }
         }
+
+        // 2. Check if m1_proposals needs linked_transaction_id column or 'linked' CHECK constraint upgrade
+        const propTableExists = (db.prepare(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_proposals'"
+        ).get() as any).cnt > 0;
+
+        if (propTableExists) {
+            const propColumns = db.prepare("PRAGMA table_info(m1_proposals)").all() as Array<{ name: string }>;
+            const masterRow = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'm1_proposals'").get() as any;
+            const needsCheckUpgrade = masterRow && masterRow.sql && !masterRow.sql.includes("'linked'");
+
+            if (needsCheckUpgrade) {
+                // Table recreation migration to upgrade CHECK constraint safely
+                db.prepare(`
+                    CREATE TABLE IF NOT EXISTS m1_proposals_upgrade_tmp (
+                        id TEXT PRIMARY KEY,
+                        document_id TEXT NOT NULL,
+                        entity_id TEXT,
+                        account_id TEXT,
+                        event_date TEXT NOT NULL,
+                        document_period TEXT,
+                        original_currency TEXT NOT NULL,
+                        amount_cents INTEGER NOT NULL,
+                        counterparty TEXT,
+                        description TEXT NOT NULL,
+                        event_type TEXT NOT NULL CHECK (event_type IN ('income', 'expense', 'transfer', 'repayment', 'valuation_adjustment')),
+                        suggested_category TEXT,
+                        evidence_json TEXT NOT NULL,
+                        extraction_version TEXT NOT NULL,
+                        validation_findings TEXT,
+                        review_status TEXT NOT NULL DEFAULT 'unreviewed' CHECK (review_status IN ('unreviewed', 'approved', 'rejected', 'modified', 'linked')),
+                        related_proposal_ids TEXT,
+                        linked_transaction_id TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
+                    )
+                `).run();
+
+                const oldCols = propColumns.map(c => c.name);
+                const hasOldLinked = oldCols.includes('linked_transaction_id');
+                const selectCols = [
+                    'id', 'document_id', 'entity_id', 'account_id', 'event_date', 'document_period',
+                    'original_currency', 'amount_cents', 'counterparty', 'description', 'event_type',
+                    'suggested_category', 'evidence_json', 'extraction_version', 'validation_findings',
+                    'review_status', 'related_proposal_ids',
+                    hasOldLinked ? 'linked_transaction_id' : 'NULL as linked_transaction_id',
+                    'created_at', 'updated_at'
+                ].join(', ');
+
+                db.prepare(`INSERT INTO m1_proposals_upgrade_tmp SELECT ${selectCols} FROM m1_proposals`).run();
+                db.prepare(`DROP TABLE m1_proposals`).run();
+                db.prepare(`ALTER TABLE m1_proposals_upgrade_tmp RENAME TO m1_proposals`).run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_doc ON m1_proposals(document_id)`).run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_status ON m1_proposals(review_status)`).run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_linked_tx ON m1_proposals(linked_transaction_id)`).run();
+            } else {
+                const hasLinkedTxId = propColumns.some(c => c.name === 'linked_transaction_id');
+                if (!hasLinkedTxId) {
+                    db.prepare("ALTER TABLE m1_proposals ADD COLUMN linked_transaction_id TEXT").run();
+                    db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_linked_tx ON m1_proposals(linked_transaction_id)`).run();
+                }
+            }
+        }
     });
 
-    runMigration();
+    // Run migration safely with foreign key toggle to allow table rebuild
+    const currentFk = db.prepare("PRAGMA foreign_keys").get() as any;
+    const wasFkOn = currentFk?.foreign_keys === 1;
+    if (wasFkOn) db.pragma("foreign_keys = OFF");
+    try {
+        runMigration();
+    } finally {
+        if (wasFkOn) db.pragma("foreign_keys = ON");
+    }
 }
 
 /**
  * Initializes the Milestone 1 document processing schema on a SQLite database,
  * and applies any pending migrations idempotently.
+ * 
+ * Migration order:
+ * Migrations must run BEFORE `DOCUMENT_SCHEMA_DDL` so that existing tables
+ * from previous slices (e.g. Slice 1F) have missing columns added before
+ * index creation runs on those columns.
  */
 export function initDocumentSchema(db: Database.Database): void {
+    migrateDocumentSchema(db);
     db.pragma('foreign_keys = ON');
     db.exec(DOCUMENT_SCHEMA_DDL);
-    migrateDocumentSchema(db);
 }

@@ -1,0 +1,38 @@
+[
+  {
+    "file": "05_edge_cases/invalid_amounts.csv",
+    "expected": "Reject all 3 amounts; no financial postings."
+  },
+  {
+    "file": "05_edge_cases/invalid_dates.csv",
+    "expected": "Keep unresolved; never substitute 1970 or today."
+  },
+  {
+    "file": "05_edge_cases/ambiguous_dates.csv",
+    "expected": "Require DD/MM/YYYY mapping; both are valid but swapping convention changes meaning."
+  },
+  {
+    "file": "05_edge_cases/duplicate_identical_rows.csv",
+    "expected": "Flag same-file possible duplicate; do not silently discard or blindly approve both."
+  },
+  {
+    "file": "05_edge_cases/legitimate_same_day_same_amount.csv",
+    "expected": "Ground truth: two distinct purchases, both valid. A warning is appropriate; automatic deletion is not."
+  },
+  {
+    "file": "05_edge_cases/currency_rounding_jpy.csv",
+    "expected": "Separate JPY account: exactly 500 minor units; do not multiply by 100."
+  },
+  {
+    "file": "05_edge_cases/formula_like_description.csv",
+    "expected": "Treat description as literal untrusted text; never execute it as a spreadsheet formula."
+  },
+  {
+    "file": "05_edge_cases/incoming_same_amount.csv",
+    "expected": "Do not offer or accept this as a match for the outgoing AUD22 receipt."
+  },
+  {
+    "file": "05_edge_cases/overlap_with_starter.csv",
+    "expected": "Import after starter: two existing matches; avoid duplicate financial effects by review/linking, not blind approval."
+  }
+]

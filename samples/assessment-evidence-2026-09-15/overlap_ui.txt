@@ -1,0 +1,152 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - text: Dashboard
+  - link "Accounting":
+    - /url: /accounting
+    - text: Accounting
+  - link "Assets":
+    - /url: /assets
+    - text: Assets
+  - link "Liabilities":
+    - /url: /liabilities
+    - text: Liabilities
+  - link "Goals":
+    - /url: /goals
+    - text: Goals
+  - link "Cash Flow":
+    - /url: /cashflow
+    - text: Cash Flow
+  - link "Growth Engine":
+    - /url: /portfolio
+    - text: Growth Engine
+  - link "Freedom":
+    - /url: /freedom
+    - text: Freedom
+  - link "Mentors":
+    - /url: /mentors
+    - text: Mentors
+  - link "Privacy":
+    - /url: /privacy
+    - text: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Sovereign Accounting Engine" [level=1]
+  - generic: Ledger Active
+  - paragraph: Local-first, double-entry financial ledger with exact minor-unit integer cents arithmetic. No floating-point rounding errors, no untraced balances.
+  - button "Daily Events & Ledger":
+    - generic: Daily Events & Ledger
+  - button "Accounts & Balances":
+    - generic: Accounts & Balances
+  - button "Reports & Traceability":
+    - generic: Reports & Traceability
+  - button "Document Inbox & Imports":
+    - generic: Document Inbox & Imports
+  - button "Back to Document Inbox":
+  - heading "overlap_with_starter.csv" [level=2]
+  - generic: "SHA-256: 3f4c4c8e...01a31635"
+  - paragraph: Review column extractions, duplicate flags, and confirm atomic ledger entries.
+  - generic: "Target Bank Account:"
+  - combobox:
+    - option "Business Operating (AUD)"
+    - option "Everyday Checking (AUD)"
+    - option "Everyday Checking (AUD)" [selected]
+    - option "High Interest Savings (AUD)"
+  - generic: Total Extracted
+  - generic: 2 rows
+  - generic: Unreviewed
+  - generic: 2 pending
+  - generic: Posted to Ledger
+  - generic: 0 approved
+  - generic: Linked as Evidence
+  - generic: 0 linked
+  - generic: Issues & Duplicates
+  - generic: 2 flagged
+  - button "All (2)"
+  - button "Pending (2)"
+  - button "Posted (0)"
+  - button "Linked (0)"
+  - button "Issues (2)"
+  - button "Deselect All"
+  - button "Approve Selected (2)":
+    - generic: Approve Selected (2)
+  - table:
+    - rowgroup:
+      - row "Date Description / Payee Inflow / Outflow Counterpart Category Flags & Status Evidence Source Actions":
+        - columnheader:
+          - checkbox [checked]
+        - columnheader "Date"
+        - columnheader "Description / Payee"
+        - columnheader "Inflow / Outflow"
+        - columnheader "Counterpart Category"
+        - columnheader "Flags & Status"
+        - columnheader "Evidence Source"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "2025-07-03 Waratah Office Supplies paper ream -$22.00 Living Expense Unreviewed Ledger Match Row 2 Edit":
+        - cell:
+          - checkbox [checked]
+        - cell "2025-07-03"
+        - cell "Waratah Office Supplies paper ream"
+        - cell "-$22.00"
+        - cell "Living Expense":
+          - combobox:
+            - option "Living Expense" [selected]
+            - option "Office Supplies"
+            - option "Groceries"
+            - option "Utilities"
+            - option "Rent"
+            - option "Transportation"
+            - option "Entertainment"
+            - option "Healthcare"
+            - option "Interest / Finance"
+            - option "Insurance"
+        - cell "Unreviewed Ledger Match":
+          - generic: Unreviewed
+          - generic "A posted transaction (\"Waratah Office Supplies paper ream\") with matching date and amount already exists on this account.":
+            - text: Ledger Match
+        - cell "Row 2"
+        - cell "Edit":
+          - button "Edit":
+            - generic: Edit
+      - row "2025-07-04 Waratah Office Supplies pens -$15.00 Living Expense Unreviewed Ledger Match Row 3 Edit":
+        - cell:
+          - checkbox [checked]
+        - cell "2025-07-04"
+        - cell "Waratah Office Supplies pens"
+        - cell "-$15.00"
+        - cell "Living Expense":
+          - combobox:
+            - option "Living Expense" [selected]
+            - option "Office Supplies"
+            - option "Groceries"
+            - option "Utilities"
+            - option "Rent"
+            - option "Transportation"
+            - option "Entertainment"
+            - option "Healthcare"
+            - option "Interest / Finance"
+            - option "Insurance"
+        - cell "Unreviewed Ledger Match":
+          - generic: Unreviewed
+          - generic "A posted transaction (\"Waratah Office Supplies pens\") with matching date and amount already exists on this account.":
+            - text: Ledger Match
+        - cell "Row 3"
+        - cell "Edit":
+          - button "Edit":
+            - generic: Edit
+- button "Open Next.js Dev Tools":
+- alert

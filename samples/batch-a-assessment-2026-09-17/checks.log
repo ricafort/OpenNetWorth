@@ -1,0 +1,170 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+stderr | samples/batch-a-assessment-2026-09-17/checks.test.ts > assessor probes
+Vault POST Error: ValidationError: Unsupported currency "JPY" in account "TEST Yen". Supported currencies: USD, AUD, EUR, GBP, CAD, NZD, CHF, JPY, SGD, HKD
+    at checkCurrency (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:599:27)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:603:48)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at post (D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:12:39)
+    at probe (D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:13:329)
+    at main (D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:16:1)
+    at D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:29:33
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | samples/batch-a-assessment-2026-09-17/checks.test.ts > assessor probes
+Vault POST Error: ValidationError: Unsupported currency "" in proposal "prop-47f7398b-8bd8-4f1a-8ebc-fad327e97ac8". Supported currencies: USD, AUD, EUR, GBP, CAD, NZD, CHF, JPY, SGD, HKD
+    at checkCurrency (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:599:27)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:609:49)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at post (D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:12:39)
+    at probe (D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:13:329)
+    at main (D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:18:1)
+    at D:/LocalVersions/OpenNetWorth/samples/batch-a-assessment-2026-09-17/checks.test.ts:29:33
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stdout | samples/batch-a-assessment-2026-09-17/checks.test.ts > assessor probes
+[
+  {
+    "name": "Unmodified populated export",
+    "status": 400,
+    "body": {
+      "error": "Unsupported currency \"JPY\" in account \"TEST Yen\". Supported currencies: USD, AUD, EUR, GBP, CAD, NZD, CHF, JPY, SGD, HKD"
+    }
+  },
+  {
+    "name": "Unmodified populated export rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Diagnostic: only JPY replaced with AUD",
+    "status": 400,
+    "body": {
+      "error": "Unsupported currency \"\" in proposal \"prop-47f7398b-8bd8-4f1a-8ebc-fad327e97ac8\". Supported currencies: USD, AUD, EUR, GBP, CAD, NZD, CHF, JPY, SGD, HKD"
+    }
+  },
+  {
+    "name": "Diagnostic: only JPY replaced with AUD rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Diagnostic: JPY and unresolved proposal currency replaced",
+    "status": 200,
+    "body": {
+      "success": true,
+      "message": "Version 2 vault fully restored and verified."
+    }
+  },
+  {
+    "name": "Diagnostic: JPY and unresolved proposal currency replaced changed collections",
+    "diffs": []
+  },
+  {
+    "name": "Accounting-only round trip",
+    "status": 200,
+    "body": {
+      "success": true,
+      "message": "Version 2 vault fully restored and verified."
+    }
+  },
+  {
+    "name": "Accounting-only round trip changed collections",
+    "diffs": []
+  },
+  {
+    "name": "Invalid posted transactions without postings",
+    "status": 200,
+    "body": {
+      "success": true,
+      "message": "Version 2 vault fully restored and verified."
+    }
+  },
+  {
+    "name": "Invalid posted transactions without postings changed collections",
+    "diffs": []
+  },
+  {
+    "name": "Invalid journal/account currency mismatch",
+    "status": 200,
+    "body": {
+      "success": true,
+      "message": "Version 2 vault fully restored and verified."
+    }
+  },
+  {
+    "name": "Invalid journal/account currency mismatch changed collections",
+    "diffs": []
+  },
+  {
+    "name": "Invalid embedded evidence reference",
+    "status": 200,
+    "body": {
+      "success": true,
+      "message": "Version 2 vault fully restored and verified."
+    }
+  },
+  {
+    "name": "Invalid embedded evidence reference changed collections",
+    "diffs": []
+  },
+  {
+    "name": "Unknown version 99",
+    "status": 200,
+    "body": {
+      "success": true,
+      "message": "Legacy vault data restored. Existing modern accounting records preserved."
+    }
+  },
+  {
+    "name": "Valid JPY draft and source references",
+    "draft": {
+      "id": "test-correct-jpy-roundtrip",
+      "entity_id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+      "payer_entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "payment_account_id": "4fe4a532-e087-492d-85ee-bfe82da47083",
+      "currency": "JPY",
+      "amount_cents": 500,
+      "date": "2026-09-16",
+      "merchant": "TEST correct JPY500",
+      "description": "JPY 500 browser edit preserves source references",
+      "reimbursement_intent": "yes",
+      "source_document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+      "source_transaction_id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+      "status": "draft",
+      "created_at": "2026-09-16T13:14:30.168Z",
+      "updated_at": "2026-09-16T14:53:01.100Z"
+    }
+  },
+  {
+    "name": "Partial draft description update",
+    "draft": {
+      "id": "test-correct-jpy-roundtrip",
+      "entity_id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+      "payer_entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "payment_account_id": "4fe4a532-e087-492d-85ee-bfe82da47083",
+      "currency": null,
+      "amount_cents": null,
+      "date": "2026-09-16",
+      "merchant": "TEST correct JPY500",
+      "description": "Assessor partial description only",
+      "reimbursement_intent": "yes",
+      "source_document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+      "source_transaction_id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+      "status": "draft",
+      "created_at": "2026-09-16T13:14:30.168Z",
+      "updated_at": "2026-09-16T14:53:01.101Z"
+    }
+  }
+]
+
+ ✓ samples/batch-a-assessment-2026-09-17/checks.test.ts (1 test) 66ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  00:53:00
+   Duration  429ms (transform 99ms, setup 0ms, import 171ms, tests 66ms, environment 0ms)
+

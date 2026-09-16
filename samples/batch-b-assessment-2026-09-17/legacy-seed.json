@@ -1,0 +1,4 @@
+{
+  "Status": 200,
+  "Body": "{\"success\":true,\"item\":{\"id\":\"assessor-legacy-b-debt\",\"interest_rate\":10,\"balance\":1000,\"currency\":\"AUD\",\"minimum_payment\":50,\"type\":\"personal_loan\",\"name\":\"TEST Legacy Personal Loan\",\"is_good_debt\":false}}"
+}

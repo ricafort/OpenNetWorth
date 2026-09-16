@@ -125,6 +125,32 @@ export function formatMoney(money: Money): string {
     }).format(major);
 }
 
+/**
+ * Converts integer minor-unit cents into a raw numerical string suitable for HTML form inputs.
+ * 
+ * Why this exists:
+ * Form inputs for transaction amounts must display exact values without currency symbols or locale commas.
+ * Unconditionally dividing by 100 corrupts zero-decimal currencies like JPY (e.g. 500 JPY divided by 100 becomes 5.00,
+ * which when re-parsed becomes 5 JPY!). This function respects CURRENCY_DECIMALS so 500 JPY produces "500" and
+ * 1234 AUD produces "12.34".
+ * 
+ * Tricky logic:
+ * - If cents is null or undefined, returns empty string so form inputs stay blank rather than showing "NaN" or "0.00".
+ * - If currency is null or undefined, defaults to 2 decimals or integer representation based on value.
+ * - For zero-decimal currencies (JPY, decimals === 0), divisor is 10^0 = 1, avoiding fractional decimals.
+ * 
+ * TODO: Support 3-decimal currencies (BHD, KWD) if international expansions require it.
+ */
+export function centsToInputString(cents: number | null | undefined, currency?: CurrencyCode | null): string {
+    if (cents === null || cents === undefined) {
+        return '';
+    }
+    const decimals = (currency && currency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[currency] : 2;
+    const divisor = Math.pow(10, decimals);
+    const major = cents / divisor;
+    return decimals === 0 ? Math.round(major).toString() : major.toFixed(decimals);
+}
+
 // --- ENTITIES & OWNERSHIP ---
 
 export type EntityType = 'person' | 'household' | 'business' | 'trust';
@@ -493,5 +519,39 @@ export interface AccountLedgerDrilldownResult {
     formatted_closing_balance: string;
     entries: LedgerEntryDrilldownItem[];
     calculation_version: string;
+}
+
+/**
+ * Authoritative Draft Record for Unresolved Financial Activity (e.g. Personally Paid Business Expense).
+ * 
+ * Why this exists:
+ * Financial drafts must not live solely in browser localStorage or overload payer concepts into a single ID.
+ * Unambiguously differentiates between the payer entity (person) and the payment account.
+ * Allows missing facts (currency, amount, date) to remain explicitly unresolved without fabricating zeroes.
+ * Completely excluded from posted double-entry ledgers and balances until finalized.
+ * 
+ * Tricky logic:
+ * - `payer_entity_id` references the person/entity who incurred the cost.
+ * - `payment_account_id` references the specific bank/card account if chosen, or null if unknown.
+ * - `amount_cents` is stored in exact minor units (integer cents), or null if unresolved.
+ * 
+ * TODO: Support multi-leg draft splits across multiple business cost centres in Milestone 2.
+ */
+export interface DraftItem {
+    id: string;
+    entity_id?: string | null; // Business entity
+    payer_entity_id?: string | null; // Person who paid
+    payment_account_id?: string | null; // Specific payment account if known
+    currency?: CurrencyCode | null;
+    amount_cents?: number | null; // Minor units integer
+    date?: string | null; // YYYY-MM-DD
+    merchant?: string | null;
+    description?: string | null;
+    reimbursement_intent?: 'yes' | 'no' | 'not_sure' | null;
+    source_document_id?: string | null;
+    source_transaction_id?: string | null;
+    status: 'draft' | 'posted' | 'void' | 'archived';
+    created_at: string;
+    updated_at: string;
 }
 

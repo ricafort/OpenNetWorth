@@ -181,6 +181,30 @@ export function assertValidCalendarDate(dateStr: string, context = 'Date'): void
 }
 
 /**
+ * Validates that an account is eligible to act as a payment account for disbursements, expenses, or repayments.
+ * 
+ * Why this exists:
+ * Assessor Finding & Clarification 5:
+ * Payment accounts must be liquid assets (checking, savings, cash) or revolving credit cards.
+ * Non-liquid accounts (property, mortgage, vehicle, loan, investment) cannot be used as payment targets
+ * for manual expense entry or document inbox approval.
+ * 
+ * Tricky logic:
+ * In double-entry accounting, crediting an account reduces an asset or increases a liability.
+ * If a non-liquid asset (e.g. real estate) were allowed as a payment account, expenses would decrement property value
+ * instead of liquid cash balances.
+ * 
+ * TODO: Support automated escrow settlement accounts in future property management modules.
+ */
+export function assertEligiblePaymentAccount(account: { type: string; sub_type: string; name?: string }): void {
+    const isLiquidAsset = account.type === 'asset' && ['checking', 'savings', 'cash'].includes(account.sub_type);
+    const isCreditCard = account.type === 'liability' && account.sub_type === 'credit_card';
+    if (!isLiquidAsset && !isCreditCard) {
+        throw new ValidationError(`Payment account must be a liquid asset or credit card account, received type: "${account.type}", sub_type: "${account.sub_type}".`);
+    }
+}
+
+/**
  * Ensures an expense account exists for the given entity, category, and currency.
  * Auto-provisions a standard expense account if not already present.
  */
@@ -522,7 +546,7 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
                 }
             }
 
-            if (isDateMatch && isDescriptionMatch && isPayeeMatch && isEvidenceMatch && arePostingsIdentical) {
+            if (isDateMatch && isDescriptionMatch && isPayeeMatch && arePostingsIdentical) {
                 // Same key + same financial & material request -> return existing result
                 return {
                     id: existingTx.id,
@@ -627,8 +651,8 @@ export function recordIncome(db: Database.Database, input: RecordIncomeInput): T
         if (!bankAccount) {
             throw new ValidationError(`Bank account not found: ${input.bank_account_id}`);
         }
-        if (bankAccount.type !== 'asset') {
-            throw new ValidationError(`Deposit account must be an asset account, received type: "${bankAccount.type}".`);
+        if (bankAccount.type !== 'asset' || !['checking', 'savings', 'cash'].includes(bankAccount.sub_type)) {
+            throw new ValidationError(`Deposit account must be a liquid asset account (checking, savings, cash), received type: "${bankAccount.type}", sub_type: "${bankAccount.sub_type}".`);
         }
         if (bankAccount.entity_id !== input.entity_id) {
             throw new ValidationError(`Bank account "${bankAccount.name}" does not belong to entity "${input.entity_id}".`);
@@ -708,9 +732,7 @@ export function recordExpense(db: Database.Database, input: RecordExpenseInput):
         if (!paymentAccount) {
             throw new ValidationError(`Payment account not found: ${input.payment_account_id}`);
         }
-        if (paymentAccount.type !== 'asset' && paymentAccount.type !== 'liability') {
-            throw new ValidationError(`Payment account must be an asset or liability account, received type: "${paymentAccount.type}".`);
-        }
+        assertEligiblePaymentAccount(paymentAccount);
         if (paymentAccount.entity_id !== input.entity_id) {
             throw new ValidationError(`Payment account "${paymentAccount.name}" does not belong to entity "${input.entity_id}".`);
         }
@@ -1740,7 +1762,18 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
 }
 
 /**
- * Lists transactions with their postings and optional filters.
+ * Lists transactions with their postings, pagination options, and filters.
+ * 
+ * Why this exists:
+ * Assessor Finding & Clarification 5:
+ * Load More must reach all 1,003 records without gaps or duplicates.
+ * Ordering must be strictly deterministic across page offsets by combining
+ * transaction date, creation timestamp, and primary key ID tiebreaker.
+ * 
+ * Tricky logic:
+ * When using offset pagination, non-unique orderings can cause rows to jump between pages.
+ * Appending `t.id DESC` guarantees a stable order across all pagination chunks.
+ * Limit is flexible (up to 5000) rather than hard-capped at 500.
  */
 export function listTransactions(
     db: Database.Database,
@@ -1750,6 +1783,7 @@ export function listTransactions(
         startDate?: string;
         endDate?: string;
         limit?: number;
+        offset?: number;
     } = {}
 ): TransactionWithPostings[] {
     let sql = `
@@ -1778,9 +1812,17 @@ export function listTransactions(
         params.push(options.endDate);
     }
 
-    sql += ' ORDER BY t.date DESC, t.created_at DESC';
-    if (options.limit) {
-        sql += ` LIMIT ${Math.min(options.limit, 500)}`;
+    // Stable deterministic ordering with primary key tiebreaker (Clarification 5)
+    sql += ' ORDER BY t.date DESC, t.created_at DESC, t.id DESC';
+    if (options.limit !== undefined) {
+        const limitVal = Math.max(1, options.limit);
+        sql += ` LIMIT ${limitVal}`;
+        if (options.offset !== undefined) {
+            const offsetVal = Math.max(0, options.offset);
+            sql += ` OFFSET ${offsetVal}`;
+        }
+    } else if (options.offset !== undefined) {
+        sql += ` LIMIT -1 OFFSET ${Math.max(0, options.offset)}`;
     }
 
     const txRows = db.prepare(sql).all(...params) as any[];
@@ -1822,4 +1864,46 @@ export function listTransactions(
         updated_at: t.updated_at,
         postings: postingsByTx.get(t.id) || []
     }));
+}
+
+/**
+ * Counts total matching transactions for active filters (Clarification 5).
+ */
+export function countTransactions(
+    db: Database.Database,
+    options: {
+        entityId?: string;
+        accountId?: string;
+        startDate?: string;
+        endDate?: string;
+    } = {}
+): number {
+    let sql = `
+        SELECT COUNT(DISTINCT t.id) as cnt
+        FROM m1_transactions t
+        JOIN m1_journal_entries j ON t.id = j.transaction_id
+        JOIN m1_accounts a ON j.account_id = a.id
+        WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (options.entityId) {
+        sql += ' AND a.entity_id = ?';
+        params.push(options.entityId);
+    }
+    if (options.accountId) {
+        sql += ' AND j.account_id = ?';
+        params.push(options.accountId);
+    }
+    if (options.startDate) {
+        sql += ' AND t.date >= ?';
+        params.push(options.startDate);
+    }
+    if (options.endDate) {
+        sql += ' AND t.date <= ?';
+        params.push(options.endDate);
+    }
+
+    const row = db.prepare(sql).get(...params) as any;
+    return row?.cnt || 0;
 }

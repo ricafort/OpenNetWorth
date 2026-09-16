@@ -1,0 +1,135 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts (7 tests | 7 failed) 9ms
+   × July 2025 uses July calendar dates in Australia/Sydney 5ms
+   × single named date uses exactly one day 1ms
+   × single ISO date uses exactly one day 0ms
+   × my business resolves explicit business scope with one business 0ms
+   × multiple businesses require scope clarification 0ms
+   × all finances does not silently become personal only 0ms
+   × an unsupported explicit historical year is not replaced by current year 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  samples/batch-b-assessment-2026-09-17/parser.test.ts > July 2025 uses July calendar dates in Australia/Sydney
+AssertionError: expected [ '2025-06-30', '2025-07-30' ] to deeply equal [ '2025-07-01', '2025-07-31' ]
+
+- Expected
++ Received
+
+  [
+-   "2025-07-01",
+-   "2025-07-31",
++   "2025-06-30",
++   "2025-07-30",
+  ]
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts:9:150
+      7| afterAll(()=>{vi.useRealTimers();fs.writeFileSync('samples/batch-b-ass…
+      8| function parse(q:string,e=entities){const r=parseSpendingIntent(q,e);r…
+      9| it('July 2025 uses July calendar dates in Australia/Sydney',()=>{const…
+       |                                                                                                                                                      ^
+     10| it('single named date uses exactly one day',()=>{const r=parse('How mu…
+     11| it('single ISO date uses exactly one day',()=>{const r=parse('How much…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  samples/batch-b-assessment-2026-09-17/parser.test.ts > single named date uses exactly one day
+AssertionError: expected [ '2026-08-31', '2026-09-29' ] to deeply equal [ '2026-09-16', '2026-09-16' ]
+
+- Expected
++ Received
+
+  [
+-   "2026-09-16",
+-   "2026-09-16",
++   "2026-08-31",
++   "2026-09-29",
+  ]
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts:10:142
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  samples/batch-b-assessment-2026-09-17/parser.test.ts > single ISO date uses exactly one day
+AssertionError: expected [ undefined, undefined ] to deeply equal [ '2026-09-16', '2026-09-16' ]
+
+- Expected
++ Received
+
+  [
+-   "2026-09-16",
+-   "2026-09-16",
++   undefined,
++   undefined,
+  ]
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts:11:133
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  samples/batch-b-assessment-2026-09-17/parser.test.ts > my business resolves explicit business scope with one business
+AssertionError: expected 'I\'m not sure if you mean personal or…' to be undefined
+
+- Expected: 
+undefined
+
++ Received: 
+"I'm not sure if you mean personal or business spending. Could you clarify whose finances you are asking about?"
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts:12:185
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  samples/batch-b-assessment-2026-09-17/parser.test.ts > multiple businesses require scope clarification
+AssertionError: expected undefined to be truthy
+
+- Expected: 
+true
+
++ Received: 
+undefined
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts:13:136
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  samples/batch-b-assessment-2026-09-17/parser.test.ts > all finances does not silently become personal only
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts:14:176
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  samples/batch-b-assessment-2026-09-17/parser.test.ts > an unsupported explicit historical year is not replaced by current year
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ samples/batch-b-assessment-2026-09-17/parser.test.ts:15:190
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed (7)
+   Start at  01:32:25
+   Duration  277ms (transform 37ms, setup 0ms, import 53ms, tests 9ms, environment 0ms)
+

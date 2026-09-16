@@ -1,0 +1,211 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - button "Cancel and close":
+  - heading "Welcome to OpenNetWorth" [level=1]
+  - paragraph: Your private, on-device financial control room. Zero cloud telemetry, powered exclusively by Local LLMs.
+  - button "Explore Sample Profiles Tour realistic personas across life stages. Safe to explore without touching real data.":
+    - heading "Explore Sample Profiles" [level=3]
+    - paragraph: Tour realistic personas across life stages. Safe to explore without touching real data.
+  - button "Start Fresh Vault Begin tracking your real assets, debts, and goals right now.":
+    - heading "Start Fresh Vault" [level=3]
+    - paragraph: Begin tracking your real assets, debts, and goals right now.
+  - text: Restore Existing Vault from Backup (.json)
+  - paragraph: 🔒 100% Private. All financial records and AI queries stay strictly on your device.
+  - heading "Financial Overview" [level=2]
+  - paragraph: Welcome back. Here's your net worth today.
+  - button "Restart Tour":
+  - button "App Settings":
+  - button "Reset / Choose Demo Profile":
+  - button "LM Studio":
+    - generic: LM Studio
+  - text: "Currency:"
+  - combobox:
+    - option "$ USD - US Dollar" [selected]
+    - option "€ EUR - Euro"
+    - option "£ GBP - British Pound"
+    - option "¥ JPY - Japanese Yen"
+    - option "C$ CAD - Canadian Dollar"
+    - option "A$ AUD - Australian Dollar"
+    - option "Fr CHF - Swiss Franc"
+    - option "¥ CNY - Chinese Yuan"
+    - option "₹ INR - Indian Rupee"
+    - option "S$ SGD - Singapore Dollar"
+    - option "₱ PHP - Philippine Peso"
+    - option "₩ KRW - South Korean Won"
+  - button "Customize":
+    - generic: Customize
+  - button "ON Local Vault Owner":
+    - generic: "ON"
+    - paragraph: Local Vault Owner
+  - heading "Get Started" [level=3]:
+    - text: Get Started
+  - paragraph: Complete these steps to unlock full potential.
+  - generic: 0 / 4 Steps
+  - link "Add your first asset":
+    - /url: /assets
+    - generic: Add your first asset
+  - link "Track a liability":
+    - /url: /liabilities
+    - generic: Track a liability
+  - link "Set a financial goal":
+    - /url: /goals
+    - generic: Set a financial goal
+  - link "Chat with a mentor":
+    - /url: /mentors
+    - generic: Chat with a mentor
+  - heading "Achievements 0 / 6" [level=3]:
+    - generic: Achievements
+    - generic: 0 / 6
+  - generic: 🎯
+  - heading "First Steps" [level=4]
+  - paragraph: Add your first asset
+  - generic: 🏆
+  - heading "Goal Setter" [level=4]
+  - paragraph: Create a financial goal
+  - generic: 📊
+  - heading "Wealth Tracker" [level=4]
+  - paragraph: Achieve positive net worth
+  - generic: ⚔️
+  - heading "Debt Slayer" [level=4]
+  - paragraph: Pay off a liability completely
+  - generic: 🔥
+  - heading "Consistent" [level=4]
+  - paragraph: 3-day check-in streak
+  - generic: 💎
+  - heading "Millionaire" [level=4]
+  - paragraph: Reach $1M Net Worth
+  - generic: Total Net Worth (USD)
+  - heading "$0" [level=3]
+  - generic: Not enough history
+  - generic: Total Assets
+  - heading "$0" [level=3]
+  - generic: Not enough history
+  - generic: Total Liabilities
+  - heading "$0" [level=3]
+  - generic: Not enough history
+  - heading "Net Worth History" [level=3]
+  - link "Time Machine":
+    - /url: /timemachine
+    - text: Time Machine
+  - button "Manage"
+  - combobox:
+    - option "Last 6 Months" [selected]
+    - option "Last Year"
+    - option "All Time"
+  - heading "Start your journey" [level=3]
+  - paragraph: Add your first asset to track your net worth.
+  - link "Add Asset":
+    - /url: /assets
+  - heading "Asset Allocation" [level=3]
+  - paragraph: No assets to display.
+  - heading "Growth Engine" [level=3]
+  - paragraph: Add investments to unlock portfolio analysis.
+  - link "Go to Assets":
+    - /url: /assets
+  - heading "Wisdom Board" [level=3]
+  - button:
+  - paragraph: "\"Consistency compounds as much as capital does.\""
+  - generic: Long-Term Thinker
+  - button:
+  - button:
+  - button "L"
+  - button "R"
+  - button "G"
+  - button "S"
+  - button "Pause":
+  - button "Save Quote":
+  - button "Share Quote":
+  - link "Consult the Board":
+    - /url: /mentors
+    - text: Consult the Board
+  - generic: Status
+  - heading "Debt Free! 🎉" [level=3]
+  - paragraph: You have no active liabilities.
+  - link "Plan Next Goal →":
+    - /url: /freedom
+  - heading "Travel Power" [level=3]:
+    - text: Travel Power
+  - paragraph: Bali
+  - paragraph: Indonesia
+  - paragraph: 0.0 months
+  - paragraph: Freedom
+  - paragraph: Tokyo
+  - paragraph: Japan
+  - paragraph: 0.0 months
+  - paragraph: Freedom
+  - paragraph: New York
+  - paragraph: USA
+  - paragraph: 0.0 months
+  - paragraph: Freedom
+  - paragraph: Based on avg. cost of living for digital nomads
+  - heading "Wealth Momentum™" [level=3]
+  - application
+  - generic: "0"
+  - generic: Stalled
+  - paragraph:
+    - text: "Autopilot Savings:"
+    - generic: $0/mo
+  - paragraph: Projected $0 / year
+  - generic: 0.0% Savings Rate
+  - heading "Bank Connections" [level=3]:
+    - text: Bank Connections
+  - combobox:
+    - option "🇦🇺 Australia (Basiq CDR)"
+    - option "🇺🇸 US & Global (Plaid)" [selected]
+  - button "Connect Bank (Plaid)":
+    - text: Connect Bank (Plaid)
+  - paragraph: No banks connected yet.
+  - paragraph: Link your US/Global bank via Plaid to automate Net Worth tracking.
+- button "Open Next.js Dev Tools":
+- alert

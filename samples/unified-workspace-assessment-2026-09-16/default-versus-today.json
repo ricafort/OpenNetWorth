@@ -1,0 +1,330 @@
+{
+  "default": {
+    "success": true,
+    "entity": {
+      "id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "name": "TEST Morgan Business",
+      "type": "business",
+      "currency": "USD",
+      "parent_entity_id": null,
+      "created_at": "2026-09-15T23:36:56.13Z",
+      "updated_at": "2026-09-15T23:36:56.13Z"
+    },
+    "accounts": [
+      {
+        "id": "af0c3f0b-6da1-46ef-a915-0c413118dbfb",
+        "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+        "name": "TEST Personal Everyday",
+        "type": "asset",
+        "sub_type": "checking",
+        "currency": "USD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": null,
+        "opening_balance_cents": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:13.789Z",
+        "updated_at": "2026-09-15T23:37:13.789Z",
+        "balance_cents": 0,
+        "formatted_balance": "$0.00",
+        "as_of_date": "2026-09-15"
+      },
+      {
+        "id": "acc-exp-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-groceries-usd",
+        "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+        "name": "Groceries",
+        "type": "expense",
+        "sub_type": "groceries",
+        "currency": "USD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": null,
+        "opening_balance_cents": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:33.086Z",
+        "updated_at": "2026-09-15T23:37:33.086Z",
+        "balance_cents": 0,
+        "formatted_balance": "$0.00",
+        "as_of_date": "2026-09-15"
+      },
+      {
+        "id": "acc-inc-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-salary-usd",
+        "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+        "name": "Salary",
+        "type": "income",
+        "sub_type": "salary",
+        "currency": "USD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": null,
+        "opening_balance_cents": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:50.529Z",
+        "updated_at": "2026-09-15T23:37:50.529Z",
+        "balance_cents": 0,
+        "formatted_balance": "$0.00",
+        "as_of_date": "2026-09-15"
+      }
+    ],
+    "net_worth": {
+      "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "as_of_date": "2026-09-15",
+      "net_worth_cents_by_currency": {
+        "USD": 0
+      },
+      "total_assets_cents_by_currency": {
+        "USD": 0
+      },
+      "total_liabilities_cents_by_currency": {},
+      "formatted_net_worth_by_currency": {
+        "USD": "$0.00"
+      },
+      "calculation_version": "1.0.0",
+      "account_count": 3
+    },
+    "period_income_expenses": {
+      "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "start_date": "2026-09-01",
+      "end_date": "2026-09-16",
+      "total_income_cents_by_currency": {
+        "USD": 100000
+      },
+      "total_expenses_cents_by_currency": {
+        "USD": 2200
+      },
+      "net_savings_cents_by_currency": {
+        "USD": 97800
+      },
+      "formatted_income_by_currency": {
+        "USD": "$1,000.00"
+      },
+      "formatted_expenses_by_currency": {
+        "USD": "$22.00"
+      },
+      "formatted_net_savings_by_currency": {
+        "USD": "$978.00"
+      },
+      "breakdown_by_category": [
+        {
+          "account_id": "acc-exp-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-groceries-usd",
+          "account_name": "Groceries",
+          "type": "expense",
+          "sub_type": "groceries",
+          "currency": "USD",
+          "total_cents": 2200,
+          "formatted_total": "$22.00",
+          "transaction_count": 1
+        },
+        {
+          "account_id": "acc-inc-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-salary-usd",
+          "account_name": "Salary",
+          "type": "income",
+          "sub_type": "salary",
+          "currency": "USD",
+          "total_cents": 100000,
+          "formatted_total": "$1,000.00",
+          "transaction_count": 1
+        }
+      ],
+      "calculation_version": "1.0.0"
+    },
+    "transactions": [
+      {
+        "id": "3175409b-6fe9-4791-99d0-71dae19088ed",
+        "date": "2026-09-16",
+        "description": "Income - TEST Employer",
+        "payee_or_payer": "TEST Employer",
+        "status": "posted",
+        "origin": "manual",
+        "idempotency_key": "2de280fa-ed49-4fc5-a9d0-083828ca2fc5",
+        "evidence_refs": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:50.529Z",
+        "updated_at": "2026-09-15T23:37:50.529Z",
+        "postings": [
+          {
+            "id": "ff92aea3-f4ec-4f02-b6a5-abaf793d0f64",
+            "transaction_id": "3175409b-6fe9-4791-99d0-71dae19088ed",
+            "account_id": "af0c3f0b-6da1-46ef-a915-0c413118dbfb",
+            "amount_cents": 100000,
+            "currency": "USD",
+            "memo": "Deposit from TEST Employer"
+          },
+          {
+            "id": "14a75649-bd1a-4ad4-9425-bbc10b2fb514",
+            "transaction_id": "3175409b-6fe9-4791-99d0-71dae19088ed",
+            "account_id": "acc-inc-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-salary-usd",
+            "amount_cents": -100000,
+            "currency": "USD",
+            "memo": "Income - TEST Employer"
+          }
+        ]
+      },
+      {
+        "id": "0b3a3ba6-cb14-4418-a92d-bbf655b618ea",
+        "date": "2026-09-16",
+        "description": "TEST personal expense draft",
+        "payee_or_payer": "TEST Grocer",
+        "status": "posted",
+        "origin": "manual",
+        "idempotency_key": "d606f5c4-2abf-4a5d-9be4-d9ffe5d3cc01",
+        "evidence_refs": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:33.086Z",
+        "updated_at": "2026-09-15T23:37:33.086Z",
+        "postings": [
+          {
+            "id": "66553326-a083-4e82-a51e-77a049de4f36",
+            "transaction_id": "0b3a3ba6-cb14-4418-a92d-bbf655b618ea",
+            "account_id": "acc-exp-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-groceries-usd",
+            "amount_cents": 2200,
+            "currency": "USD",
+            "memo": "TEST personal expense draft"
+          },
+          {
+            "id": "871471ab-22a8-4404-b55e-aaf249a675a4",
+            "transaction_id": "0b3a3ba6-cb14-4418-a92d-bbf655b618ea",
+            "account_id": "af0c3f0b-6da1-46ef-a915-0c413118dbfb",
+            "amount_cents": -2200,
+            "currency": "USD",
+            "memo": "Payment to TEST Grocer"
+          }
+        ]
+      }
+    ]
+  },
+  "explicitToday": {
+    "success": true,
+    "entity": {
+      "id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "name": "TEST Morgan Business",
+      "type": "business",
+      "currency": "USD",
+      "parent_entity_id": null,
+      "created_at": "2026-09-15T23:36:56.13Z",
+      "updated_at": "2026-09-15T23:36:56.13Z"
+    },
+    "accounts": [
+      {
+        "id": "af0c3f0b-6da1-46ef-a915-0c413118dbfb",
+        "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+        "name": "TEST Personal Everyday",
+        "type": "asset",
+        "sub_type": "checking",
+        "currency": "USD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": null,
+        "opening_balance_cents": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:13.789Z",
+        "updated_at": "2026-09-15T23:37:13.789Z",
+        "balance_cents": 97800,
+        "formatted_balance": "$978.00",
+        "as_of_date": "2026-09-16"
+      },
+      {
+        "id": "acc-exp-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-groceries-usd",
+        "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+        "name": "Groceries",
+        "type": "expense",
+        "sub_type": "groceries",
+        "currency": "USD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": null,
+        "opening_balance_cents": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:33.086Z",
+        "updated_at": "2026-09-15T23:37:33.086Z",
+        "balance_cents": 2200,
+        "formatted_balance": "$22.00",
+        "as_of_date": "2026-09-16"
+      },
+      {
+        "id": "acc-inc-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-salary-usd",
+        "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+        "name": "Salary",
+        "type": "income",
+        "sub_type": "salary",
+        "currency": "USD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": null,
+        "opening_balance_cents": null,
+        "revision": 1,
+        "created_at": "2026-09-15T23:37:50.529Z",
+        "updated_at": "2026-09-15T23:37:50.529Z",
+        "balance_cents": 100000,
+        "formatted_balance": "$1,000.00",
+        "as_of_date": "2026-09-16"
+      }
+    ],
+    "net_worth": {
+      "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "as_of_date": "2026-09-16",
+      "net_worth_cents_by_currency": {
+        "USD": 97800
+      },
+      "total_assets_cents_by_currency": {
+        "USD": 97800
+      },
+      "total_liabilities_cents_by_currency": {},
+      "formatted_net_worth_by_currency": {
+        "USD": "$978.00"
+      },
+      "calculation_version": "1.0.0",
+      "account_count": 3
+    },
+    "period_income_expenses": {
+      "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "total_income_cents_by_currency": {
+        "USD": 100000
+      },
+      "total_expenses_cents_by_currency": {
+        "USD": 2200
+      },
+      "net_savings_cents_by_currency": {
+        "USD": 97800
+      },
+      "formatted_income_by_currency": {
+        "USD": "$1,000.00"
+      },
+      "formatted_expenses_by_currency": {
+        "USD": "$22.00"
+      },
+      "formatted_net_savings_by_currency": {
+        "USD": "$978.00"
+      },
+      "breakdown_by_category": [
+        {
+          "account_id": "acc-exp-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-groceries-usd",
+          "account_name": "Groceries",
+          "type": "expense",
+          "sub_type": "groceries",
+          "currency": "USD",
+          "total_cents": 2200,
+          "formatted_total": "$22.00",
+          "transaction_count": 1
+        },
+        {
+          "account_id": "acc-inc-a56d3de0-9f83-40bc-b118-a5bba5f2d3e5-salary-usd",
+          "account_name": "Salary",
+          "type": "income",
+          "sub_type": "salary",
+          "currency": "USD",
+          "total_cents": 100000,
+          "formatted_total": "$1,000.00",
+          "transaction_count": 1
+        }
+      ],
+      "calculation_version": "1.0.0"
+    }
+  }
+}

@@ -1,0 +1,166 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - text: Dashboard
+  - link "Accounting":
+    - /url: /accounting
+    - text: Accounting
+  - link "Assets":
+    - /url: /assets
+    - text: Assets
+  - link "Liabilities":
+    - /url: /liabilities
+    - text: Liabilities
+  - link "Goals":
+    - /url: /goals
+    - text: Goals
+  - link "Cash Flow":
+    - /url: /cashflow
+    - text: Cash Flow
+  - link "Growth Engine":
+    - /url: /portfolio
+    - text: Growth Engine
+  - link "Freedom":
+    - /url: /freedom
+    - text: Freedom
+  - link "Mentors":
+    - /url: /mentors
+    - text: Mentors
+  - link "Privacy":
+    - /url: /privacy
+    - text: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Sovereign Accounting Engine" [level=1]
+  - generic: Ledger Active
+  - paragraph: Local-first, double-entry financial ledger with exact minor-unit integer cents arithmetic. No floating-point rounding errors, no untraced balances.
+  - button "Daily Events & Ledger":
+    - generic: Daily Events & Ledger
+  - button "Accounts & Balances":
+    - generic: Accounts & Balances
+  - button "Reports & Traceability":
+    - generic: Reports & Traceability
+  - button "Document Inbox & Imports":
+    - generic: Document Inbox & Imports
+  - generic: Sovereign Entity
+  - combobox:
+    - option "Company (business)"
+    - option "Fictional Family Trust (household)"
+    - option "Household (household)" [selected]
+  - generic: Accounting Scope
+  - combobox:
+    - option "Individual Entity (Ownership Share %)" [selected]
+    - option "Household Unit (100% De-duplicated)"
+  - generic: As Of Valuation Date
+  - textbox: 2025-09-30
+  - generic: Period Start / End
+  - textbox:
+    - /placeholder: Start
+    - text: 2025-07-01
+  - generic: to
+  - textbox:
+    - /placeholder: End
+    - text: 2025-09-30
+  - button "Revalue Asset":
+    - generic: Revalue Asset
+  - button "Exchange Rates":
+    - generic: Exchange Rates
+  - button "Refresh All Reports":
+  - button "Scope Net Worth & Ownership":
+    - generic: Scope Net Worth & Ownership
+  - button "Cash Flow vs Accrual Performance":
+    - generic: Cash Flow vs Accrual Performance
+  - button "Ledger Drill-Down & Evidence Links":
+    - generic: Ledger Drill-Down & Evidence Links
+  - heading "Chronological Ledger Traceability (M1-EVID-01, M1-EVID-02)" [level=3]
+  - paragraph: Every displayed balance is traceable to individual journal postings with running balances and evidence citations.
+  - generic: "Account:"
+  - combobox:
+    - option "-- Select an account --"
+    - option "Business Operating (asset · AUD)"
+    - option "Everyday Checking (asset · AUD)"
+    - option "Everyday Checking (asset · AUD)" [selected]
+    - option "High Interest Savings (asset · AUD)"
+    - option "Opening Balance Equity (equity · AUD)"
+    - option "Opening Balance Equity (equity · AUD)"
+    - option "Opening Balance Equity (equity · AUD)"
+    - option "Office Supplies (expense · AUD)"
+    - option "Office Supplies (expense · AUD)"
+    - option "Office Supplies (expense · AUD)"
+    - option "Utilities (expense · AUD)"
+    - option "Utilities (expense · AUD)"
+    - option "Platinum Rewards Card (liability · AUD)"
+  - generic: Account
+  - generic: Everyday Checking
+  - generic: Normal Balance
+  - generic: Debit Normal
+  - generic: Opening Balance
+  - generic: A$1,000.00
+  - generic: Closing Balance
+  - generic: A$883.12
+  - table:
+    - rowgroup:
+      - row "Date Description / Payee Origin Debit / Credit Running Balance Evidence":
+        - columnheader "Date"
+        - columnheader "Description / Payee"
+        - columnheader "Origin"
+        - columnheader "Debit / Credit"
+        - columnheader "Running Balance"
+        - columnheader "Evidence"
+    - rowgroup:
+      - row "2025-07-03 Waratah Office Supplies paper ream Waratah Office Supplies paper ream document_extraction -A$22.00 A$978.00 Evidence":
+        - cell "2025-07-03"
+        - cell "Waratah Office Supplies paper ream Waratah Office Supplies paper ream":
+          - generic: Waratah Office Supplies paper ream
+          - generic: Waratah Office Supplies paper ream
+        - cell "document_extraction"
+        - cell "-A$22.00"
+        - cell "A$978.00"
+        - cell "Evidence":
+          - button "Evidence" [active]:
+            - generic: Evidence
+      - row "2025-07-04 Waratah Office Supplies pens Waratah Office Supplies pens document_extraction -A$15.00 A$963.00 Evidence":
+        - cell "2025-07-04"
+        - cell "Waratah Office Supplies pens Waratah Office Supplies pens":
+          - generic: Waratah Office Supplies pens
+          - generic: Waratah Office Supplies pens
+        - cell "document_extraction"
+        - cell "-A$15.00"
+        - cell "A$963.00"
+        - cell "Evidence":
+          - button "Evidence":
+            - generic: Evidence
+      - row "2025-07-06 Blue Wren Broadband BPAY Blue Wren Broadband BPAY document_extraction -A$79.88 A$883.12 Evidence":
+        - cell "2025-07-06"
+        - cell "Blue Wren Broadband BPAY Blue Wren Broadband BPAY":
+          - generic: Blue Wren Broadband BPAY
+          - generic: Blue Wren Broadband BPAY
+        - cell "document_extraction"
+        - cell "-A$79.88"
+        - cell "A$883.12"
+        - cell "Evidence":
+          - button "Evidence":
+            - generic: Evidence
+  - heading "Structured Evidence Metadata" [level=3]
+  - button:
+  - generic: Document ID
+  - text: N/A
+  - generic: Content Hash (SHA-256)
+  - text: N/A
+  - paragraph: This metadata links the transaction ledger directly to the verified source document snippet.
+  - button "Close"
+- button "Open Next.js Dev Tools":
+- alert
