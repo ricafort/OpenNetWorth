@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///D:/LocalVersions/OpenNetWorth/src/proxy.ts"],"sourcesContent":["import { NextResponse, type NextRequest } from 'next/server'\n\n/**\n * OpenNetWorth Local-First Middleware / Proxy\n * \n * Why this exists:\n * In OpenNetWorth, all authentication and financial operations are local-first\n * and offline-ready. We do not connect to external auth servers or SaaS clouds,\n * ensuring zero network latency and complete privacy for local requests.\n */\nexport default async function proxy(request: NextRequest) {\n    return NextResponse.next({\n        request: {\n            headers: request.headers,\n        },\n    })\n}\n\nexport const config = {\n    matcher: [\n        /*\n         * Match all request paths except for static assets:\n         * - _next/static (static files)\n         * - _next/image (image optimization files)\n         * - favicon.ico (favicon file)\n         */\n        '/((?!_next/static|_next/image|favicon.ico|.*\\\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',\n    ],\n}\n"],"names":[],"mappings":";;;;;;AAAA;;AAUe,eAAe,MAAM,OAAoB;IACpD,OAAO,8IAAY,CAAC,IAAI,CAAC;QACrB,SAAS;YACL,SAAS,QAAQ,OAAO;QAC5B;IACJ;AACJ;AAEO,MAAM,SAAS;IAClB,SAAS;QACL;;;;;SAKC,GACD;KACH;AACL"}}]
+}

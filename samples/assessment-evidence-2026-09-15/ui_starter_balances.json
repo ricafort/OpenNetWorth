@@ -1,0 +1,49 @@
+[
+  {
+    "entity": "0dac3d81-9835-412e-995e-e54b2b48aca3",
+    "accounts": [
+      {
+        "name": "Opening Balance Equity",
+        "type": "equity",
+        "signed_cents": -100000
+      },
+      {
+        "name": "Office Supplies",
+        "type": "expense",
+        "signed_cents": 3700
+      },
+      {
+        "name": "Utilities",
+        "type": "expense",
+        "signed_cents": 7988
+      },
+      {
+        "name": "Everyday Checking",
+        "type": "asset",
+        "signed_cents": 88312
+      }
+    ],
+    "purchases": 3
+  },
+  {
+    "entity": "eb359280-674a-4cac-a437-786169b65afc",
+    "accounts": [
+      {
+        "name": "Opening Balance Equity",
+        "type": "equity",
+        "signed_cents": -50000
+      },
+      {
+        "name": "Office Supplies",
+        "type": "expense",
+        "signed_cents": 11000
+      },
+      {
+        "name": "Business Operating",
+        "type": "asset",
+        "signed_cents": 39000
+      }
+    ],
+    "purchases": 1
+  }
+]

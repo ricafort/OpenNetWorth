@@ -132,6 +132,35 @@ export default function ChatInterface({
                                     <p className="text-[10px] font-black uppercase tracking-tighter text-blue-600 mb-1">{msg.mentorName}</p>
                                 )}
                                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+
+                                {msg.facts && (
+                                    <div className="mt-4 p-3 bg-white/50 border border-slate-200 rounded-lg text-sm">
+                                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-200">
+                                            <span className="font-bold text-slate-800">Verified Facts</span>
+                                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                {msg.facts.entityName} | {msg.facts.periodLabel}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {Object.entries(msg.facts.formattedTotals || {}).map(([curr, formatted]) => (
+                                                <div key={curr} className="flex justify-between items-center text-sm">
+                                                    <span className="text-slate-600 font-medium">Total Expenses ({curr})</span>
+                                                    <span className="font-bold text-slate-900">
+                                                        {formatted as string}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-2">
+                                            <p className="text-xs text-slate-500">Based on {msg.facts.transactionIds?.length || 0} supporting transactions.</p>
+                                            <div className="flex gap-2">
+                                                <a href="/accounting?view=reports" className="text-xs font-bold text-blue-600 hover:underline">
+                                                    View Source Records →
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

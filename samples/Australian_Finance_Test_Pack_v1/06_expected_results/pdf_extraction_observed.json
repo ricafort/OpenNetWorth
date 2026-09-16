@@ -1,0 +1,136 @@
+[
+  {
+    "file": "credit_card_statement.pdf",
+    "pages": 2,
+    "bridge": {
+      "supported": false,
+      "layout": "unsupported_layout",
+      "warnings": [
+        "Supplier could not be identified with confidence. Retained for manual review.",
+        "Document could not be matched with a specialized tax parser. Retained raw text with PII redactions for general review."
+      ],
+      "raw_text": "Southern Example Bank\nCredit card transaction statement\n01 July - 30 September 2025 | Australian dollars (AUD)\nAccount: Everyday Credit Card | TEST-HH-CARD\nCustomer: Alex and Morgan Nguyen household\nAmounts below use signed ledger movements: purchases negative, repayments positive. Negative balance means money owed.\nThis is intentionally not a bank-specific card export.\nOpening signed balance Credits Debits Closing signed balance\n-600.00 1579.20 979.20 0.00\nDate Description / reference Amount AUD Balance AUD\n02/07/2025 Banksia Cafe, Sampleton (TX-0001) -5.50 -605.50\n04/07/2025 Example Fuel Stop (TX-0002) -65.00 -670.50\n09/07/2025 Banksia Cafe, Sampleton (TX-0005) -6.00 -676.50\n11/07/2025 Example Fuel Stop (TX-0006) -68.15 -744.65\n16/07/2025 Banksia Cafe, Sampleton (TX-0009) -6.50 -751.15\n18/07/2025 Example Fuel Stop (TX-0010) -71.30 -822.45\n23/07/2025 Banksia Cafe, Sampleton (TX-0013) -5.50 -827.95\n25/07/2025 Example Fuel Stop (TX-0014) -74.45 -902.40\n28/07/2025 Transfer from HH-EVERYD"
+    }
+  },
+  {
+    "file": "household_bank_statement.pdf",
+    "pages": 3,
+    "bridge": {
+      "supported": false,
+      "layout": "unsupported_layout",
+      "warnings": [
+        "Supplier could not be identified with confidence. Retained for manual review.",
+        "Document could not be matched with a specialized tax parser. Retained raw text with PII redactions for general review."
+      ],
+      "raw_text": "Southern Example Bank\nEveryday account statement\n01 July - 30 September 2025 | Australian dollars (AUD)\nAccount: Everyday Checking | TEST-HH-EVERYDAY\nCustomer: Alex and Morgan Nguyen household\nOpening signed balance Credits Debits Closing signed balance\n15000.00 32755.00 21485.85 26269.15\nDate Description / reference Amount AUD Balance AUD\n03/07/2025 PAYROLL Eucalyptus Engineering - Alex (TX-0053) 3650.00 18650.00\n03/07/2025 Waratah Office Supplies paper ream (TX-0108) -22.00 18628.00\n04/07/2025 Waratah Office Supplies pens (TX-0109) -15.00 18613.00\n05/07/2025 Green Basket Grocers - Sampleton (TX-0003) -158.00 18455.00\n06/07/2025 Blue Wren Broadband BPAY (TX-0061) -79.88 18375.12\n07/07/2025 Little Gum Early Learning (TX-0004) -285.00 18090.12\n08/07/2025 Southern Example Energy DIRECT DEBIT (TX-0062) -186.45 17903.67\n10/07/2025 Waratah Office Supplies partial refund (TX-0110) 5.00 17908.67\n11/07/2025 Sample Cover Home Insurance (TX-0063) -142.30 17766.37\n12/07/2025 Green Basket Grocers "
+    }
+  },
+  {
+    "file": "invoice_unpaid_330.pdf",
+    "pages": 1,
+    "bridge": {
+      "supported": true,
+      "layout": "simple_supplies_invoice",
+      "supplier_name": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION",
+      "invoice_number": "WOS-0920",
+      "date": "2025-09-20",
+      "currency": "DUE",
+      "total_amount": 330.0,
+      "gst_amount": 30.0,
+      "subtotal": 300.0,
+      "line_items": [
+        {
+          "description": "Printer maintenance service",
+          "amount": 330.0,
+          "source_line": 10
+        }
+      ],
+      "source_snippet": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice - unpaid\nInvoice: WOS-0920\nDate: 20/09/2025 10:34\nBilled to: Wattle Design Studio Pty Ltd\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter maintenance service $330.00\nTOTAL DUE $330.00\nIncludes goods and services tax (GST): $30.00",
+      "warnings": [
+        "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+      ],
+      "raw_text": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice - unpaid\nInvoice: WOS-0920\nDate: 20/09/2025 10:34\nBilled to: Wattle Design Studio Pty Ltd\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter maintenance service $330.00\nTOTAL DUE $330.00\nIncludes goods and services tax (GST): $30.00\nUNPAID as at 30 September 2025. Due 04 October 2025. Do not record a cash payment.\nSynthetic extraction fixture; not a valid tax invoice or claim for a GST credit.\nSYNTHETIC TEST DATA - fictional identities, accounts and transactions Page 1"
+    }
+  },
+  {
+    "file": "mortgage_statements_and_schedule.pdf",
+    "pages": 2,
+    "bridge": {
+      "supported": false,
+      "layout": "unsupported_layout",
+      "warnings": [
+        "Supplier could not be identified with confidence. Retained for manual review.",
+        "Document could not be matched with a specialized tax parser. Retained raw text with PII redactions for general review."
+      ],
+      "raw_text": "Southern Example Bank\nMortgage statements and amortisation extract\nSYNTHETIC LOANS - illustrative contractual assumptions, not current market offers.\nOpening date: 30 June 2025. First payment: 31 July 2025. Fixed nominal rate divided by 12, monthly interest rounded half-up to\ncents, payment at month-end. No daily-interest, offset, redraw or fees in this baseline. Final payment adjusted to clear the\nbalance.\nHOME-LOAN\nOpening principal AUD 520000.00; annual rate 6.10%; term 360 months; scheduled payment AUD 3151.17.\nFirst three rows are quarter actuals; remaining rows are projections. Full schedules are in the workbook and CSVs.\nPayment Opening Payment Interest Principal Closing\ndate\n31/07/2025 520000.00 3151.17 2643.33 507.84 519492.16\n31/08/2025 519492.16 3151.17 2640.75 510.42 518981.74\n30/09/2025 518981.74 3151.17 2638.16 513.01 518468.73\n31/10/2025 518468.73 3151.17 2635.55 515.62 517953.11\n30/11/2025 517953.11 3151.17 2632.93 518.24 517434.87\n31/12/2025 517434.87 3151.17 2630.29 5"
+    }
+  },
+  {
+    "file": "property_manager_statement.pdf",
+    "pages": 1,
+    "bridge": {
+      "supported": false,
+      "layout": "unsupported_layout",
+      "warnings": [
+        "Supplier could not be identified with confidence. Retained for manual review.",
+        "These are document amounts only. Missing amounts and tax treatment still need checking.",
+        "Money paid to the rental owner is a cash payment, not a confirmed taxable rental profit. Expense amounts are not confirmed tax deductions."
+      ],
+      "raw_text": "Paperbark Property Managers\nOwner statement - rental property\nAlex and Morgan Nguyen | Property R-01 | Fictional Australian residential rental\nQuarter ending 30 September 2025 | All amounts AUD\nMonth Gross rent Management Repairs Net paid\n2025-07 2600.00 182.00 0.00 2418.00\n2025-08 2600.00 182.00 165.00 2253.00\n2025-09 2750.00 192.50 0.00 2557.50\nEach net payment matches a deposit in Rental Property Bank on the 25th of that month. Gross rent is not an additional bank\ndeposit.\nFixture convention: no GST charged on ordinary residential rent. Management and repair charges are shown gross. This\nstatement is not a tax-deduction calculation.\nAugust repair: Example Plumbing call-out AUD 165.00. No other funds retained by the manager.\nSYNTHETIC TEST DATA - fictional identities, accounts and transactions Page 1"
+    }
+  },
+  {
+    "file": "receipt_business_supplies_110.pdf",
+    "pages": 1,
+    "bridge": {
+      "supported": true,
+      "layout": "simple_supplies_invoice",
+      "supplier_name": "Waratah Office Supplies",
+      "invoice_number": "WOS-0711",
+      "date": "2025-07-11",
+      "currency": "AUD",
+      "total_amount": 110.0,
+      "gst_amount": 10.0,
+      "subtotal": 100.0,
+      "line_items": [
+        {
+          "description": "Printer toner cartridge",
+          "amount": 110.0,
+          "source_line": 10
+        }
+      ],
+      "source_snippet": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice and payment receipt\nInvoice: WOS-0711\nDate: 11/07/2025 10:34\nBilled to: Wattle Design Studio Pty Ltd\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter toner cartridge $110.00\nTOTAL PAID $110.00\nIncludes goods and services tax (GST): $10.00",
+      "warnings": [
+        "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+      ],
+      "raw_text": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice and payment receipt\nInvoice: WOS-0711\nDate: 11/07/2025 10:34\nBilled to: Wattle Design Studio Pty Ltd\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter toner cartridge $110.00\nTOTAL PAID $110.00\nIncludes goods and services tax (GST): $10.00\nPayment method: debit card. Account details omitted.\nSynthetic extraction fixture; not a valid tax invoice or claim for a GST credit.\nSYNTHETIC TEST DATA - fictional identities, accounts and transactions Page 1"
+    }
+  },
+  {
+    "file": "receipt_office_supplies_22.pdf",
+    "pages": 1,
+    "bridge": {
+      "supported": true,
+      "layout": "simple_supplies_invoice",
+      "supplier_name": "Waratah Office Supplies",
+      "invoice_number": "WOS-0703",
+      "date": "2025-07-03",
+      "currency": "AUD",
+      "total_amount": 22.0,
+      "gst_amount": 2.0,
+      "subtotal": 20.0,
+      "line_items": [
+        {
+          "description": "Printer paper ream",
+          "amount": 22.0,
+          "source_line": 10
+        }
+      ],
+      "source_snippet": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice and payment receipt\nInvoice: WOS-0703\nDate: 03/07/2025 10:34\nBilled to: Alex Nguyen\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter paper ream $22.00\nTOTAL PAID $22.00\nIncludes goods and services tax (GST): $2.00",
+      "warnings": [
+        "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+      ],
+      "raw_text": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice and payment receipt\nInvoice: WOS-0703\nDate: 03/07/2025 10:34\nBilled to: Alex Nguyen\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter paper ream $22.00\nTOTAL PAID $22.00\nIncludes goods and services tax (GST): $2.00\nPayment method: debit card. Account details omitted.\nSynthetic extraction fixture; not a valid tax invoice or claim for a GST credit.\nSYNTHETIC TEST DATA - fictional identities, accounts and transactions Page 1"
+    }
+  }
+]

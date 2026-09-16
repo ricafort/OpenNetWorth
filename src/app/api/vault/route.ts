@@ -60,6 +60,8 @@ function validateMonth(month: any): string {
     return month;
 }
 
+import { CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -80,50 +82,73 @@ export async function GET(request: Request) {
             return NextResponse.json({ data: rows });
         }
 
-        // Return full vault snapshot
-        const assets = db.prepare('SELECT * FROM assets').all().map((a: any) => ({
-            ...a,
-            is_liquid: Boolean(a.is_liquid),
-            investment_details: a.investment_details ? JSON.parse(a.investment_details) : undefined
-        }));
+        // Return full consistent snapshot across all collections (TRUST-11, DATA-01)
+        // Why: Wrapping reads inside a single read transaction guarantees point-in-time consistency
+        // across all financial and document tables without partial reads.
+        const snapshot = db.transaction(() => {
+            const assets = db.prepare('SELECT * FROM assets').all().map((a: any) => ({
+                ...a,
+                is_liquid: Boolean(a.is_liquid),
+                investment_details: a.investment_details ? JSON.parse(a.investment_details) : undefined
+            }));
 
-        const liabilities = db.prepare('SELECT * FROM liabilities').all().map((l: any) => ({
-            ...l,
-            is_good_debt: Boolean(l.is_good_debt)
-        }));
+            const liabilities = db.prepare('SELECT * FROM liabilities').all().map((l: any) => ({
+                ...l,
+                is_good_debt: Boolean(l.is_good_debt)
+            }));
 
-        const goals = db.prepare('SELECT * FROM goals').all();
+            const goals = db.prepare('SELECT * FROM goals').all();
 
-        const recurring = db.prepare('SELECT * FROM recurring_transactions').all().map((r: any) => ({
-            ...r,
-            is_active: Boolean(r.is_active)
-        }));
+            const recurring = db.prepare('SELECT * FROM recurring_transactions').all().map((r: any) => ({
+                ...r,
+                is_active: Boolean(r.is_active)
+            }));
 
-        const history = db.prepare('SELECT * FROM net_worth_history ORDER BY date ASC').all().map((h: any) => ({
-            id: h.id,
-            date: h.date,
-            totalAssets: h.total_assets,
-            totalLiabilities: h.total_liabilities,
-            netWorth: h.net_worth
-        }));
+            const history = db.prepare('SELECT * FROM net_worth_history ORDER BY date ASC').all().map((h: any) => ({
+                id: h.id,
+                date: h.date,
+                totalAssets: h.total_assets,
+                totalLiabilities: h.total_liabilities,
+                netWorth: h.net_worth
+            }));
 
-        const cashFlow = db.prepare('SELECT * FROM cash_flow_history ORDER BY month ASC').all();
+            const cashFlow = db.prepare('SELECT * FROM cash_flow_history ORDER BY month ASC').all();
 
-        const settingsRows = db.prepare('SELECT * FROM settings').all();
-        const settings: Record<string, any> = {};
-        for (const row of settingsRows as any[]) {
-            try {
-                settings[row.key] = JSON.parse(row.value);
-            } catch {
-                settings[row.key] = row.value;
+            const settingsRows = db.prepare('SELECT * FROM settings').all();
+            const settings: Record<string, any> = {};
+            for (const row of settingsRows as any[]) {
+                try {
+                    settings[row.key] = JSON.parse(row.value);
+                } catch {
+                    settings[row.key] = row.value;
+                }
             }
-        }
 
-        const profile = db.prepare("SELECT * FROM profiles WHERE id = 'local_user'").get();
+            const profile = db.prepare("SELECT * FROM profiles WHERE id = 'local_user'").get();
 
-        return NextResponse.json({
-            success: true,
-            vault: {
+            const tableExists = (name: string) => {
+                const res = db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) as any;
+                return res && res.cnt > 0;
+            };
+
+            // Modern accounting collections
+            const entities = tableExists('m1_entities') ? db.prepare('SELECT * FROM m1_entities').all() : [];
+            const accounts = tableExists('m1_accounts') ? db.prepare('SELECT * FROM m1_accounts').all() : [];
+            const account_ownership = tableExists('m1_account_ownership') ? db.prepare('SELECT * FROM m1_account_ownership').all() : [];
+            const transactions = tableExists('m1_transactions') ? db.prepare('SELECT * FROM m1_transactions').all() : [];
+            const journal_entries = tableExists('m1_journal_entries') ? db.prepare('SELECT * FROM m1_journal_entries').all() : [];
+            const transaction_corrections = tableExists('m1_transaction_corrections') ? db.prepare('SELECT * FROM m1_transaction_corrections').all() : [];
+            const exchange_rates = tableExists('m1_exchange_rates') ? db.prepare('SELECT * FROM m1_exchange_rates').all() : [];
+            const asset_valuations = tableExists('m1_asset_valuations') ? db.prepare('SELECT * FROM m1_asset_valuations').all() : [];
+            const drafts = tableExists('m1_drafts') ? db.prepare('SELECT * FROM m1_drafts').all() : [];
+
+            // Modern document collections
+            const documents = tableExists('m1_documents') ? db.prepare('SELECT * FROM m1_documents').all() : [];
+            const csv_mappings = tableExists('m1_csv_mappings') ? db.prepare('SELECT * FROM m1_csv_mappings').all() : [];
+            const document_jobs = tableExists('m1_document_jobs') ? db.prepare('SELECT * FROM m1_document_jobs').all() : [];
+            const proposals = tableExists('m1_proposals') ? db.prepare('SELECT * FROM m1_proposals').all() : [];
+
+            return {
                 assets,
                 liabilities,
                 goals,
@@ -131,7 +156,48 @@ export async function GET(request: Request) {
                 history,
                 cashFlow,
                 settings,
-                profile
+                profile,
+                entities,
+                accounts,
+                account_ownership,
+                transactions,
+                journal_entries,
+                transaction_corrections,
+                exchange_rates,
+                asset_valuations,
+                drafts,
+                documents,
+                csv_mappings,
+                document_jobs,
+                proposals
+            };
+        })();
+
+        return NextResponse.json({
+            success: true,
+            manifest: {
+                app: 'OpenNetWorth',
+                schemaVersion: 2,
+                exportTimestamp: new Date().toISOString(),
+                recordCounts: {
+                    assets: snapshot.assets.length,
+                    liabilities: snapshot.liabilities.length,
+                    goals: snapshot.goals.length,
+                    recurring: snapshot.recurring.length,
+                    history: snapshot.history.length,
+                    cashFlow: snapshot.cashFlow.length,
+                    entities: snapshot.entities.length,
+                    accounts: snapshot.accounts.length,
+                    transactions: snapshot.transactions.length,
+                    journal_entries: snapshot.journal_entries.length,
+                    drafts: snapshot.drafts.length,
+                    documents: snapshot.documents.length,
+                    proposals: snapshot.proposals.length
+                }
+            },
+            vault: {
+                schemaVersion: 2,
+                ...snapshot
             }
         });
     } catch (error: any) {
@@ -464,73 +530,300 @@ export async function POST(request: Request) {
         }
 
         // --- BULK RESTORE OR BULK SYNCHRONIZATION ---
-        const { assets, liabilities, goals, recurring, history, cashFlow, settings, profile } = body;
+        const rawVault = (body.vault && typeof body.vault === 'object') ? body.vault : body;
+        const schemaVersion = body.schemaVersion ?? body.manifest?.schemaVersion ?? rawVault.schemaVersion ?? 1;
+        const isV2 = schemaVersion === 2;
         const isBulkRestore = action === 'bulk_restore';
 
+        if (isBulkRestore && schemaVersion !== 1 && schemaVersion !== 2) {
+            return NextResponse.json({
+                error: `Unsupported archive schemaVersion: ${schemaVersion}`
+            }, { status: 400 });
+        }
+
         /**
-         * Why this exists (Finding 5 & Milestone 0 final signoff):
-         * Protects against incomplete destructive restore requests.
-         * The server must independently validate that all 6 core financial collections
-         * AND the settings object are present and well-formed BEFORE executing any table deletions.
+         * Why this exists (Finding 5, Clarification 1):
+         * Protects against incomplete destructive restore requests and cross-schema data wipes.
          * 
-         * Tricky logic:
-         * In a bulk restore, the settings table is cleared alongside financial records.
-         * If settings is omitted or malformed, restoring without it would permanently erase
-         * the user's existing settings. Therefore, settings is strictly required (must be an object,
-         * not null or an array).
-         * 
-         * TODO: Support versioned schema validation if settings schema evolves in Milestone 1+.
+         * Requirements:
+         * 1. Only an explicit, validated Version 2 full restore may replace the complete accounting workspace.
+         * 2. Ordinary saves/synchronizations must never clear unrelated tables or modern accounting records.
+         * 3. Version 1 restores must explicitly preserve existing modern accounting records without wiping them.
+         * 4. Version 2 restores distinguish missing required collections (invalid archive) from explicitly empty collections (valid empty data).
+         * 5. Restore validation includes balanced postings per currency, safe integer amounts, supported currencies, and evidence/source references.
          */
-        if (isBulkRestore) {
-            const requiredCollections = ['assets', 'liabilities', 'goals', 'recurring', 'history', 'cashFlow'];
-            for (const col of requiredCollections) {
-                if (!Array.isArray(body[col])) {
+        if (isBulkRestore && isV2) {
+            // Version 2 Required Collections (13 modern + 6 legacy + settings)
+            const requiredModernCollections = [
+                'entities',
+                'accounts',
+                'account_ownership',
+                'transactions',
+                'journal_entries',
+                'transaction_corrections',
+                'exchange_rates',
+                'asset_valuations',
+                'drafts',
+                'documents',
+                'csv_mappings',
+                'document_jobs',
+                'proposals'
+            ];
+            const requiredLegacyCollections = [
+                'assets',
+                'liabilities',
+                'goals',
+                'recurring',
+                'history',
+                'cashFlow'
+            ];
+
+            // Distinguish missing collections from explicitly empty collections ([])
+            for (const col of requiredModernCollections) {
+                if (!Array.isArray(rawVault[col])) {
                     return NextResponse.json({
-                        error: `Invalid restore payload: collection "${col}" is required and must be an array`
+                        error: `Invalid Version 2 archive: required modern accounting collection "${col}" is missing. To restore an empty collection, provide an empty array [].`
                     }, { status: 400 });
                 }
             }
-
-            if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+            for (const col of requiredLegacyCollections) {
+                if (!Array.isArray(rawVault[col])) {
+                    return NextResponse.json({
+                        error: `Invalid Version 2 archive: required legacy collection "${col}" is missing. To restore an empty collection, provide an empty array [].`
+                    }, { status: 400 });
+                }
+            }
+            if (!rawVault.settings || typeof rawVault.settings !== 'object' || Array.isArray(rawVault.settings)) {
                 return NextResponse.json({
-                    error: 'Invalid restore payload: settings is required and must be an object'
+                    error: 'Invalid Version 2 archive: settings is required and must be an object'
                 }, { status: 400 });
             }
 
-            // Pre-validate all items before beginning any database transaction or deletion
-            for (const a of assets) {
+            // 1. Validate supported currencies across all collections
+            const checkCurrency = (curr: any, context: string) => {
+                if (!curr || typeof curr !== 'string' || !(curr in CURRENCY_DECIMALS)) {
+                    throw new ValidationError(`Unsupported currency "${curr}" in ${context}. Supported currencies: ${Object.keys(CURRENCY_DECIMALS).join(', ')}`);
+                }
+            };
+            for (const e of rawVault.entities) checkCurrency(e.currency || 'USD', `entity "${e.name || e.id}"`);
+            for (const a of rawVault.accounts) checkCurrency(a.currency || 'USD', `account "${a.name || a.id}"`);
+            for (const j of rawVault.journal_entries) checkCurrency(j.currency, `journal entry "${j.id}"`);
+            for (const r of rawVault.exchange_rates) {
+                checkCurrency(r.from_currency, `exchange rate "${r.id}" from_currency`);
+                checkCurrency(r.to_currency, `exchange rate "${r.id}" to_currency`);
+            }
+            for (const p of rawVault.proposals) {
+                if (p.original_currency && typeof p.original_currency === 'string' && p.original_currency.trim() !== '') {
+                    checkCurrency(p.original_currency, `proposal "${p.id}"`);
+                }
+            }
+            for (const d of rawVault.drafts) {
+                if (d.currency) checkCurrency(d.currency, `draft "${d.id}"`);
+            }
+
+            // 2. Validate safe integer amounts across minor-unit fields
+            for (const j of rawVault.journal_entries) {
+                if (!Number.isSafeInteger(j.amount_cents)) {
+                    throw new ValidationError(`Journal entry "${j.id}" amount_cents must be a safe integer, received: ${j.amount_cents}`);
+                }
+            }
+            for (const v of rawVault.asset_valuations) {
+                if (!Number.isSafeInteger(v.target_valuation_cents)) {
+                    throw new ValidationError(`Asset valuation "${v.id}" target_valuation_cents must be a safe integer, received: ${v.target_valuation_cents}`);
+                }
+            }
+            for (const d of rawVault.drafts) {
+                if (d.amount_cents !== null && d.amount_cents !== undefined && !Number.isSafeInteger(d.amount_cents)) {
+                    throw new ValidationError(`Draft "${d.id}" amount_cents must be a safe integer or null, received: ${d.amount_cents}`);
+                }
+            }
+            for (const doc of rawVault.documents) {
+                if (!Number.isSafeInteger(doc.byte_size) || doc.byte_size < 0) {
+                    throw new ValidationError(`Document "${doc.id}" byte_size must be a non-negative safe integer, received: ${doc.byte_size}`);
+                }
+            }
+            for (const p of rawVault.proposals) {
+                if (!Number.isSafeInteger(p.amount_cents)) {
+                    throw new ValidationError(`Proposal "${p.id}" amount_cents must be a safe integer, received: ${p.amount_cents}`);
+                }
+            }
+
+            // 3. Validate balanced postings per currency for each transaction (Sum(Debits) - Sum(Credits) === 0)
+            const postingsByTx = new Map<string, Array<{ currency: string; amount_cents: number }>>();
+            for (const j of rawVault.journal_entries) {
+                if (!postingsByTx.has(j.transaction_id)) {
+                    postingsByTx.set(j.transaction_id, []);
+                }
+                postingsByTx.get(j.transaction_id)!.push({ currency: j.currency, amount_cents: j.amount_cents });
+            }
+            for (const t of rawVault.transactions) {
+                const postings = postingsByTx.get(t.id);
+                if (!postings || postings.length < 2) {
+                    throw new ValidationError(`Transaction "${t.id}" is missing required double-entry journal postings (found ${postings?.length || 0}, minimum 2 required)`);
+                }
+            }
+            for (const [txId, postings] of postingsByTx.entries()) {
+                const sums = new Map<string, number>();
+                for (const p of postings) {
+                    sums.set(p.currency, (sums.get(p.currency) || 0) + p.amount_cents);
+                }
+                for (const [curr, sum] of sums.entries()) {
+                    if (sum !== 0) {
+                        throw new ValidationError(`Transaction "${txId}" has unbalanced postings for currency ${curr}: sum of postings is ${sum} cents (must be 0)`);
+                    }
+                }
+            }
+
+            // 4. Validate foreign keys and evidence/source reference integrity
+            const entityIds = new Set(rawVault.entities.map((e: any) => e.id));
+            const accountIds = new Set(rawVault.accounts.map((a: any) => a.id));
+            const transactionIds = new Set(rawVault.transactions.map((t: any) => t.id));
+            const documentIds = new Set(rawVault.documents.map((d: any) => d.id));
+            const accountsById = new Map<string, any>(rawVault.accounts.map((a: any) => [a.id, a]));
+
+            for (const a of rawVault.accounts) {
+                if (!entityIds.has(a.entity_id)) {
+                    throw new ValidationError(`Account "${a.name || a.id}" references non-existent entity_id "${a.entity_id}"`);
+                }
+            }
+            for (const o of rawVault.account_ownership) {
+                if (!accountIds.has(o.account_id)) {
+                    throw new ValidationError(`Account ownership references non-existent account_id "${o.account_id}"`);
+                }
+                if (!entityIds.has(o.entity_id)) {
+                    throw new ValidationError(`Account ownership references non-existent entity_id "${o.entity_id}"`);
+                }
+            }
+            for (const t of rawVault.transactions) {
+                if (t.evidence_refs) {
+                    let refs = t.evidence_refs;
+                    if (typeof refs === 'string') {
+                        try { refs = JSON.parse(refs); } catch { /* ignore */ }
+                    }
+                    if (Array.isArray(refs)) {
+                        for (let ref of refs) {
+                            if (typeof ref === 'string') {
+                                try {
+                                    ref = JSON.parse(ref);
+                                } catch {
+                                    // ignore, fallback to string handling
+                                }
+                            }
+                            const docId = typeof ref === 'string' ? ref : ref?.document_id;
+                            if (docId && !documentIds.has(docId)) {
+                                throw new ValidationError(`Transaction "${t.id}" evidence references non-existent document_id "${docId}"`);
+                            }
+                        }
+                    }
+                }
+            }
+            for (const j of rawVault.journal_entries) {
+                if (!transactionIds.has(j.transaction_id)) {
+                    throw new ValidationError(`Journal entry "${j.id}" references non-existent transaction_id "${j.transaction_id}"`);
+                }
+                const acc = accountsById.get(j.account_id);
+                if (!acc) {
+                    throw new ValidationError(`Journal entry "${j.id}" references non-existent account_id "${j.account_id}"`);
+                }
+                if (j.currency !== acc.currency) {
+                    throw new ValidationError(`Journal entry "${j.id}" currency (${j.currency}) does not match account "${acc.name || acc.id}" currency (${acc.currency})`);
+                }
+            }
+            for (const v of rawVault.asset_valuations) {
+                if (!transactionIds.has(v.transaction_id)) {
+                    throw new ValidationError(`Asset valuation "${v.id}" references non-existent transaction_id "${v.transaction_id}"`);
+                }
+                if (!accountIds.has(v.account_id)) {
+                    throw new ValidationError(`Asset valuation "${v.id}" references non-existent account_id "${v.account_id}"`);
+                }
+            }
+            for (const c of rawVault.transaction_corrections) {
+                if (!transactionIds.has(c.transaction_id)) {
+                    throw new ValidationError(`Transaction correction "${c.id}" references non-existent transaction_id "${c.transaction_id}"`);
+                }
+            }
+            for (const d of rawVault.drafts) {
+                if (d.entity_id && !entityIds.has(d.entity_id)) {
+                    throw new ValidationError(`Draft "${d.id}" references non-existent entity_id "${d.entity_id}"`);
+                }
+                if (d.payer_entity_id && !entityIds.has(d.payer_entity_id)) {
+                    throw new ValidationError(`Draft "${d.id}" references non-existent payer_entity_id "${d.payer_entity_id}"`);
+                }
+                if (d.payment_account_id && !accountIds.has(d.payment_account_id)) {
+                    throw new ValidationError(`Draft "${d.id}" references non-existent payment_account_id "${d.payment_account_id}"`);
+                }
+                if (d.source_document_id && !documentIds.has(d.source_document_id)) {
+                    throw new ValidationError(`Draft "${d.id}" references non-existent source_document_id "${d.source_document_id}"`);
+                }
+                if (d.source_transaction_id && !transactionIds.has(d.source_transaction_id)) {
+                    throw new ValidationError(`Draft "${d.id}" references non-existent source_transaction_id "${d.source_transaction_id}"`);
+                }
+            }
+            for (const job of rawVault.document_jobs) {
+                if (!documentIds.has(job.document_id)) {
+                    throw new ValidationError(`Document job "${job.id}" references non-existent document_id "${job.document_id}"`);
+                }
+            }
+            for (const p of rawVault.proposals) {
+                if (!documentIds.has(p.document_id)) {
+                    throw new ValidationError(`Proposal "${p.id}" references non-existent document_id "${p.document_id}"`);
+                }
+                if (p.linked_transaction_id && !transactionIds.has(p.linked_transaction_id)) {
+                    throw new ValidationError(`Proposal "${p.id}" references non-existent linked_transaction_id "${p.linked_transaction_id}"`);
+                }
+            }
+
+            // 5. Validate legacy amounts
+            for (const a of rawVault.assets) {
                 parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
                 if (a.interest_rate !== undefined && a.interest_rate !== null) {
                     parseFiniteNumber(a.interest_rate, `Asset "${a.name || a.id}" interest rate`, { allowNegative: true, required: false });
                 }
             }
-            for (const l of liabilities) {
+            for (const l of rawVault.liabilities) {
                 parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
                 if (l.interest_rate !== undefined && l.interest_rate !== null) {
                     parseFiniteNumber(l.interest_rate, `Liability "${l.name || l.id}" interest rate`, { allowNegative: true, required: false });
                 }
             }
-            for (const g of goals) {
+            for (const g of rawVault.goals) {
                 parseFiniteNumber(g.target_amount, `Goal "${g.name || g.id}" target amount`, { allowNegative: false, required: true });
             }
-            for (const r of recurring) {
+            for (const r of rawVault.recurring) {
                 parseFiniteNumber(r.amount, `Recurring item "${r.name || r.id}" amount`, { allowNegative: false, required: true });
             }
-            for (const h of history) {
+            for (const h of rawVault.history) {
                 parseFiniteNumber(h.totalAssets ?? h.total_assets, `History record total assets`, { allowNegative: false, required: true });
                 parseFiniteNumber(h.totalLiabilities ?? h.total_liabilities, `History record total liabilities`, { allowNegative: false, required: true });
                 parseFiniteNumber(h.netWorth ?? h.net_worth, `History record net worth`, { allowNegative: true, required: true });
             }
-            for (const cf of cashFlow) {
+            for (const cf of rawVault.cashFlow) {
                 validateMonth(cf.month);
                 parseFiniteNumber(cf.income, `Cash flow entry income`, { allowNegative: false, required: true });
                 parseFiniteNumber(cf.expenses, `Cash flow entry expenses`, { allowNegative: false, required: true });
             }
-        }
 
-        const syncTransaction = db.transaction(() => {
-            // In a bulk restore, wipe existing records first to guarantee clean atomic replacement (TRUST-11)
-            if (isBulkRestore) {
+            // Execute Version 2 Full Atomic Restore
+            const v2RestoreTx = db.transaction(() => {
+                // Ensure accounting and document tables exist
+                const tableExists = (name: string) => (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) as any).cnt > 0;
+
+                // Wipe modern tables in reverse dependency order
+                if (tableExists('m1_proposals')) db.prepare('DELETE FROM m1_proposals').run();
+                if (tableExists('m1_document_jobs')) db.prepare('DELETE FROM m1_document_jobs').run();
+                if (tableExists('m1_csv_mappings')) db.prepare('DELETE FROM m1_csv_mappings').run();
+                if (tableExists('m1_documents')) db.prepare('DELETE FROM m1_documents').run();
+                if (tableExists('m1_drafts')) db.prepare('DELETE FROM m1_drafts').run();
+                if (tableExists('m1_asset_valuations')) db.prepare('DELETE FROM m1_asset_valuations').run();
+                if (tableExists('m1_exchange_rates')) db.prepare('DELETE FROM m1_exchange_rates').run();
+                if (tableExists('m1_transaction_corrections')) db.prepare('DELETE FROM m1_transaction_corrections').run();
+                if (tableExists('m1_journal_entries')) db.prepare('DELETE FROM m1_journal_entries').run();
+                if (tableExists('m1_transactions')) db.prepare('DELETE FROM m1_transactions').run();
+                if (tableExists('m1_account_ownership')) db.prepare('DELETE FROM m1_account_ownership').run();
+                if (tableExists('m1_accounts')) db.prepare('DELETE FROM m1_accounts').run();
+                if (tableExists('m1_entities')) db.prepare('DELETE FROM m1_entities').run();
+
+                // Wipe legacy tables
                 db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
@@ -538,17 +831,627 @@ export async function POST(request: Request) {
                 db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM settings").run();
-            }
 
-            if (Array.isArray(assets)) {
-                if (!isBulkRestore) {
-                    db.prepare('DELETE FROM assets WHERE user_id = ?').run('local_user');
+                // Insert modern entities
+                const insertEntity = db.prepare(`
+                    INSERT INTO m1_entities (id, name, type, currency, parent_entity_id, created_at, updated_at)
+                    VALUES (@id, @name, @type, @currency, @parent_entity_id, @created_at, @updated_at)
+                `);
+                for (const e of rawVault.entities) {
+                    insertEntity.run({
+                        id: e.id || crypto.randomUUID(),
+                        name: e.name || 'Unnamed Entity',
+                        type: e.type || 'person',
+                        currency: e.currency || 'USD',
+                        parent_entity_id: e.parent_entity_id || null,
+                        created_at: e.created_at || new Date().toISOString(),
+                        updated_at: e.updated_at || new Date().toISOString()
+                    });
                 }
+
+                // Insert accounts
+                const insertAccount = db.prepare(`
+                    INSERT INTO m1_accounts (
+                        id, entity_id, name, type, sub_type, currency, is_active, institution,
+                        account_number_mask, opening_date, opening_balance_cents, revision, created_at, updated_at
+                    ) VALUES (
+                        @id, @entity_id, @name, @type, @sub_type, @currency, @is_active, @institution,
+                        @account_number_mask, @opening_date, @opening_balance_cents, @revision, @created_at, @updated_at
+                    )
+                `);
+                for (const a of rawVault.accounts) {
+                    insertAccount.run({
+                        id: a.id || crypto.randomUUID(),
+                        entity_id: a.entity_id,
+                        name: a.name || 'Unnamed Account',
+                        type: a.type || 'asset',
+                        sub_type: a.sub_type || 'other',
+                        currency: a.currency || 'USD',
+                        is_active: a.is_active !== undefined ? (a.is_active ? 1 : 0) : 1,
+                        institution: a.institution || null,
+                        account_number_mask: a.account_number_mask || null,
+                        opening_date: a.opening_date || null,
+                        opening_balance_cents: a.opening_balance_cents !== undefined && a.opening_balance_cents !== null ? Number(a.opening_balance_cents) : null,
+                        revision: a.revision || 1,
+                        created_at: a.created_at || new Date().toISOString(),
+                        updated_at: a.updated_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert account ownership
+                const insertOwnership = db.prepare(`
+                    INSERT INTO m1_account_ownership (id, account_id, entity_id, share_percentage, created_at)
+                    VALUES (@id, @account_id, @entity_id, @share_percentage, @created_at)
+                `);
+                for (const o of rawVault.account_ownership) {
+                    insertOwnership.run({
+                        id: o.id || crypto.randomUUID(),
+                        account_id: o.account_id,
+                        entity_id: o.entity_id,
+                        share_percentage: Number(o.share_percentage),
+                        created_at: o.created_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert transactions
+                const insertTx = db.prepare(`
+                    INSERT INTO m1_transactions (
+                        id, date, description, payee_or_payer, status, origin, idempotency_key, evidence_refs, revision, created_at, updated_at
+                    ) VALUES (
+                        @id, @date, @description, @payee_or_payer, @status, @origin, @idempotency_key, @evidence_refs, @revision, @created_at, @updated_at
+                    )
+                `);
+                for (const t of rawVault.transactions) {
+                    insertTx.run({
+                        id: t.id || crypto.randomUUID(),
+                        date: t.date,
+                        description: t.description || '',
+                        payee_or_payer: t.payee_or_payer || null,
+                        status: t.status || 'posted',
+                        origin: t.origin || 'manual',
+                        idempotency_key: t.idempotency_key || null,
+                        evidence_refs: t.evidence_refs ? (typeof t.evidence_refs === 'string' ? t.evidence_refs : JSON.stringify(t.evidence_refs)) : null,
+                        revision: t.revision || 1,
+                        created_at: t.created_at || new Date().toISOString(),
+                        updated_at: t.updated_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert journal entries
+                const insertJournal = db.prepare(`
+                    INSERT INTO m1_journal_entries (
+                        id, transaction_id, account_id, amount_cents, currency, exchange_rate, rate_unresolved, memo
+                    ) VALUES (
+                        @id, @transaction_id, @account_id, @amount_cents, @currency, @exchange_rate, @rate_unresolved, @memo
+                    )
+                `);
+                for (const j of rawVault.journal_entries) {
+                    insertJournal.run({
+                        id: j.id || crypto.randomUUID(),
+                        transaction_id: j.transaction_id,
+                        account_id: j.account_id,
+                        amount_cents: Number(j.amount_cents),
+                        currency: j.currency,
+                        exchange_rate: j.exchange_rate !== undefined && j.exchange_rate !== null ? Number(j.exchange_rate) : null,
+                        rate_unresolved: j.rate_unresolved ? 1 : 0,
+                        memo: j.memo || null
+                    });
+                }
+
+                // Insert transaction corrections
+                const insertCorr = db.prepare(`
+                    INSERT INTO m1_transaction_corrections (
+                        id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp
+                    ) VALUES (
+                        @id, @transaction_id, @operation, @reason, @previous_state, @corrected_state, @performed_by, @timestamp
+                    )
+                `);
+                for (const c of rawVault.transaction_corrections) {
+                    insertCorr.run({
+                        id: c.id || crypto.randomUUID(),
+                        transaction_id: c.transaction_id,
+                        operation: c.operation || 'edit',
+                        reason: c.reason || 'Restored audit record',
+                        previous_state: typeof c.previous_state === 'string' ? c.previous_state : JSON.stringify(c.previous_state || {}),
+                        corrected_state: typeof c.corrected_state === 'string' ? c.corrected_state : JSON.stringify(c.corrected_state || {}),
+                        performed_by: c.performed_by || 'system',
+                        timestamp: c.timestamp || new Date().toISOString()
+                    });
+                }
+
+                // Insert exchange rates
+                const insertRate = db.prepare(`
+                    INSERT INTO m1_exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
+                    VALUES (@id, @from_currency, @to_currency, @rate, @effective_date, @source, @created_at)
+                `);
+                for (const r of rawVault.exchange_rates) {
+                    insertRate.run({
+                        id: r.id || crypto.randomUUID(),
+                        from_currency: r.from_currency,
+                        to_currency: r.to_currency,
+                        rate: Number(r.rate),
+                        effective_date: r.effective_date,
+                        source: r.source || 'backup_restore',
+                        created_at: r.created_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert asset valuations
+                const insertVal = db.prepare(`
+                    INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
+                    VALUES (@id, @transaction_id, @account_id, @valuation_date, @target_valuation_cents, @source, @created_at)
+                `);
+                for (const v of rawVault.asset_valuations) {
+                    insertVal.run({
+                        id: v.id || crypto.randomUUID(),
+                        transaction_id: v.transaction_id,
+                        account_id: v.account_id,
+                        valuation_date: v.valuation_date,
+                        target_valuation_cents: Number(v.target_valuation_cents),
+                        source: v.source || null,
+                        created_at: v.created_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert drafts
+                const insertDraft = db.prepare(`
+                    INSERT INTO m1_drafts (
+                        id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents,
+                        date, merchant, description, reimbursement_intent, source_document_id,
+                        source_transaction_id, status, created_at, updated_at
+                    ) VALUES (
+                        @id, @entity_id, @payer_entity_id, @payment_account_id, @currency, @amount_cents,
+                        @date, @merchant, @description, @reimbursement_intent, @source_document_id,
+                        @source_transaction_id, @status, @created_at, @updated_at
+                    )
+                `);
+                for (const d of rawVault.drafts) {
+                    insertDraft.run({
+                        id: d.id || crypto.randomUUID(),
+                        entity_id: d.entity_id || null,
+                        payer_entity_id: d.payer_entity_id || null,
+                        payment_account_id: d.payment_account_id || null,
+                        currency: d.currency || null,
+                        amount_cents: d.amount_cents !== undefined && d.amount_cents !== null ? Number(d.amount_cents) : null,
+                        date: d.date || null,
+                        merchant: d.merchant || null,
+                        description: d.description || null,
+                        reimbursement_intent: d.reimbursement_intent || null,
+                        source_document_id: d.source_document_id || null,
+                        source_transaction_id: d.source_transaction_id || null,
+                        status: d.status || 'draft',
+                        created_at: d.created_at || new Date().toISOString(),
+                        updated_at: d.updated_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert documents
+                const insertDoc = db.prepare(`
+                    INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
+                    VALUES (@id, @filename, @content_hash, @mime_type, @byte_size, @storage_path, @raw_content, @created_at)
+                `);
+                for (const doc of rawVault.documents) {
+                    insertDoc.run({
+                        id: doc.id || crypto.randomUUID(),
+                        filename: doc.filename || 'unnamed_file',
+                        content_hash: doc.content_hash,
+                        mime_type: doc.mime_type || 'application/octet-stream',
+                        byte_size: Number(doc.byte_size),
+                        storage_path: doc.storage_path || null,
+                        raw_content: doc.raw_content || null,
+                        created_at: doc.created_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert csv mappings
+                const insertMapping = db.prepare(`
+                    INSERT INTO m1_csv_mappings (
+                        id, name, header_signature, date_column, date_format, description_column,
+                        amount_mode, amount_column, debit_column, credit_column, created_at, updated_at
+                    ) VALUES (
+                        @id, @name, @header_signature, @date_column, @date_format, @description_column,
+                        @amount_mode, @amount_column, @debit_column, @credit_column, @created_at, @updated_at
+                    )
+                `);
+                for (const m of rawVault.csv_mappings) {
+                    insertMapping.run({
+                        id: m.id || crypto.randomUUID(),
+                        name: m.name || 'Unnamed Mapping',
+                        header_signature: m.header_signature,
+                        date_column: m.date_column,
+                        date_format: m.date_format || 'YYYY-MM-DD',
+                        description_column: m.description_column,
+                        amount_mode: m.amount_mode || 'single_amount',
+                        amount_column: m.amount_column || null,
+                        debit_column: m.debit_column || null,
+                        credit_column: m.credit_column || null,
+                        created_at: m.created_at || new Date().toISOString(),
+                        updated_at: m.updated_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert document jobs
+                const insertJob = db.prepare(`
+                    INSERT INTO m1_document_jobs (id, document_id, state, attempts, lease_until, error_message, options, created_at, updated_at)
+                    VALUES (@id, @document_id, @state, @attempts, @lease_until, @error_message, @options, @created_at, @updated_at)
+                `);
+                for (const j of rawVault.document_jobs) {
+                    insertJob.run({
+                        id: j.id || crypto.randomUUID(),
+                        document_id: j.document_id,
+                        state: j.state || 'queued',
+                        attempts: j.attempts || 0,
+                        lease_until: j.lease_until || null,
+                        error_message: j.error_message || null,
+                        options: j.options ? (typeof j.options === 'string' ? j.options : JSON.stringify(j.options)) : null,
+                        created_at: j.created_at || new Date().toISOString(),
+                        updated_at: j.updated_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert proposals
+                const insertProp = db.prepare(`
+                    INSERT INTO m1_proposals (
+                        id, document_id, entity_id, account_id, event_date, document_period, original_currency,
+                        amount_cents, counterparty, description, event_type, suggested_category, evidence_json,
+                        extraction_version, validation_findings, review_status, related_proposal_ids, linked_transaction_id,
+                        created_at, updated_at
+                    ) VALUES (
+                        @id, @document_id, @entity_id, @account_id, @event_date, @document_period, @original_currency,
+                        @amount_cents, @counterparty, @description, @event_type, @suggested_category, @evidence_json,
+                        @extraction_version, @validation_findings, @review_status, @related_proposal_ids, @linked_transaction_id,
+                        @created_at, @updated_at
+                    )
+                `);
+                for (const p of rawVault.proposals) {
+                    insertProp.run({
+                        id: p.id || crypto.randomUUID(),
+                        document_id: p.document_id,
+                        entity_id: p.entity_id || null,
+                        account_id: p.account_id || null,
+                        event_date: p.event_date,
+                        document_period: p.document_period || null,
+                        original_currency: p.original_currency,
+                        amount_cents: Number(p.amount_cents),
+                        counterparty: p.counterparty || null,
+                        description: p.description || '',
+                        event_type: p.event_type || 'expense',
+                        suggested_category: p.suggested_category || null,
+                        evidence_json: typeof p.evidence_json === 'string' ? p.evidence_json : JSON.stringify(p.evidence_json || {}),
+                        extraction_version: p.extraction_version || '1.0',
+                        validation_findings: p.validation_findings ? (typeof p.validation_findings === 'string' ? p.validation_findings : JSON.stringify(p.validation_findings)) : null,
+                        review_status: p.review_status || 'unreviewed',
+                        related_proposal_ids: p.related_proposal_ids ? (typeof p.related_proposal_ids === 'string' ? p.related_proposal_ids : JSON.stringify(p.related_proposal_ids)) : null,
+                        linked_transaction_id: p.linked_transaction_id || null,
+                        created_at: p.created_at || new Date().toISOString(),
+                        updated_at: p.updated_at || new Date().toISOString()
+                    });
+                }
+
+                // Insert legacy collections
                 const insertAsset = db.prepare(`
                     INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
                     VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
                 `);
-                for (const a of assets) {
+                for (const a of rawVault.assets) {
+                    insertAsset.run({
+                        id: a.id || crypto.randomUUID(),
+                        user_id: a.user_id || 'local_user',
+                        name: a.name || 'Unnamed Asset',
+                        type: a.type || 'other',
+                        value: Number(a.value),
+                        is_liquid: a.is_liquid ? 1 : 0,
+                        currency: a.currency || 'USD',
+                        interest_rate: a.interest_rate !== undefined && a.interest_rate !== null ? Number(a.interest_rate) : null,
+                        investment_details: a.investment_details ? JSON.stringify(a.investment_details) : null,
+                        last_updated: a.last_updated || new Date().toISOString()
+                    });
+                }
+
+                const insertLiab = db.prepare(`
+                    INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
+                    VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
+                `);
+                for (const l of rawVault.liabilities) {
+                    insertLiab.run({
+                        id: l.id || crypto.randomUUID(),
+                        user_id: l.user_id || 'local_user',
+                        name: l.name || 'Unnamed Debt',
+                        type: l.type || 'other',
+                        balance: Number(l.balance),
+                        interest_rate: l.interest_rate !== undefined && l.interest_rate !== null ? Number(l.interest_rate) : null,
+                        minimum_payment: l.minimum_payment !== undefined && l.minimum_payment !== null ? Number(l.minimum_payment) : null,
+                        is_good_debt: l.is_good_debt ? 1 : 0,
+                        currency: l.currency || 'USD',
+                        last_updated: l.last_updated || new Date().toISOString()
+                    });
+                }
+
+                const insertGoal = db.prepare(`
+                    INSERT INTO goals (id, user_id, name, target_amount, current_amount, start_amount, currency, category, deadline, created_at)
+                    VALUES (@id, @user_id, @name, @target_amount, @current_amount, @start_amount, @currency, @category, @deadline, @created_at)
+                `);
+                for (const g of rawVault.goals) {
+                    insertGoal.run({
+                        id: g.id || crypto.randomUUID(),
+                        user_id: g.user_id || 'local_user',
+                        name: g.name || 'Unnamed Goal',
+                        target_amount: Number(g.target_amount),
+                        current_amount: g.current_amount !== undefined && g.current_amount !== null ? Number(g.current_amount) : 0,
+                        start_amount: g.start_amount !== undefined && g.start_amount !== null ? Number(g.start_amount) : 0,
+                        currency: g.currency || 'USD',
+                        category: g.category || 'General',
+                        deadline: g.deadline || null,
+                        created_at: g.created_at || new Date().toISOString()
+                    });
+                }
+
+                const insertRec = db.prepare(`
+                    INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+                    VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
+                `);
+                for (const r of rawVault.recurring) {
+                    insertRec.run({
+                        id: r.id || crypto.randomUUID(),
+                        user_id: r.user_id || 'local_user',
+                        name: r.name || 'Unnamed Item',
+                        amount: Number(r.amount),
+                        type: r.type || 'expense',
+                        frequency: r.frequency || 'monthly',
+                        category: r.category || 'General',
+                        start_date: r.start_date || new Date().toISOString().split('T')[0],
+                        end_date: r.end_date || null,
+                        is_active: r.is_active !== false ? 1 : 0,
+                        currency: r.currency || 'USD',
+                        created_at: r.created_at || new Date().toISOString()
+                    });
+                }
+
+                const insertHistory = db.prepare(`
+                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
+                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
+                `);
+                for (const h of rawVault.history) {
+                    insertHistory.run({
+                        id: h.id || crypto.randomUUID(),
+                        user_id: 'local_user',
+                        date: h.date,
+                        total_assets: Number(h.totalAssets ?? h.total_assets),
+                        total_liabilities: Number(h.totalLiabilities ?? h.total_liabilities),
+                        net_worth: Number(h.netWorth ?? h.net_worth)
+                    });
+                }
+
+                const insertCashFlow = db.prepare(`
+                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    VALUES (@id, @user_id, @month, @income, @expenses, @currency)
+                `);
+                for (const cf of rawVault.cashFlow) {
+                    insertCashFlow.run({
+                        id: cf.id || crypto.randomUUID(),
+                        user_id: 'local_user',
+                        month: cf.month,
+                        income: Number(cf.income),
+                        expenses: Number(cf.expenses),
+                        currency: cf.currency || 'USD'
+                    });
+                }
+
+                const upsertSetting = db.prepare(`
+                    INSERT INTO settings (key, value)
+                    VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                `);
+                for (const [k, v] of Object.entries(rawVault.settings)) {
+                    upsertSetting.run(k, typeof v === 'string' ? v : JSON.stringify(v));
+                }
+
+                if (rawVault.profile) {
+                    db.prepare(`
+                        INSERT INTO profiles (id, email, full_name, privacy_mode, currency_code, created_at)
+                        VALUES ('local_user', @email, @full_name, @privacy_mode, @currency_code, @created_at)
+                        ON CONFLICT(id) DO UPDATE SET
+                            full_name = excluded.full_name,
+                            currency_code = excluded.currency_code,
+                            privacy_mode = excluded.privacy_mode,
+                            created_at = excluded.created_at
+                    `).run({
+                        email: rawVault.profile.email || 'local@device',
+                        full_name: rawVault.profile.full_name || 'Local Vault Owner',
+                        privacy_mode: rawVault.profile.privacy_mode ? 1 : 0,
+                        currency_code: rawVault.profile.currency_code || 'USD',
+                        created_at: rawVault.profile.created_at || new Date().toISOString()
+                    });
+                }
+            });
+
+            v2RestoreTx();
+            return NextResponse.json({ success: true, message: 'Version 2 vault fully restored and verified.' });
+        }
+
+        // Handle Version 1 (Legacy) Bulk Restore
+        // Why: Protects modern accounting records from silent deletion during a legacy import.
+        if (isBulkRestore && !isV2) {
+            const requiredLegacyCollections = ['assets', 'liabilities', 'goals', 'recurring', 'history', 'cashFlow'];
+            for (const col of requiredLegacyCollections) {
+                if (!Array.isArray(rawVault[col])) {
+                    return NextResponse.json({
+                        error: `Invalid legacy restore payload: collection "${col}" is required and must be an array`
+                    }, { status: 400 });
+                }
+            }
+            if (!rawVault.settings || typeof rawVault.settings !== 'object' || Array.isArray(rawVault.settings)) {
+                return NextResponse.json({
+                    error: 'Invalid legacy restore payload: settings is required and must be an object'
+                }, { status: 400 });
+            }
+
+            // Validate legacy numbers
+            for (const a of rawVault.assets) {
+                parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
+            }
+            for (const l of rawVault.liabilities) {
+                parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
+            }
+            for (const g of rawVault.goals) {
+                parseFiniteNumber(g.target_amount, `Goal "${g.name || g.id}" target amount`, { allowNegative: false, required: true });
+            }
+            for (const r of rawVault.recurring) {
+                parseFiniteNumber(r.amount, `Recurring item "${r.name || r.id}" amount`, { allowNegative: false, required: true });
+            }
+            for (const h of rawVault.history) {
+                parseFiniteNumber(h.totalAssets ?? h.total_assets, `History record total assets`, { allowNegative: false, required: true });
+                parseFiniteNumber(h.totalLiabilities ?? h.total_liabilities, `History record total liabilities`, { allowNegative: false, required: true });
+                parseFiniteNumber(h.netWorth ?? h.net_worth, `History record net worth`, { allowNegative: true, required: true });
+            }
+            for (const cf of rawVault.cashFlow) {
+                validateMonth(cf.month);
+                parseFiniteNumber(cf.income, `Cash flow entry income`, { allowNegative: false, required: true });
+                parseFiniteNumber(cf.expenses, `Cash flow entry expenses`, { allowNegative: false, required: true });
+            }
+
+            // Execute Version 1 Restore - Wipe ONLY legacy tables, PRESERVE all m1_ tables!
+            const v1RestoreTx = db.transaction(() => {
+                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM settings").run();
+
+                const insertAsset = db.prepare(`
+                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
+                    VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
+                `);
+                for (const a of rawVault.assets) {
+                    insertAsset.run({
+                        id: a.id || crypto.randomUUID(),
+                        user_id: a.user_id || 'local_user',
+                        name: a.name || 'Unnamed Asset',
+                        type: a.type || 'other',
+                        value: Number(a.value),
+                        is_liquid: a.is_liquid ? 1 : 0,
+                        currency: a.currency || 'USD',
+                        interest_rate: a.interest_rate !== undefined && a.interest_rate !== null ? Number(a.interest_rate) : null,
+                        investment_details: a.investment_details ? JSON.stringify(a.investment_details) : null,
+                        last_updated: a.last_updated || new Date().toISOString()
+                    });
+                }
+
+                const insertLiab = db.prepare(`
+                    INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
+                    VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
+                `);
+                for (const l of rawVault.liabilities) {
+                    insertLiab.run({
+                        id: l.id || crypto.randomUUID(),
+                        user_id: l.user_id || 'local_user',
+                        name: l.name || 'Unnamed Debt',
+                        type: l.type || 'other',
+                        balance: Number(l.balance),
+                        interest_rate: l.interest_rate !== undefined && l.interest_rate !== null ? Number(l.interest_rate) : null,
+                        minimum_payment: l.minimum_payment !== undefined && l.minimum_payment !== null ? Number(l.minimum_payment) : null,
+                        is_good_debt: l.is_good_debt ? 1 : 0,
+                        currency: l.currency || 'USD',
+                        last_updated: l.last_updated || new Date().toISOString()
+                    });
+                }
+
+                const insertGoal = db.prepare(`
+                    INSERT INTO goals (id, user_id, name, target_amount, current_amount, start_amount, currency, category, deadline, created_at)
+                    VALUES (@id, @user_id, @name, @target_amount, @current_amount, @start_amount, @currency, @category, @deadline, @created_at)
+                `);
+                for (const g of rawVault.goals) {
+                    insertGoal.run({
+                        id: g.id || crypto.randomUUID(),
+                        user_id: g.user_id || 'local_user',
+                        name: g.name || 'Unnamed Goal',
+                        target_amount: Number(g.target_amount),
+                        current_amount: g.current_amount !== undefined && g.current_amount !== null ? Number(g.current_amount) : 0,
+                        start_amount: g.start_amount !== undefined && g.start_amount !== null ? Number(g.start_amount) : 0,
+                        currency: g.currency || 'USD',
+                        category: g.category || 'General',
+                        deadline: g.deadline || null,
+                        created_at: g.created_at || new Date().toISOString()
+                    });
+                }
+
+                const insertRec = db.prepare(`
+                    INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+                    VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
+                `);
+                for (const r of rawVault.recurring) {
+                    insertRec.run({
+                        id: r.id || crypto.randomUUID(),
+                        user_id: r.user_id || 'local_user',
+                        name: r.name || 'Unnamed Item',
+                        amount: Number(r.amount),
+                        type: r.type || 'expense',
+                        frequency: r.frequency || 'monthly',
+                        category: r.category || 'General',
+                        start_date: r.start_date || new Date().toISOString().split('T')[0],
+                        end_date: r.end_date || null,
+                        is_active: r.is_active !== false ? 1 : 0,
+                        currency: r.currency || 'USD',
+                        created_at: r.created_at || new Date().toISOString()
+                    });
+                }
+
+                const insertHistory = db.prepare(`
+                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
+                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
+                `);
+                for (const h of rawVault.history) {
+                    insertHistory.run({
+                        id: h.id || crypto.randomUUID(),
+                        user_id: 'local_user',
+                        date: h.date,
+                        total_assets: Number(h.totalAssets ?? h.total_assets),
+                        total_liabilities: Number(h.totalLiabilities ?? h.total_liabilities),
+                        net_worth: Number(h.netWorth ?? h.net_worth)
+                    });
+                }
+
+                const insertCashFlow = db.prepare(`
+                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    VALUES (@id, @user_id, @month, @income, @expenses, @currency)
+                `);
+                for (const cf of rawVault.cashFlow) {
+                    insertCashFlow.run({
+                        id: cf.id || crypto.randomUUID(),
+                        user_id: 'local_user',
+                        month: cf.month,
+                        income: Number(cf.income),
+                        expenses: Number(cf.expenses),
+                        currency: cf.currency || 'USD'
+                    });
+                }
+
+                const upsertSetting = db.prepare(`
+                    INSERT INTO settings (key, value)
+                    VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                `);
+                for (const [k, v] of Object.entries(rawVault.settings)) {
+                    upsertSetting.run(k, typeof v === 'string' ? v : JSON.stringify(v));
+                }
+            });
+
+            v1RestoreTx();
+            return NextResponse.json({ success: true, message: 'Legacy vault data restored. Existing modern accounting records preserved.' });
+        }
+
+        // --- ORDINARY SYNCHRONIZATION OR SAVE ---
+        // Why: Ordinary synchronizations must NEVER clear unrelated tables or modern accounting records.
+        const syncTransaction = db.transaction(() => {
+            if (Array.isArray(rawVault.assets)) {
+                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
+                const insertAsset = db.prepare(`
+                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
+                    VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
+                `);
+                for (const a of rawVault.assets) {
                     const value = parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
                     const interest_rate = parseFiniteNumber(a.interest_rate, `Asset "${a.name || a.id}" interest rate`, { allowNegative: true, required: false });
                     insertAsset.run({
@@ -566,15 +1469,13 @@ export async function POST(request: Request) {
                 }
             }
 
-            if (Array.isArray(liabilities)) {
-                if (!isBulkRestore) {
-                    db.prepare('DELETE FROM liabilities WHERE user_id = ?').run('local_user');
-                }
+            if (Array.isArray(rawVault.liabilities)) {
+                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
                 const insertLiab = db.prepare(`
                     INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
                     VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
                 `);
-                for (const l of liabilities) {
+                for (const l of rawVault.liabilities) {
                     const balance = parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
                     const interest_rate = parseFiniteNumber(l.interest_rate, `Liability "${l.name || l.id}" interest rate`, { allowNegative: true, required: false });
                     const minimum_payment = parseFiniteNumber(l.minimum_payment, `Liability "${l.name || l.id}" minimum payment`, { allowNegative: false, required: false });
@@ -593,15 +1494,13 @@ export async function POST(request: Request) {
                 }
             }
 
-            if (Array.isArray(goals)) {
-                if (!isBulkRestore) {
-                    db.prepare('DELETE FROM goals WHERE user_id = ?').run('local_user');
-                }
+            if (Array.isArray(rawVault.goals)) {
+                db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
                 const insertGoal = db.prepare(`
                     INSERT INTO goals (id, user_id, name, target_amount, current_amount, start_amount, currency, category, deadline, created_at)
                     VALUES (@id, @user_id, @name, @target_amount, @current_amount, @start_amount, @currency, @category, @deadline, @created_at)
                 `);
-                for (const g of goals) {
+                for (const g of rawVault.goals) {
                     const target_amount = parseFiniteNumber(g.target_amount, `Goal "${g.name || g.id}" target amount`, { allowNegative: false, required: true });
                     const current_amount = parseFiniteNumber(g.current_amount, `Goal "${g.name || g.id}" current amount`, { allowNegative: false, required: false });
                     const start_amount = parseFiniteNumber(g.start_amount, `Goal "${g.name || g.id}" start amount`, { allowNegative: false, required: false });
@@ -620,15 +1519,13 @@ export async function POST(request: Request) {
                 }
             }
 
-            if (Array.isArray(recurring)) {
-                if (!isBulkRestore) {
-                    db.prepare('DELETE FROM recurring_transactions WHERE user_id = ?').run('local_user');
-                }
+            if (Array.isArray(rawVault.recurring)) {
+                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
                 const insertRec = db.prepare(`
                     INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
                     VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
                 `);
-                for (const r of recurring) {
+                for (const r of rawVault.recurring) {
                     const amount = parseFiniteNumber(r.amount, `Recurring item "${r.name || r.id}" amount`, { allowNegative: false, required: true });
                     insertRec.run({
                         id: r.id || crypto.randomUUID(),
@@ -647,14 +1544,13 @@ export async function POST(request: Request) {
                 }
             }
 
-            if (Array.isArray(history)) {
-                // Ensure existing history is cleared on both restore and sync so empty history leaves 0 rows
+            if (Array.isArray(rawVault.history)) {
                 db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
                 const insertHistory = db.prepare(`
                     INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
                     VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
                 `);
-                for (const h of history) {
+                for (const h of rawVault.history) {
                     const total_assets = parseFiniteNumber(h.totalAssets ?? h.total_assets, `History record ${h.date} total assets`, { allowNegative: false, required: true });
                     const total_liabilities = parseFiniteNumber(h.totalLiabilities ?? h.total_liabilities, `History record ${h.date} total liabilities`, { allowNegative: false, required: true });
                     const net_worth = parseFiniteNumber(h.netWorth ?? h.net_worth, `History record ${h.date} net worth`, { allowNegative: true, required: true });
@@ -669,15 +1565,13 @@ export async function POST(request: Request) {
                 }
             }
 
-            if (Array.isArray(cashFlow)) {
-                if (!isBulkRestore) {
-                    db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
-                }
+            if (Array.isArray(rawVault.cashFlow)) {
+                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
                 const insertCashFlow = db.prepare(`
                     INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
                 `);
-                for (const cf of cashFlow) {
+                for (const cf of rawVault.cashFlow) {
                     const month = validateMonth(cf.month);
                     const income = parseFiniteNumber(cf.income, `Cash flow entry ${cf.month} income`, { allowNegative: false, required: true });
                     const expenses = parseFiniteNumber(cf.expenses, `Cash flow entry ${cf.month} expenses`, { allowNegative: false, required: true });
@@ -692,21 +1586,18 @@ export async function POST(request: Request) {
                 }
             }
 
-            if (settings && typeof settings === 'object') {
-                if (isBulkRestore) {
-                    db.prepare("DELETE FROM settings").run();
-                }
+            if (rawVault.settings && typeof rawVault.settings === 'object') {
                 const upsertSetting = db.prepare(`
                     INSERT INTO settings (key, value)
                     VALUES (?, ?)
                     ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 `);
-                for (const [k, v] of Object.entries(settings)) {
+                for (const [k, v] of Object.entries(rawVault.settings)) {
                     upsertSetting.run(k, typeof v === 'string' ? v : JSON.stringify(v));
                 }
             }
 
-            if (profile) {
+            if (rawVault.profile) {
                 db.prepare(`
                     INSERT INTO profiles (id, email, full_name, privacy_mode, currency_code, created_at)
                     VALUES ('local_user', @email, @full_name, @privacy_mode, @currency_code, @created_at)
@@ -715,18 +1606,18 @@ export async function POST(request: Request) {
                         currency_code = excluded.currency_code,
                         privacy_mode = excluded.privacy_mode
                 `).run({
-                    email: profile.email || 'local@device',
-                    full_name: profile.full_name || 'Local Vault Owner',
-                    privacy_mode: profile.privacy_mode ? 1 : 0,
-                    currency_code: profile.currency_code || 'USD',
-                    created_at: profile.created_at || new Date().toISOString()
+                    email: rawVault.profile.email || 'local@device',
+                    full_name: rawVault.profile.full_name || 'Local Vault Owner',
+                    privacy_mode: rawVault.profile.privacy_mode ? 1 : 0,
+                    currency_code: rawVault.profile.currency_code || 'USD',
+                    created_at: rawVault.profile.created_at || new Date().toISOString()
                 });
             }
         });
 
         syncTransaction();
 
-        return NextResponse.json({ success: true, message: isBulkRestore ? 'Vault restored successfully' : 'Vault saved to local SQLite successfully' });
+        return NextResponse.json({ success: true, message: 'Vault saved to local SQLite successfully' });
     } catch (error: any) {
         console.error('Vault POST Error:', error);
         const status = error instanceof ValidationError || error.statusCode === 400 ? 400 : 500;

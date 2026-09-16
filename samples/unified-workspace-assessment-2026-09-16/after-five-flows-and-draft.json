@@ -1,0 +1,616 @@
+{
+  "success": true,
+  "entity": {
+    "id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+    "name": "TEST Morgan",
+    "type": "person",
+    "currency": "USD",
+    "parent_entity_id": null,
+    "created_at": "2026-09-15T23:36:56.116Z",
+    "updated_at": "2026-09-15T23:36:56.116Z"
+  },
+  "accounts": [
+    {
+      "id": "d4722896-94e3-4b6d-9432-08b2cc08830f",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "TEST AUD Everyday",
+      "type": "asset",
+      "sub_type": "checking",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": "2026-09-16",
+      "opening_balance_cents": 100000,
+      "revision": 1,
+      "created_at": "2026-09-15T23:38:50.301Z",
+      "updated_at": "2026-09-15T23:38:50.301Z",
+      "balance_cents": 170300,
+      "formatted_balance": "A$1,703.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "TEST Home",
+      "type": "asset",
+      "sub_type": "property",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": "2026-09-15",
+      "opening_balance_cents": 30000000,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.443Z",
+      "updated_at": "2026-09-15T23:39:31.443Z",
+      "balance_cents": 30000000,
+      "formatted_balance": "A$300,000.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "TEST Savings",
+      "type": "asset",
+      "sub_type": "savings",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": "2026-09-15",
+      "opening_balance_cents": 50000,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.399Z",
+      "updated_at": "2026-09-15T23:39:31.399Z",
+      "balance_cents": 60000,
+      "formatted_balance": "A$600.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "acc-equity-00588047-8036-42b8-ba29-bd0e888f54e3-aud",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "Opening Balance Equity",
+      "type": "equity",
+      "sub_type": "opening_balance_equity",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:38:50.302Z",
+      "updated_at": "2026-09-15T23:38:50.302Z",
+      "balance_cents": 10120000,
+      "formatted_balance": "A$101,200.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-bank_fee-aud",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "Bank Fee",
+      "type": "expense",
+      "sub_type": "bank_fee",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:40:33.414Z",
+      "updated_at": "2026-09-15T23:40:33.414Z",
+      "balance_cents": 500,
+      "formatted_balance": "A$5.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-groceries-aud",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "Groceries",
+      "type": "expense",
+      "sub_type": "groceries",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:47.794Z",
+      "updated_at": "2026-09-15T23:39:47.794Z",
+      "balance_cents": 2200,
+      "formatted_balance": "A$22.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-loan_interest-aud",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "Loan Interest",
+      "type": "expense",
+      "sub_type": "loan_interest",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:40:33.413Z",
+      "updated_at": "2026-09-15T23:40:33.413Z",
+      "balance_cents": 2000,
+      "formatted_balance": "A$20.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "acc-inc-00588047-8036-42b8-ba29-bd0e888f54e3-salary-aud",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "Salary",
+      "type": "income",
+      "sub_type": "salary",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:56.926Z",
+      "updated_at": "2026-09-15T23:39:56.926Z",
+      "balance_cents": 100000,
+      "formatted_balance": "A$1,000.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "3b6a0eac-560d-4267-86f4-80609793bd2f",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "TEST Card",
+      "type": "liability",
+      "sub_type": "credit_card",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": "2026-09-15",
+      "opening_balance_cents": 30000,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.414Z",
+      "updated_at": "2026-09-15T23:39:31.414Z",
+      "balance_cents": 25000,
+      "formatted_balance": "A$250.00",
+      "as_of_date": "2026-09-16"
+    },
+    {
+      "id": "53f81da6-9d88-40e8-b161-e0f6058791e2",
+      "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "TEST Mortgage",
+      "type": "liability",
+      "sub_type": "mortgage",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": "2026-09-15",
+      "opening_balance_cents": 20000000,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.428Z",
+      "updated_at": "2026-09-15T23:39:31.428Z",
+      "balance_cents": 19990000,
+      "formatted_balance": "A$199,900.00",
+      "as_of_date": "2026-09-16"
+    }
+  ],
+  "net_worth": {
+    "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+    "as_of_date": "2026-09-16",
+    "net_worth_cents_by_currency": {
+      "AUD": 10215300
+    },
+    "total_assets_cents_by_currency": {
+      "AUD": 30230300
+    },
+    "total_liabilities_cents_by_currency": {
+      "AUD": 20015000
+    },
+    "formatted_net_worth_by_currency": {
+      "AUD": "A$102,153.00"
+    },
+    "calculation_version": "1.0.0",
+    "account_count": 10
+  },
+  "period_income_expenses": {
+    "entity_id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+    "start_date": "2026-09-01",
+    "end_date": "2026-09-16",
+    "total_income_cents_by_currency": {
+      "AUD": 100000
+    },
+    "total_expenses_cents_by_currency": {
+      "AUD": 4700
+    },
+    "net_savings_cents_by_currency": {
+      "AUD": 95300
+    },
+    "formatted_income_by_currency": {
+      "AUD": "A$1,000.00"
+    },
+    "formatted_expenses_by_currency": {
+      "AUD": "A$47.00"
+    },
+    "formatted_net_savings_by_currency": {
+      "AUD": "A$953.00"
+    },
+    "breakdown_by_category": [
+      {
+        "account_id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-groceries-aud",
+        "account_name": "Groceries",
+        "type": "expense",
+        "sub_type": "groceries",
+        "currency": "AUD",
+        "total_cents": 2200,
+        "formatted_total": "A$22.00",
+        "transaction_count": 1
+      },
+      {
+        "account_id": "acc-inc-00588047-8036-42b8-ba29-bd0e888f54e3-salary-aud",
+        "account_name": "Salary",
+        "type": "income",
+        "sub_type": "salary",
+        "currency": "AUD",
+        "total_cents": 100000,
+        "formatted_total": "A$1,000.00",
+        "transaction_count": 1
+      },
+      {
+        "account_id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-loan_interest-aud",
+        "account_name": "Loan Interest",
+        "type": "expense",
+        "sub_type": "loan_interest",
+        "currency": "AUD",
+        "total_cents": 2000,
+        "formatted_total": "A$20.00",
+        "transaction_count": 1
+      },
+      {
+        "account_id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-bank_fee-aud",
+        "account_name": "Bank Fee",
+        "type": "expense",
+        "sub_type": "bank_fee",
+        "currency": "AUD",
+        "total_cents": 500,
+        "formatted_total": "A$5.00",
+        "transaction_count": 1
+      }
+    ],
+    "calculation_version": "1.0.0"
+  },
+  "transactions": [
+    {
+      "id": "e86a95b3-063b-4324-a465-1e03a405f5c3",
+      "date": "2026-09-16",
+      "description": "Loan Instalment Payment",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "manual",
+      "idempotency_key": "4e7fcba0-9119-4433-958e-64be87bd1424",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:40:33.414Z",
+      "updated_at": "2026-09-15T23:40:33.414Z",
+      "postings": [
+        {
+          "id": "3bb027ec-9a6b-482a-a08f-2795af4a1b21",
+          "transaction_id": "e86a95b3-063b-4324-a465-1e03a405f5c3",
+          "account_id": "d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "amount_cents": -12500,
+          "currency": "AUD",
+          "memo": "Loan instalment payment for TEST Mortgage"
+        },
+        {
+          "id": "a719389a-ac81-41e2-8b0e-82b599a7c39c",
+          "transaction_id": "e86a95b3-063b-4324-a465-1e03a405f5c3",
+          "account_id": "53f81da6-9d88-40e8-b161-e0f6058791e2",
+          "amount_cents": 10000,
+          "currency": "AUD",
+          "memo": "Principal reduction"
+        },
+        {
+          "id": "e96780e0-6d1f-46c2-b553-529ee1b3967f",
+          "transaction_id": "e86a95b3-063b-4324-a465-1e03a405f5c3",
+          "account_id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-loan_interest-aud",
+          "amount_cents": 2000,
+          "currency": "AUD",
+          "memo": "Interest on TEST Mortgage"
+        },
+        {
+          "id": "3ffb7b58-a3fa-469b-9061-2822545e7253",
+          "transaction_id": "e86a95b3-063b-4324-a465-1e03a405f5c3",
+          "account_id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-bank_fee-aud",
+          "amount_cents": 500,
+          "currency": "AUD",
+          "memo": "Fee on TEST Mortgage"
+        }
+      ]
+    },
+    {
+      "id": "0a7b936c-cedb-4d9d-9cbf-caad6632dbf6",
+      "date": "2026-09-16",
+      "description": "Credit Card Bill Repayment",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "manual",
+      "idempotency_key": "0efee08c-73e2-4b35-993c-03691f69903b",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:40:20.329Z",
+      "updated_at": "2026-09-15T23:40:20.329Z",
+      "postings": [
+        {
+          "id": "4bed77a7-93a2-4e0b-9ee5-37f155132092",
+          "transaction_id": "0a7b936c-cedb-4d9d-9cbf-caad6632dbf6",
+          "account_id": "d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "amount_cents": -5000,
+          "currency": "AUD",
+          "memo": "Payment for TEST Card"
+        },
+        {
+          "id": "9de6a48e-c904-41e2-8f10-2b162463f3b0",
+          "transaction_id": "0a7b936c-cedb-4d9d-9cbf-caad6632dbf6",
+          "account_id": "3b6a0eac-560d-4267-86f4-80609793bd2f",
+          "amount_cents": 5000,
+          "currency": "AUD",
+          "memo": "Repayment from TEST AUD Everyday"
+        }
+      ]
+    },
+    {
+      "id": "25cd2816-5338-4840-a7b9-1a2669586e5f",
+      "date": "2026-09-16",
+      "description": "Internal Account Transfer",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "manual",
+      "idempotency_key": "d260cefd-1e66-401f-8139-477e893b65a6",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:40:07.263Z",
+      "updated_at": "2026-09-15T23:40:07.263Z",
+      "postings": [
+        {
+          "id": "d3f10c1e-58a8-4150-b6f8-09ae82557aa5",
+          "transaction_id": "25cd2816-5338-4840-a7b9-1a2669586e5f",
+          "account_id": "d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "amount_cents": -10000,
+          "currency": "AUD",
+          "memo": "Transfer to TEST Savings"
+        },
+        {
+          "id": "f354cffa-e9b2-457b-bcf8-6cace49ff298",
+          "transaction_id": "25cd2816-5338-4840-a7b9-1a2669586e5f",
+          "account_id": "bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+          "amount_cents": 10000,
+          "currency": "AUD",
+          "memo": "Transfer from TEST AUD Everyday"
+        }
+      ]
+    },
+    {
+      "id": "211e22b1-e07b-43b9-a744-f572fa702a14",
+      "date": "2026-09-16",
+      "description": "Income - TEST Personal Employer",
+      "payee_or_payer": "TEST Personal Employer",
+      "status": "posted",
+      "origin": "manual",
+      "idempotency_key": "920e6f88-7c83-476d-afbb-89717252f165",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:56.926Z",
+      "updated_at": "2026-09-15T23:39:56.926Z",
+      "postings": [
+        {
+          "id": "cc4be24f-ddee-4eeb-ba74-99699ba41a2b",
+          "transaction_id": "211e22b1-e07b-43b9-a744-f572fa702a14",
+          "account_id": "d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "amount_cents": 100000,
+          "currency": "AUD",
+          "memo": "Deposit from TEST Personal Employer"
+        },
+        {
+          "id": "ef4e96a7-1b58-4ffc-8769-dde4cbd844c1",
+          "transaction_id": "211e22b1-e07b-43b9-a744-f572fa702a14",
+          "account_id": "acc-inc-00588047-8036-42b8-ba29-bd0e888f54e3-salary-aud",
+          "amount_cents": -100000,
+          "currency": "AUD",
+          "memo": "Income - TEST Personal Employer"
+        }
+      ]
+    },
+    {
+      "id": "272cb6ab-10f2-4419-a1be-98cee918b1c9",
+      "date": "2026-09-16",
+      "description": "Expense - TEST Personal Grocer",
+      "payee_or_payer": "TEST Personal Grocer",
+      "status": "posted",
+      "origin": "manual",
+      "idempotency_key": "3d0e09a9-b99e-4f2c-8172-61d04bc53c9f",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:47.794Z",
+      "updated_at": "2026-09-15T23:39:47.794Z",
+      "postings": [
+        {
+          "id": "78ac400c-452c-4560-9b8e-1e46437930f8",
+          "transaction_id": "272cb6ab-10f2-4419-a1be-98cee918b1c9",
+          "account_id": "acc-exp-00588047-8036-42b8-ba29-bd0e888f54e3-groceries-aud",
+          "amount_cents": 2200,
+          "currency": "AUD",
+          "memo": "Expense - TEST Personal Grocer"
+        },
+        {
+          "id": "5fc8a669-5117-438d-80f4-f97bf875b3f0",
+          "transaction_id": "272cb6ab-10f2-4419-a1be-98cee918b1c9",
+          "account_id": "d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "amount_cents": -2200,
+          "currency": "AUD",
+          "memo": "Payment to TEST Personal Grocer"
+        }
+      ]
+    },
+    {
+      "id": "tx-open-d4722896-94e3-4b6d-9432-08b2cc08830f",
+      "date": "2026-09-16",
+      "description": "Opening Balance - TEST AUD Everyday",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "opening_balance",
+      "idempotency_key": "idemp-open-d4722896-94e3-4b6d-9432-08b2cc08830f",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:38:50.301Z",
+      "updated_at": "2026-09-15T23:38:50.301Z",
+      "postings": [
+        {
+          "id": "post-acc-d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "transaction_id": "tx-open-d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "account_id": "d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "amount_cents": 100000,
+          "currency": "AUD",
+          "memo": "Opening Balance for TEST AUD Everyday"
+        },
+        {
+          "id": "post-eq-d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "transaction_id": "tx-open-d4722896-94e3-4b6d-9432-08b2cc08830f",
+          "account_id": "acc-equity-00588047-8036-42b8-ba29-bd0e888f54e3-aud",
+          "amount_cents": -100000,
+          "currency": "AUD",
+          "memo": "Opening Balance Offset for TEST AUD Everyday"
+        }
+      ]
+    },
+    {
+      "id": "tx-open-cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+      "date": "2026-09-15",
+      "description": "Opening Balance - TEST Home",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "opening_balance",
+      "idempotency_key": "idemp-open-cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.443Z",
+      "updated_at": "2026-09-15T23:39:31.443Z",
+      "postings": [
+        {
+          "id": "post-acc-cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+          "transaction_id": "tx-open-cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+          "account_id": "cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+          "amount_cents": 30000000,
+          "currency": "AUD",
+          "memo": "Opening Balance for TEST Home"
+        },
+        {
+          "id": "post-eq-cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+          "transaction_id": "tx-open-cd7e3e17-fbf4-434f-8c12-c5fa33ca5e18",
+          "account_id": "acc-equity-00588047-8036-42b8-ba29-bd0e888f54e3-aud",
+          "amount_cents": -30000000,
+          "currency": "AUD",
+          "memo": "Opening Balance Offset for TEST Home"
+        }
+      ]
+    },
+    {
+      "id": "tx-open-53f81da6-9d88-40e8-b161-e0f6058791e2",
+      "date": "2026-09-15",
+      "description": "Opening Balance - TEST Mortgage",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "opening_balance",
+      "idempotency_key": "idemp-open-53f81da6-9d88-40e8-b161-e0f6058791e2",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.428Z",
+      "updated_at": "2026-09-15T23:39:31.428Z",
+      "postings": [
+        {
+          "id": "post-acc-53f81da6-9d88-40e8-b161-e0f6058791e2",
+          "transaction_id": "tx-open-53f81da6-9d88-40e8-b161-e0f6058791e2",
+          "account_id": "53f81da6-9d88-40e8-b161-e0f6058791e2",
+          "amount_cents": -20000000,
+          "currency": "AUD",
+          "memo": "Opening Balance for TEST Mortgage"
+        },
+        {
+          "id": "post-eq-53f81da6-9d88-40e8-b161-e0f6058791e2",
+          "transaction_id": "tx-open-53f81da6-9d88-40e8-b161-e0f6058791e2",
+          "account_id": "acc-equity-00588047-8036-42b8-ba29-bd0e888f54e3-aud",
+          "amount_cents": 20000000,
+          "currency": "AUD",
+          "memo": "Opening Balance Offset for TEST Mortgage"
+        }
+      ]
+    },
+    {
+      "id": "tx-open-3b6a0eac-560d-4267-86f4-80609793bd2f",
+      "date": "2026-09-15",
+      "description": "Opening Balance - TEST Card",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "opening_balance",
+      "idempotency_key": "idemp-open-3b6a0eac-560d-4267-86f4-80609793bd2f",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.414Z",
+      "updated_at": "2026-09-15T23:39:31.414Z",
+      "postings": [
+        {
+          "id": "post-acc-3b6a0eac-560d-4267-86f4-80609793bd2f",
+          "transaction_id": "tx-open-3b6a0eac-560d-4267-86f4-80609793bd2f",
+          "account_id": "3b6a0eac-560d-4267-86f4-80609793bd2f",
+          "amount_cents": -30000,
+          "currency": "AUD",
+          "memo": "Opening Balance for TEST Card"
+        },
+        {
+          "id": "post-eq-3b6a0eac-560d-4267-86f4-80609793bd2f",
+          "transaction_id": "tx-open-3b6a0eac-560d-4267-86f4-80609793bd2f",
+          "account_id": "acc-equity-00588047-8036-42b8-ba29-bd0e888f54e3-aud",
+          "amount_cents": 30000,
+          "currency": "AUD",
+          "memo": "Opening Balance Offset for TEST Card"
+        }
+      ]
+    },
+    {
+      "id": "tx-open-bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+      "date": "2026-09-15",
+      "description": "Opening Balance - TEST Savings",
+      "payee_or_payer": null,
+      "status": "posted",
+      "origin": "opening_balance",
+      "idempotency_key": "idemp-open-bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+      "evidence_refs": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:39:31.399Z",
+      "updated_at": "2026-09-15T23:39:31.399Z",
+      "postings": [
+        {
+          "id": "post-acc-bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+          "transaction_id": "tx-open-bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+          "account_id": "bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+          "amount_cents": 50000,
+          "currency": "AUD",
+          "memo": "Opening Balance for TEST Savings"
+        },
+        {
+          "id": "post-eq-bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+          "transaction_id": "tx-open-bc8e6d2d-9c31-4609-b616-5d4d8666b75b",
+          "account_id": "acc-equity-00588047-8036-42b8-ba29-bd0e888f54e3-aud",
+          "amount_cents": -50000,
+          "currency": "AUD",
+          "memo": "Opening Balance Offset for TEST Savings"
+        }
+      ]
+    }
+  ]
+}

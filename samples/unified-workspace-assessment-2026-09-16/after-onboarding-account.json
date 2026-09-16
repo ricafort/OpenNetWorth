@@ -1,0 +1,46 @@
+{
+  "success": true,
+  "entities": [
+    {
+      "id": "00588047-8036-42b8-ba29-bd0e888f54e3",
+      "name": "TEST Morgan",
+      "type": "person",
+      "currency": "USD",
+      "parent_entity_id": null,
+      "created_at": "2026-09-15T23:36:56.116Z",
+      "updated_at": "2026-09-15T23:36:56.116Z"
+    },
+    {
+      "id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "name": "TEST Morgan Business",
+      "type": "business",
+      "currency": "USD",
+      "parent_entity_id": null,
+      "created_at": "2026-09-15T23:36:56.13Z",
+      "updated_at": "2026-09-15T23:36:56.13Z"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "af0c3f0b-6da1-46ef-a915-0c413118dbfb",
+      "entity_id": "a56d3de0-9f83-40bc-b118-a5bba5f2d3e5",
+      "name": "TEST Personal Everyday",
+      "type": "asset",
+      "sub_type": "checking",
+      "currency": "USD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": null,
+      "opening_balance_cents": null,
+      "revision": 1,
+      "created_at": "2026-09-15T23:37:13.789Z",
+      "updated_at": "2026-09-15T23:37:13.789Z",
+      "balance_cents": 0,
+      "formatted_balance": "$0.00",
+      "as_of_date": "2026-09-15"
+    }
+  ],
+  "net_worth": null,
+  "period_income_expenses": null
+}

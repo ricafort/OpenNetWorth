@@ -1,0 +1,4 @@
+src/app/api/mentor/route.ts(54,40): error TS2339: Property 'expenses' does not exist on type 'PeriodIncomeExpenseResult'.
+src/app/api/mentor/route.ts(55,46): error TS2339: Property 'categories' does not exist on type 'PeriodIncomeExpenseResult'.
+src/app/api/mentor/route.ts(58,66): error TS2339: Property 'expenses' does not exist on type 'PeriodIncomeExpenseResult'.
+src/app/api/mentor/route.ts(58,111): error TS18046: 'cents' is of type 'unknown'.

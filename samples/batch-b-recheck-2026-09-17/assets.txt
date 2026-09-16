@@ -1,0 +1,52 @@
+Browser tab: 5, Title: "Assets | OpenNetWorth", URL: "http://localhost:4007/assets".
+0 AXWebArea Assets | OpenNetWorth, URL: localhost:4007/assets
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 container
+			4 link Description: Dashboard, Value: localhost:4007/
+			5 link Description: Accounting My finances, Value: localhost:4007/accounting
+			6 link Description: Assets What I own, Value: localhost:4007/assets
+			7 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			8 link Description: Goals, Value: localhost:4007/goals
+			9 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			10 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			11 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			12 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			13 link Description: Privacy, Value: localhost:4007/privacy
+		14 text ON Local Vault Owner 🔒 100% On-Device
+		15 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		16 button Light Mode
+		17 button Stealth Mode
+		18 button System Theme
+		19 button Blur Values
+		20 text v 1.0.0
+	21 container
+		27 heading Your Assets, Value: 2
+			28 text Your Assets
+		29 text Manage everything you own in one place.
+		30 button Add Asset
+		31 table
+			32 row
+				33 cell
+					34 text NAME
+				35 cell
+					36 text TYPE
+				37 cell
+					38 text RATE
+				39 cell
+					40 text VALUE
+				41 cell
+					42 text ACTIONS
+			43 row
+				44 cell
+					45 text No assets added yet.
+			46 row
+				47 cell
+					48 text TOTAL PORTFOLIO VALUE
+				49 cell
+					50 text $0
+	25 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		26 image
+	51 text Assets | OpenNetWorth
+
+The focused UI element is 6 link Description: Assets What I own, URL: localhost:4007/assets

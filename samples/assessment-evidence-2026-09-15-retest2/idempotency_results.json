@@ -1,0 +1,44 @@
+[
+  {
+    "name": "same_key_financial_and_material_conflicts",
+    "status": "OBSERVED",
+    "observed": {
+      "conflicts": [
+        {
+          "name": "amount",
+          "accepted": false,
+          "error": "Idempotency conflict: A transaction with idempotency key \"doc:5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9:prop:prop-doc-c933c2ca-c7bd-43ab-9581-17342ec7a37d-r2\" already exists with different financial or material details."
+        },
+        {
+          "name": "date",
+          "accepted": false,
+          "error": "Idempotency conflict: A transaction with idempotency key \"doc:5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9:prop:prop-doc-c933c2ca-c7bd-43ab-9581-17342ec7a37d-r2\" already exists with different financial or material details."
+        },
+        {
+          "name": "description",
+          "accepted": false,
+          "error": "Idempotency conflict: A transaction with idempotency key \"doc:5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9:prop:prop-doc-c933c2ca-c7bd-43ab-9581-17342ec7a37d-r2\" already exists with different financial or material details."
+        },
+        {
+          "name": "payee",
+          "accepted": false,
+          "error": "Idempotency conflict: A transaction with idempotency key \"doc:5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9:prop:prop-doc-c933c2ca-c7bd-43ab-9581-17342ec7a37d-r2\" already exists with different financial or material details."
+        },
+        {
+          "name": "account",
+          "accepted": false,
+          "error": "Idempotency conflict: A transaction with idempotency key \"doc:5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9:prop:prop-doc-c933c2ca-c7bd-43ab-9581-17342ec7a37d-r2\" already exists with different financial or material details."
+        },
+        {
+          "name": "currency",
+          "accepted": false,
+          "error": "Posting currency \"USD\" does not match account currency \"AUD\" for account \"Office Supplies\"."
+        }
+      ],
+      "evidence_only_retry_same_id": true,
+      "old_evidence_preserved": true,
+      "new_evidence_merged": false,
+      "counts_unchanged": true
+    }
+  }
+]

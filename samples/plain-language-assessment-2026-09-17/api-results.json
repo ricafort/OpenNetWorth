@@ -1,0 +1,860 @@
+[
+  {
+    "name": "UI starter CSV closes at AUD883.12",
+    "pass": true,
+    "detail": {
+      "id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+      "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "name": "TEST Household CSV",
+      "type": "asset",
+      "sub_type": "checking",
+      "currency": "AUD",
+      "is_active": true,
+      "institution": null,
+      "account_number_mask": null,
+      "opening_date": "2025-06-30",
+      "opening_balance_cents": 100000,
+      "revision": 1,
+      "created_at": "2026-09-16T12:56:39.159Z",
+      "updated_at": "2026-09-16T12:56:39.159Z",
+      "balance_cents": 88312,
+      "formatted_balance": "A$883.12",
+      "as_of_date": "2026-09-16"
+    }
+  },
+  {
+    "name": "Exact CSV reimport retains three approved proposals",
+    "pass": true,
+    "detail": {
+      "success": true,
+      "document": {
+        "id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+        "filename": "household_simple_expenses.csv",
+        "content_hash": "5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9",
+        "mime_type": "text/csv",
+        "byte_size": 171,
+        "created_at": "2026-09-16T13:06:31.091Z"
+      },
+      "proposals": [
+        {
+          "id": "prop-doc-de6d693c-189d-412b-bc57-247571ff7ae7-r2",
+          "document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-03",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": -2200,
+          "counterparty": "Waratah Office Supplies paper ream",
+          "description": "Waratah Office Supplies paper ream",
+          "event_type": "expense",
+          "suggested_category": "office_supplies",
+          "evidence": {
+            "document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+            "content_hash": "5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9",
+            "cell_reference": "Row 2",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "03/07/2025,Waratah Office Supplies paper ream,-22.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [],
+          "review_status": "approved",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:06:31.091Z",
+          "updated_at": "2026-09-16T13:06:45.994Z"
+        },
+        {
+          "id": "prop-doc-de6d693c-189d-412b-bc57-247571ff7ae7-r3",
+          "document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-04",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": -1500,
+          "counterparty": "Waratah Office Supplies pens",
+          "description": "Waratah Office Supplies pens",
+          "event_type": "expense",
+          "suggested_category": "office_supplies",
+          "evidence": {
+            "document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+            "content_hash": "5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9",
+            "cell_reference": "Row 3",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "04/07/2025,Waratah Office Supplies pens,-15.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [],
+          "review_status": "approved",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:06:31.091Z",
+          "updated_at": "2026-09-16T13:06:45.995Z"
+        },
+        {
+          "id": "prop-doc-de6d693c-189d-412b-bc57-247571ff7ae7-r4",
+          "document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-06",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": -7988,
+          "counterparty": "Blue Wren Broadband BPAY",
+          "description": "Blue Wren Broadband BPAY",
+          "event_type": "expense",
+          "suggested_category": "utilities",
+          "evidence": {
+            "document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+            "content_hash": "5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9",
+            "cell_reference": "Row 4",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "06/07/2025,Blue Wren Broadband BPAY,-79.88"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [],
+          "review_status": "approved",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:06:31.091Z",
+          "updated_at": "2026-09-16T13:06:45.995Z"
+        }
+      ],
+      "internal_duplicates_count": 0,
+      "external_duplicates_count": 0
+    }
+  },
+  {
+    "name": "Exact PDF reimport retains linked status",
+    "pass": true,
+    "detail": [
+      {
+        "id": "prop-8040ff17-c9c2-4222-b0a7-1f1c09fe3805",
+        "document_id": "doc-68eb1672-7f65-4b03-9628-e25cf54ec6fc",
+        "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+        "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+        "event_date": "2025-07-03",
+        "document_period": null,
+        "original_currency": "AUD",
+        "amount_cents": -2200,
+        "counterparty": "Waratah Office Supplies",
+        "description": "Waratah Office Supplies - Printer paper ream",
+        "event_type": "expense",
+        "suggested_category": "office_supplies",
+        "evidence": {
+          "document_id": "doc-68eb1672-7f65-4b03-9628-e25cf54ec6fc",
+          "content_hash": "f63b3d1de20b82b7603a69a20eff54a2316142da914a65d78fd9dcdac91c36f3",
+          "page_number": 1,
+          "extraction_version": "opentax_invoice_v1",
+          "source_snippet": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice and payment receipt\nInvoice: WOS-0703\nDate: 03/07/2025 10:34\nBilled to: Alex Nguyen\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter paper ream $22.00\nTOTAL PAID $22.00\nIncludes goods and services tax (GST): $2.00"
+        },
+        "extraction_version": "opentax_invoice_v1",
+        "validation_findings": [
+          {
+            "severity": "warning",
+            "code": "EXTRACTOR_WARNING",
+            "message": "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+          }
+        ],
+        "review_status": "linked",
+        "related_proposal_ids": [],
+        "linked_transaction_id": "5594bfe0-c2b8-4d3b-99c5-9bc092bdcd81",
+        "created_at": "2026-09-16T13:07:48.902Z",
+        "updated_at": "2026-09-16T13:08:25.573Z"
+      }
+    ]
+  },
+  {
+    "name": "Receipt link and reimports add no financial transactions",
+    "pass": true,
+    "detail": {
+      "before": 18,
+      "after": 18
+    }
+  },
+  {
+    "name": "Stored original delivery household_simple_expenses.csv",
+    "pass": true,
+    "detail": {
+      "status": 200,
+      "cache": "private, no-store, max-age=0",
+      "csvBomRemovedByFileReader": true
+    }
+  },
+  {
+    "name": "Stored original delivery receipt_office_supplies_22.pdf",
+    "pass": true,
+    "detail": {
+      "status": 200,
+      "cache": "private, no-store, max-age=0",
+      "csvBomRemovedByFileReader": false
+    }
+  },
+  {
+    "name": "Company CSV approval",
+    "pass": true,
+    "detail": {
+      "status": 200,
+      "data": {
+        "previousSuccessfulRun": true
+      }
+    }
+  },
+  {
+    "name": "Company CSV closes AUD390; household unchanged",
+    "pass": true,
+    "detail": [
+      {
+        "id": "aa24717c-8037-4d9c-a710-594e12f19e3d",
+        "entity_id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+        "name": "TEST Business Bank",
+        "type": "asset",
+        "sub_type": "checking",
+        "currency": "AUD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": "2025-06-30",
+        "opening_balance_cents": 50000,
+        "revision": 1,
+        "created_at": "2026-09-16T12:56:39.118Z",
+        "updated_at": "2026-09-16T12:56:39.118Z",
+        "balance_cents": 39000,
+        "formatted_balance": "A$390.00",
+        "as_of_date": "2026-09-16"
+      },
+      {
+        "id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+        "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+        "name": "TEST Household CSV",
+        "type": "asset",
+        "sub_type": "checking",
+        "currency": "AUD",
+        "is_active": true,
+        "institution": null,
+        "account_number_mask": null,
+        "opening_date": "2025-06-30",
+        "opening_balance_cents": 100000,
+        "revision": 1,
+        "created_at": "2026-09-16T12:56:39.159Z",
+        "updated_at": "2026-09-16T12:56:39.159Z",
+        "balance_cents": 88312,
+        "formatted_balance": "A$883.12",
+        "as_of_date": "2026-09-16"
+      }
+    ]
+  },
+  {
+    "name": "Reject invalid_dates.csv",
+    "pass": true,
+    "detail": {
+      "proposals": [
+        {
+          "id": "prop-doc-3f155da0-bddc-4211-a3c2-d1db98ba8611-r2",
+          "document_id": "doc-3f155da0-bddc-4211-a3c2-d1db98ba8611",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "1970-01-01",
+          "document_period": null,
+          "original_currency": "AUD",
+          "amount_cents": -2200,
+          "counterparty": "Impossible date",
+          "description": "Impossible date",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-3f155da0-bddc-4211-a3c2-d1db98ba8611",
+            "content_hash": "d5dd550237bdf010732dc78e09468172341899a9729f9196167d6a20dd86f705",
+            "cell_reference": "Row 2",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "31/02/2025,Impossible date,-22.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "error",
+              "code": "INVALID_DATE",
+              "message": "Date \"31/02/2025\" is not a valid calendar day.",
+              "field": "date"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:20.911Z",
+          "updated_at": "2026-09-16T13:11:20.911Z"
+        },
+        {
+          "id": "prop-doc-3f155da0-bddc-4211-a3c2-d1db98ba8611-r3",
+          "document_id": "doc-3f155da0-bddc-4211-a3c2-d1db98ba8611",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "1970-01-01",
+          "document_period": null,
+          "original_currency": "AUD",
+          "amount_cents": -1500,
+          "counterparty": "Missing date",
+          "description": "Missing date",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-3f155da0-bddc-4211-a3c2-d1db98ba8611",
+            "content_hash": "d5dd550237bdf010732dc78e09468172341899a9729f9196167d6a20dd86f705",
+            "cell_reference": "Row 3",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": ",Missing date,-15.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "error",
+              "code": "INVALID_DATE",
+              "message": "Date field is empty or missing.",
+              "field": "date"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:20.911Z",
+          "updated_at": "2026-09-16T13:11:20.911Z"
+        }
+      ],
+      "approval": {
+        "status": 400,
+        "data": {
+          "error": "Cannot approve proposal \"prop-doc-3f155da0-bddc-4211-a3c2-d1db98ba8611-r2\" because it contains unresolved error findings."
+        }
+      }
+    }
+  },
+  {
+    "name": "Reject invalid_amounts.csv",
+    "pass": true,
+    "detail": {
+      "proposals": [
+        {
+          "id": "prop-doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780-r2",
+          "document_id": "doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-07",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": 0,
+          "counterparty": "Trailing characters",
+          "description": "Trailing characters",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780",
+            "content_hash": "d8e71bd4618d9a8c7493de28cd1ab9d68666dd1abefc49f44c2014644a2d6a83",
+            "cell_reference": "Row 2",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "07/07/2025,Trailing characters,12oops"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "error",
+              "code": "INVALID_AMOUNT",
+              "message": "Invalid monetary value: \"12oops\". Entire value must be a valid numeric amount.",
+              "field": "amount"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.006Z",
+          "updated_at": "2026-09-16T13:11:21.006Z"
+        },
+        {
+          "id": "prop-doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780-r3",
+          "document_id": "doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-08",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": 0,
+          "counterparty": "Two decimal separators",
+          "description": "Two decimal separators",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780",
+            "content_hash": "d8e71bd4618d9a8c7493de28cd1ab9d68666dd1abefc49f44c2014644a2d6a83",
+            "cell_reference": "Row 3",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "08/07/2025,Two decimal separators,1.2.3"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "error",
+              "code": "INVALID_AMOUNT",
+              "message": "Invalid monetary value: \"1.2.3\". Entire value must be a valid numeric amount.",
+              "field": "amount"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.006Z",
+          "updated_at": "2026-09-16T13:11:21.006Z"
+        },
+        {
+          "id": "prop-doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780-r4",
+          "document_id": "doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-09",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": 0,
+          "counterparty": "Bad thousands grouping",
+          "description": "Bad thousands grouping",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780",
+            "content_hash": "d8e71bd4618d9a8c7493de28cd1ab9d68666dd1abefc49f44c2014644a2d6a83",
+            "cell_reference": "Row 4",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "09/07/2025,Bad thousands grouping,\"1,2,3.00\""
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "error",
+              "code": "INVALID_AMOUNT",
+              "message": "Invalid monetary value: \"1,2,3.00\". Entire value must be a valid numeric amount.",
+              "field": "amount"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.006Z",
+          "updated_at": "2026-09-16T13:11:21.006Z"
+        }
+      ],
+      "approval": {
+        "status": 400,
+        "data": {
+          "error": "Cannot approve proposal \"prop-doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780-r2\" because it contains unresolved error findings."
+        }
+      }
+    }
+  },
+  {
+    "name": "Require explicit duplicate decision duplicate_identical_rows.csv",
+    "pass": true,
+    "detail": {
+      "proposals": [
+        {
+          "id": "prop-doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7-r2",
+          "document_id": "doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-03",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": -2200,
+          "counterparty": "Waratah Office Supplies paper ream",
+          "description": "Waratah Office Supplies paper ream",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7",
+            "content_hash": "6a47326792b3994575189a600735b103ebefcb9c9e6933e6c0b229f905d012c3",
+            "cell_reference": "Row 2",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "03/07/2025,Waratah Office Supplies paper ream,-22.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "warning",
+              "code": "POSSIBLE_DUPLICATE_EXISTING",
+              "message": "A posted transaction (\"Waratah Office Supplies paper ream\") with matching date and amount already exists on this account.",
+              "field": "row"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.091Z",
+          "updated_at": "2026-09-16T13:11:21.091Z"
+        },
+        {
+          "id": "prop-doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7-r3",
+          "document_id": "doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-03",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": -2200,
+          "counterparty": "Waratah Office Supplies paper ream",
+          "description": "Waratah Office Supplies paper ream",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7",
+            "content_hash": "6a47326792b3994575189a600735b103ebefcb9c9e6933e6c0b229f905d012c3",
+            "cell_reference": "Row 3",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "03/07/2025,Waratah Office Supplies paper ream,-22.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "warning",
+              "code": "SUSPECTED_DUPLICATE_INTERNAL",
+              "message": "Row matches earlier row #2 in this file with identical date and amount.",
+              "field": "row"
+            },
+            {
+              "severity": "warning",
+              "code": "POSSIBLE_DUPLICATE_EXISTING",
+              "message": "A posted transaction (\"Waratah Office Supplies paper ream\") with matching date and amount already exists on this account.",
+              "field": "row"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.091Z",
+          "updated_at": "2026-09-16T13:11:21.091Z"
+        }
+      ],
+      "approval": {
+        "status": 400,
+        "data": {
+          "error": "Cannot approve proposal \"prop-doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7-r2\": it is a possible duplicate and requires explicit confirmation."
+        }
+      }
+    }
+  },
+  {
+    "name": "Australian date mapping",
+    "pass": true,
+    "detail": [
+      {
+        "id": "prop-doc-a3f5cb0b-7cdf-4d58-9e1f-5b2ebb01cd88-r2",
+        "document_id": "doc-a3f5cb0b-7cdf-4d58-9e1f-5b2ebb01cd88",
+        "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+        "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+        "event_date": "2025-08-07",
+        "document_period": "2025-08",
+        "original_currency": "AUD",
+        "amount_cents": -1200,
+        "counterparty": "Australian date means 7 August",
+        "description": "Australian date means 7 August",
+        "event_type": "expense",
+        "suggested_category": "living_expense",
+        "evidence": {
+          "document_id": "doc-a3f5cb0b-7cdf-4d58-9e1f-5b2ebb01cd88",
+          "content_hash": "87068cd8bb98854acafe9e8c717ceb1543b50a550a16a7a036a9102c3be0727d",
+          "cell_reference": "Row 2",
+          "extraction_version": "slice1e-csv-v1",
+          "source_snippet": "07/08/2025,Australian date means 7 August,-12.00"
+        },
+        "extraction_version": "slice1e-csv-v1",
+        "validation_findings": [],
+        "review_status": "unreviewed",
+        "related_proposal_ids": [],
+        "linked_transaction_id": null,
+        "created_at": "2026-09-16T13:11:21.162Z",
+        "updated_at": "2026-09-16T13:11:21.162Z"
+      },
+      {
+        "id": "prop-doc-a3f5cb0b-7cdf-4d58-9e1f-5b2ebb01cd88-r3",
+        "document_id": "doc-a3f5cb0b-7cdf-4d58-9e1f-5b2ebb01cd88",
+        "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+        "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+        "event_date": "2025-07-08",
+        "document_period": "2025-07",
+        "original_currency": "AUD",
+        "amount_cents": -1300,
+        "counterparty": "Australian date means 8 July",
+        "description": "Australian date means 8 July",
+        "event_type": "expense",
+        "suggested_category": "living_expense",
+        "evidence": {
+          "document_id": "doc-a3f5cb0b-7cdf-4d58-9e1f-5b2ebb01cd88",
+          "content_hash": "87068cd8bb98854acafe9e8c717ceb1543b50a550a16a7a036a9102c3be0727d",
+          "cell_reference": "Row 3",
+          "extraction_version": "slice1e-csv-v1",
+          "source_snippet": "08/07/2025,Australian date means 8 July,-13.00"
+        },
+        "extraction_version": "slice1e-csv-v1",
+        "validation_findings": [],
+        "review_status": "unreviewed",
+        "related_proposal_ids": [],
+        "linked_transaction_id": null,
+        "created_at": "2026-09-16T13:11:21.162Z",
+        "updated_at": "2026-09-16T13:11:21.162Z"
+      }
+    ]
+  },
+  {
+    "name": "Formula-like text preserved",
+    "pass": true,
+    "detail": [
+      {
+        "id": "prop-doc-7d25a23d-e7a1-4d92-9814-84b016153072-r2",
+        "document_id": "doc-7d25a23d-e7a1-4d92-9814-84b016153072",
+        "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+        "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+        "event_date": "2025-07-03",
+        "document_period": "2025-07",
+        "original_currency": "AUD",
+        "amount_cents": -100,
+        "counterparty": "=1+1",
+        "description": "=1+1",
+        "event_type": "expense",
+        "suggested_category": "living_expense",
+        "evidence": {
+          "document_id": "doc-7d25a23d-e7a1-4d92-9814-84b016153072",
+          "content_hash": "0dafad89f72f179be1ffc2cde2a0731e495ba975b031d8e69bcbdc59806af8a7",
+          "cell_reference": "Row 2",
+          "extraction_version": "slice1e-csv-v1",
+          "source_snippet": "03/07/2025,=1+1,-1.00"
+        },
+        "extraction_version": "slice1e-csv-v1",
+        "validation_findings": [],
+        "review_status": "unreviewed",
+        "related_proposal_ids": [],
+        "linked_transaction_id": null,
+        "created_at": "2026-09-16T13:11:21.175Z",
+        "updated_at": "2026-09-16T13:11:21.175Z"
+      }
+    ]
+  },
+  {
+    "name": "JPY extraction uses zero decimals",
+    "pass": true,
+    "detail": [
+      {
+        "id": "prop-doc-4ff32fa7-8eb2-4dc2-89aa-d0b84cfc4330-r2",
+        "document_id": "doc-4ff32fa7-8eb2-4dc2-89aa-d0b84cfc4330",
+        "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+        "account_id": "4fe4a532-e087-492d-85ee-bfe82da47083",
+        "event_date": "2025-07-03",
+        "document_period": "2025-07",
+        "original_currency": "JPY",
+        "amount_cents": -500,
+        "counterparty": "Fictional JPY purchase",
+        "description": "Fictional JPY purchase",
+        "event_type": "expense",
+        "suggested_category": "living_expense",
+        "evidence": {
+          "document_id": "doc-4ff32fa7-8eb2-4dc2-89aa-d0b84cfc4330",
+          "content_hash": "2312ee4b5a062aba5b8dd71b882600d2e26bd9a762f4f98e1962c91bfb29967e",
+          "cell_reference": "Row 2",
+          "extraction_version": "slice1e-csv-v1",
+          "source_snippet": "03/07/2025,Fictional JPY purchase,-500"
+        },
+        "extraction_version": "slice1e-csv-v1",
+        "validation_findings": [],
+        "review_status": "unreviewed",
+        "related_proposal_ids": [],
+        "linked_transaction_id": null,
+        "created_at": "2026-09-16T13:11:21.189Z",
+        "updated_at": "2026-09-16T13:11:21.189Z"
+      }
+    ]
+  },
+  {
+    "name": "Require explicit duplicate decision overlap_with_starter.csv",
+    "pass": true,
+    "detail": {
+      "proposals": [
+        {
+          "id": "prop-doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117-r2",
+          "document_id": "doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-03",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": -2200,
+          "counterparty": "Waratah Office Supplies paper ream",
+          "description": "Waratah Office Supplies paper ream",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117",
+            "content_hash": "3f4c4c8e13621f9003b6e2c1fc00989bf98df6af9dfd0cbb1845c87701a31635",
+            "cell_reference": "Row 2",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "03/07/2025,Waratah Office Supplies paper ream,-22.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "warning",
+              "code": "POSSIBLE_DUPLICATE_EXISTING",
+              "message": "A posted transaction (\"Waratah Office Supplies paper ream\") with matching date and amount already exists on this account.",
+              "field": "row"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.203Z",
+          "updated_at": "2026-09-16T13:11:21.203Z"
+        },
+        {
+          "id": "prop-doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117-r3",
+          "document_id": "doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-07-04",
+          "document_period": "2025-07",
+          "original_currency": "AUD",
+          "amount_cents": -1500,
+          "counterparty": "Waratah Office Supplies pens",
+          "description": "Waratah Office Supplies pens",
+          "event_type": "expense",
+          "suggested_category": "living_expense",
+          "evidence": {
+            "document_id": "doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117",
+            "content_hash": "3f4c4c8e13621f9003b6e2c1fc00989bf98df6af9dfd0cbb1845c87701a31635",
+            "cell_reference": "Row 3",
+            "extraction_version": "slice1e-csv-v1",
+            "source_snippet": "04/07/2025,Waratah Office Supplies pens,-15.00"
+          },
+          "extraction_version": "slice1e-csv-v1",
+          "validation_findings": [
+            {
+              "severity": "warning",
+              "code": "POSSIBLE_DUPLICATE_EXISTING",
+              "message": "A posted transaction (\"Waratah Office Supplies pens\") with matching date and amount already exists on this account.",
+              "field": "row"
+            }
+          ],
+          "review_status": "unreviewed",
+          "related_proposal_ids": [],
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.203Z",
+          "updated_at": "2026-09-16T13:11:21.203Z"
+        }
+      ],
+      "approval": {
+        "status": 400,
+        "data": {
+          "error": "Cannot approve proposal \"prop-doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117-r2\": it is a possible duplicate and requires explicit confirmation."
+        }
+      }
+    }
+  },
+  {
+    "name": "Unpaid invoice cannot silently post",
+    "pass": true,
+    "detail": {
+      "proposals": [
+        {
+          "id": "prop-47f7398b-8bd8-4f1a-8ebc-fad327e97ac8",
+          "document_id": "doc-cc21fba4-ce02-40bc-9086-ed563c9ec09a",
+          "entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+          "account_id": "37c87845-9524-421d-b8da-dee3fbe7d9de",
+          "event_date": "2025-09-20",
+          "original_currency": "",
+          "amount_cents": -33000,
+          "counterparty": null,
+          "description": "null - Printer maintenance service",
+          "event_type": "expense",
+          "suggested_category": "office_supplies",
+          "evidence": {
+            "document_id": "doc-cc21fba4-ce02-40bc-9086-ed563c9ec09a",
+            "content_hash": "5283e10d4fc75343bc4858a21336fceb95422261f771f3e07454e8f88cea07d2",
+            "page_number": 1,
+            "extraction_version": "opentax_invoice_v1",
+            "source_snippet": "SYNTHETIC SAMPLE - NOT A REAL TRANSACTION\nWaratah Office Supplies\nInvoice - unpaid\nInvoice: WOS-0920\nDate: 20/09/2025 10:34\nBilled to: Wattle Design Studio Pty Ltd\nAll amounts in Australian dollars (AUD).\nFictional supplier. Australian Business Number (ABN) omitted.\nDescription Amount\nPrinter maintenance service $330.00\nTOTAL DUE $330.00\nIncludes goods and services tax (GST): $30.00"
+          },
+          "extraction_version": "opentax_invoice_v1",
+          "validation_findings": [
+            {
+              "severity": "error",
+              "code": "MISSING_CURRENCY",
+              "message": "Document currency could not be identified with confidence. Retained as unresolved until reviewed."
+            },
+            {
+              "severity": "warning",
+              "code": "EXTRACTOR_WARNING",
+              "message": "Did you issue this invoice, or receive it as a bill? Confirm who earned or spent this money before including it in your return."
+            }
+          ],
+          "review_status": "unreviewed",
+          "linked_transaction_id": null,
+          "created_at": "2026-09-16T13:11:21.308Z",
+          "updated_at": "2026-09-16T13:11:21.308Z"
+        }
+      ],
+      "approval": {
+        "status": 400,
+        "data": {
+          "error": "Cannot approve proposal \"prop-47f7398b-8bd8-4f1a-8ebc-fad327e97ac8\" because it contains unresolved error findings."
+        }
+      }
+    }
+  },
+  {
+    "name": "Manual expense rejects property payment account",
+    "pass": true,
+    "detail": {
+      "status": 400,
+      "data": {
+        "error": "Payment account must be a liquid asset or credit card account, received type: \"asset\", sub_type: \"property\"."
+      }
+    }
+  },
+  {
+    "name": "PATCH cannot bypass approval",
+    "pass": true,
+    "detail": {
+      "status": 400,
+      "data": {
+        "error": "Proposals cannot be marked approved via review updates. Only successful ledger posting may set approved status."
+      }
+    }
+  },
+  {
+    "name": "Cross-owner posting blocked",
+    "pass": true,
+    "detail": {
+      "status": 400,
+      "data": {
+        "error": "Cross-entity transfers are not supported in Slice 1C. Both accounts must belong to the same entity."
+      }
+    }
+  },
+  {
+    "name": "Pagination retrieves every transaction once",
+    "pass": true,
+    "detail": {
+      "count": 18
+    }
+  },
+  {
+    "name": "Vault backup includes accounting and documents",
+    "pass": false,
+    "detail": {
+      "exportedKeys": [
+        "assets",
+        "liabilities",
+        "goals",
+        "recurring",
+        "history",
+        "cashFlow",
+        "settings",
+        "profile",
+        "drafts"
+      ]
+    }
+  }
+]

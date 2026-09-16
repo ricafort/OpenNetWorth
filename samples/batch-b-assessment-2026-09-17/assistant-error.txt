@@ -1,0 +1,85 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "AI Mentors" [level=2]
+  - paragraph: Consult your private board (Multi-select active).
+  - button "Mentor Controls":
+  - paragraph: Standard Board
+  - button "Long-Term Thinker Focuses on the power of time and consistent discipline.":
+    - generic: Long-Term Thinker
+    - paragraph: Focuses on the power of time and consistent discipline.
+  - button "Risk Guardian Prioritizes capital preservation and resilience against shocks.":
+    - generic: Risk Guardian
+    - paragraph: Prioritizes capital preservation and resilience against shocks.
+  - button "Growth Optimist Looks for underutilized resources and creative expansion.":
+    - generic: Growth Optimist
+    - paragraph: Looks for underutilized resources and creative expansion.
+  - button "Stoic Minimalist Finds freedom in simplicity and detachment from comparison.":
+    - generic: Stoic Minimalist
+    - paragraph: Finds freedom in simplicity and detachment from comparison.
+  - button "Add Your Own Mentor":
+    - generic: Add Your Own Mentor
+  - paragraph:
+    - strong: "Board Mode:"
+    - text: Select multiple mentors to triangulate wisdom. Responses are provided individually, followed by a combined summary.
+  - heading "Board Consultation" [level=3]
+  - paragraph: Single Perspective
+  - button "REFLECT"
+  - button "LEARN"
+  - paragraph: How much did I spend in July 2025?
+  - paragraph: Long-Term Thinker
+  - paragraph: Cannot convert undefined or null to object
+  - textbox "Ask your board a question..." [active]
+  - button [disabled]:
+- button "Open Next.js Dev Tools":
+- alert

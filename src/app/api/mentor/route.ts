@@ -17,6 +17,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { queryLocalLlm, LocalLlmMessage } from '@/lib/api/localLlm';
+import { parseSpendingIntent } from './intentParser';
+import { getDb } from '@/infrastructure/sqlite/db';
+import { listEntities } from '@/lib/domain/accounting/accountService';
+import { getPeriodIncomeAndExpenses } from '@/lib/domain/accounting/balanceService';
 
 export async function POST(req: NextRequest) {
     try {
@@ -24,6 +28,60 @@ export async function POST(req: NextRequest) {
 
         if (!message) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+        }
+
+        const db = getDb();
+        const availableEntities = listEntities(db);
+        const intent = parseSpendingIntent(message, availableEntities);
+
+        if (intent.isSpendingQuery && intent.needsClarification) {
+            return NextResponse.json({ response: intent.needsClarification });
+        }
+
+        let facts: any = null;
+        let factsContext = '';
+
+        if (intent.isSpendingQuery) {
+            const entity = availableEntities.find(e => e.id === intent.entityId);
+            const entityName = entity ? entity.name : (intent.entityId === 'all' ? 'All Accounts' : 'Personal');
+            
+            const incomeExpenses = getPeriodIncomeAndExpenses(db, intent.entityId === 'all' ? availableEntities[0]?.id : (intent.entityId || 'local_user'), intent.startDate, intent.endDate);
+            
+            const txQuery = `
+                SELECT DISTINCT t.id 
+                FROM m1_journal_entries j
+                JOIN m1_accounts a ON j.account_id = a.id
+                JOIN m1_transactions t ON j.transaction_id = t.id
+                WHERE a.entity_id = ? AND a.type IN ('income', 'expense') AND t.status = 'posted'
+                ${intent.startDate ? 'AND t.date >= ?' : ''}
+                ${intent.endDate ? 'AND t.date <= ?' : ''}
+            `;
+            const params = [intent.entityId === 'all' ? availableEntities[0]?.id : (intent.entityId || 'local_user')];
+            if (intent.startDate) params.push(intent.startDate);
+            if (intent.endDate) params.push(intent.endDate);
+            
+            const txRows = db.prepare(txQuery).all(...params) as { id: string }[];
+            const transactionIds = txRows.map(r => r.id);
+
+            facts = {
+                type: 'spending',
+                periodLabel: intent.periodLabel,
+                entityName: entityName,
+                totals: incomeExpenses.total_expenses_cents_by_currency, 
+                formattedTotals: incomeExpenses.formatted_expenses_by_currency,
+                transactionIds: transactionIds,
+                categories: incomeExpenses.breakdown_by_category 
+            };
+
+            const expenseStrings = Object.entries(incomeExpenses.formatted_expenses_by_currency).map(([curr, formatted]) => `${formatted}`).join(', ') || '0.00';
+            
+            factsContext = `
+DETERMINISTIC FACTS FOR SPENDING QUERY:
+- Entity Scope: ${entityName}
+- Date Scope: ${intent.periodLabel}
+- Total Expenses: ${expenseStrings}
+Note: Transfers and cancelled transactions are excluded. Mixed currencies are kept separate.
+`;
         }
 
         const currency = userContext?.currency || 'USD';
@@ -43,6 +101,7 @@ USER FINANCIAL SNAPSHOT:
 - Net Worth: ${netWorth.toLocaleString()} ${currency}
 - Total Assets: ${totalAssets.toLocaleString()} ${currency}
 - Total Liabilities: ${totalLiabilities.toLocaleString()} ${currency}
+${factsContext}
 
 STRICT CONSTRAINTS:
 - Keep your reply concise, punchy, and structured (under 160 words).
@@ -67,19 +126,23 @@ STRICT CONSTRAINTS:
                 throw new Error('Local LLM returned an empty response');
             }
 
-            return NextResponse.json({ response: responseText.trim() });
+            return NextResponse.json({ response: responseText.trim(), facts });
         } catch (llmError: any) {
             console.warn('Local LLM unavailable, using offline wisdom fallback:', llmError.message);
 
-            // Philosophical offline fallback based on the chosen mentor
-            const offlineAdvice = `### ${mentor?.name || 'Mentor'} (${mentor?.archetype || 'Wisdom'}) Perspective\n\n` +
-                `Looking at your current balance (${currency} ${netWorth.toLocaleString()} net worth across ${currency} ${totalAssets.toLocaleString()} in assets and ${currency} ${totalLiabilities.toLocaleString()} in debt), ` +
-                `the key principle is ${mentor?.description || 'discipline and consistent compounding'}.\n\n` +
-                `*"Focus on the controllable variables: your savings rate, debt elimination velocity, and keeping your capital protected against unexpected shocks."*\n\n` +
+            let offlineAdvice = `### ${mentor?.name || 'Mentor'} (${mentor?.archetype || 'Wisdom'}) Perspective\n\n`;
+            
+            if (facts) {
+                offlineAdvice += `Looking at your deterministic facts for ${facts.entityName} during ${facts.periodLabel}, your expenses were: ${factsContext.split('Total Expenses: ')[1]?.split('\n')[0]}.\n\n`;
+            } else {
+                offlineAdvice += `Looking at your current balance (${currency} ${netWorth.toLocaleString()} net worth across ${currency} ${totalAssets.toLocaleString()} in assets and ${currency} ${totalLiabilities.toLocaleString()} in debt), the key principle is ${mentor?.description || 'discipline and consistent compounding'}.\n\n`;
+            }
+            
+            offlineAdvice += `*"Focus on the controllable variables: your savings rate, debt elimination velocity, and keeping your capital protected against unexpected shocks."*\n\n` +
                 `> 💡 *Tip: Local LLM is currently offline or loading. Start LM Studio (port 1234) or Ollama (run \`ollama run llama3.2\`) to enable live private AI chat on your machine.*\n\n` +
                 `Educational perspective only. Not financial advice.`;
 
-            return NextResponse.json({ response: offlineAdvice, isOfflineFallback: true });
+            return NextResponse.json({ response: offlineAdvice, isOfflineFallback: true, facts });
         }
     } catch (error: any) {
         console.error('Mentor Route Error:', error);

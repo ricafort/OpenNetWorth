@@ -1,0 +1,24 @@
+{
+  "status": 200,
+  "collections": {
+    "assets": 0,
+    "liabilities": 0,
+    "goals": 1,
+    "recurring": 1,
+    "history": 0,
+    "cashFlow": 0,
+    "entities": 2,
+    "accounts": 22,
+    "account_ownership": 2,
+    "transactions": 19,
+    "journal_entries": 40,
+    "transaction_corrections": 1,
+    "exchange_rates": 1,
+    "asset_valuations": 1,
+    "drafts": 3,
+    "documents": 29,
+    "csv_mappings": 1,
+    "document_jobs": 0,
+    "proposals": 53
+  }
+}

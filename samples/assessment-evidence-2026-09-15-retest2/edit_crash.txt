@@ -1,0 +1,64 @@
+Browser tab: 13, Title: "localhost:4005/accounting", URL: "http://localhost:4005/accounting".
+0 AXWebArea localhost:4005/accounting
+	1 container
+		2 container
+			3 container
+				4 container
+					5 button (disabled) previous
+						6 image previous
+					7 text 1 / 1
+					8 button (disabled) next
+						9 image next
+				10 image
+				11 link Description: Next.js 16.1.1 (stale) Turbopack, Value: nextjs.org/docs/messages/version-staleness
+				12 image
+			13 container Runtime ReferenceError
+				14 container
+					15 text Runtime ReferenceError
+					16 button Copy Error Info
+						17 image
+					18 button (disabled) No related documentation found
+						19 image
+					20 button Attach Node.js inspector
+						21 image
+					22 container nextjs__container_errors_desc
+						23 text entities is not defined
+					24 image
+					25 text src/features/accounting/components/ProposalReviewTable.tsx (960:60)  @ eval
+					26 button Open in editor
+						27 image
+					28 container
+						29 text   958 |                                     <option value="">(None / Keep Current)</option>   959 |                                     {accounts.map(acc => { > 960 |                                         const entityName = entities.find(e => e.id === acc.entity_id)?.name || 'Unknown Entity';       |                                                            ^   961 |                                         return (   962 |                                             <option key={acc.id} value={acc.id}>   963 |                                                 {entityName} - {acc.name} ({acc.currency})
+					30 container
+						31 text Call Stack 19
+						32 button Show 13 ignore-listed frame(s)
+							33 text Show 13 ignore-listed frame(s)
+							34 image
+						35 text eval
+						36 button Open eval in editor
+							37 image
+						38 text src/features/accounting/components/ProposalReviewTable.tsx (960:60) Array.map <anonymous> ProposalReviewTable
+						39 button Open ProposalReviewTable in editor
+							40 image
+						41 text src/features/accounting/components/ProposalReviewTable.tsx (959:47) DocumentInboxView
+						42 button Open DocumentInboxView in editor
+							43 image
+						44 text src/features/accounting/components/DocumentInboxView.tsx (93:28) AccountingPage
+						45 button Open AccountingPage in editor
+							46 image
+						47 text src/features/accounting/components/AccountingPage.tsx (78:31) Page
+						48 button Open Page in editor
+							49 image
+						50 text src\app\accounting\page.tsx (9:12)
+			51 container
+				52 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+					53 image
+				54 button Open issues overlay
+					55 text 1
+					56 text Issue
+				57 button Collapse issues badge
+					58 image
+		59 heading Value: 2, Application error: a client-side exception has occurred while loading localhost (see the browser console for more information).
+			60 text Application error: a  client -side exception has occurred while loading  localhost  (see the browser console  for more information).
+
+The focused UI element is 13 container Runtime ReferenceError

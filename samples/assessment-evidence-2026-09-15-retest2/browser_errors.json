@@ -1,0 +1,38 @@
+[
+  {
+    "level": "error",
+    "message": "ReferenceError: entities is not defined\n    at eval (http://localhost:4005/_next/static/chunks/src_features_accounting_components_ProposalReviewTable_tsx_243ede54._.js?id=%255Bproject%255D%252Fsrc%252Ffeatures%252Faccounting%252Fcomponents%252FProposalReviewTable.tsx+%255Bapp-client%255D+%2528ecmascript%2529:1930:72)\n    at Array.map (<anonymous>)\n    at ProposalReviewTable (http://localhost:4005/_next/static/chunks/src_features_accounting_components_ProposalReviewTable_tsx_243ede54._.js?id=%255Bproject%255D%252Fsrc%252Ffeatures%252Faccounting%252Fcomponents%252FProposalReviewTable.tsx+%255Bapp-client%255D+%2528ecmascript%2529:1929:58)\n    at Object.react_stack_bottom_frame (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:14826:24)\n    at renderWithHooks (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:4651:24)\n    at updateFunctionComponent (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:6112:21)\n    at beginWork (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:6708:24)\n    at runWithFiberInDEV (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:965:74)\n    at performUnitOfWork (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9562:97)\n    at workLoopSync (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9456:40)\n    at renderRootSync (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9440:13)\n    at performWorkOnRoot (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9105:47)\n    at performSyncWorkOnRoot (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10238:9)\n    at flushSyncWorkAcrossRoots_impl (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10154:316)\n    at processRootScheduleInMicrotask (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10175:106)\n    at http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10249:158",
+    "timestamp": "2026-09-15T07:03:54.037Z",
+    "url": "http://localhost:4005/_next/static/chunks/src_features_accounting_components_ProposalReviewTable_tsx_243ede54._.js?id=%255Bproject%255D%252Fsrc%252Ffeatures%252Faccounting%252Fcomponents%252FProposalReviewTable.tsx+%255Bapp-client%255D+%2528ecmascript%2529"
+  },
+  {
+    "level": "error",
+    "message": "Failed to persist account selection: TypeError: extractedDoc.proposals is not iterable\n    at handleProceedToReview (http://localhost:4005/_next/static/chunks/src_features_accounting_components_5cfdc979._.js:1270:42)\n    at executeDispatch (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10314:13)\n    at runWithFiberInDEV (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:965:74)\n    at processDispatchQueue (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10340:41)\n    at http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10615:13\n    at batchedUpdates$1 (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:2253:44)\n    at dispatchEventForPluginEventSystem (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10416:9)\n    at dispatchEvent (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:12935:37)\n    at dispatchDiscreteEvent (http://localhost:4005/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:12917:64)",
+    "timestamp": "2026-09-15T07:05:31.449Z",
+    "url": "http://localhost:4005/_next/static/chunks/node_modules_next_dist_f3530cac._.js"
+  },
+  {
+    "level": "error",
+    "message": "./src/app/api/documents/raw/route.ts:2:1\nModule not found: Can't resolve '@/lib/infrastructure/database'\n  1 | import { NextResponse } from 'next/server';\n> 2 | import { getDb } from '@/lib/infrastructure/database';\n    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  3 |\n  4 | export const dynamic = 'force-dynamic'; // Prevent static caching of API routes\n  5 |\n\nImport map: aliased to relative './src/lib/infrastructure/database' inside of [project]/\n\nhttps://nextjs.org/docs/messages/module-not-found",
+    "timestamp": "2026-09-15T07:05:50.901Z",
+    "url": "http://localhost:4005/_next/static/chunks/node_modules_next_dist_f3530cac._.js"
+  },
+  {
+    "level": "error",
+    "message": "./src/app/api/documents/raw/route.ts:2:1\nModule not found: Can't resolve '@/lib/infrastructure/database'\n  1 | import { NextResponse } from 'next/server';\n> 2 | import { getDb } from '@/lib/infrastructure/database';\n    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  3 |\n  4 | export const dynamic = 'force-dynamic'; // Prevent static caching of API routes\n  5 |\n\nImport map: aliased to relative './src/lib/infrastructure/database' inside of [project]/\n\nhttps://nextjs.org/docs/messages/module-not-found",
+    "timestamp": "2026-09-15T07:05:51.373Z",
+    "url": "http://localhost:4005/_next/static/chunks/node_modules_next_dist_f3530cac._.js"
+  },
+  {
+    "level": "error",
+    "message": "./src/app/api/documents/raw/route.ts:2:1\nModule not found: Can't resolve '@/lib/infrastructure/database'\n  1 | import { NextResponse } from 'next/server';\n> 2 | import { getDb } from '@/lib/infrastructure/database';\n    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  3 |\n  4 | export const dynamic = 'force-dynamic'; // Prevent static caching of API routes\n  5 |\n\nImport map: aliased to relative './src/lib/infrastructure/database' inside of [project]/\n\nhttps://nextjs.org/docs/messages/module-not-found",
+    "timestamp": "2026-09-15T07:05:51.490Z",
+    "url": "http://localhost:4005/_next/static/chunks/node_modules_next_dist_f3530cac._.js"
+  },
+  {
+    "level": "error",
+    "message": "./src/app/api/documents/raw/route.ts:2:1\nModule not found: Can't resolve '@/lib/infrastructure/database'\n  1 | import { NextResponse } from 'next/server';\n> 2 | import { getDb } from '@/lib/infrastructure/database';\n    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  3 |\n  4 | export const dynamic = 'force-dynamic'; // Prevent static caching of API routes\n  5 |\n\nImport map: aliased to relative './src/lib/infrastructure/database' inside of [project]/\n\nhttps://nextjs.org/docs/messages/module-not-found",
+    "timestamp": "2026-09-15T07:05:52.542Z",
+    "url": "http://localhost:4005/_next/static/chunks/node_modules_next_dist_f3530cac._.js"
+  }
+]

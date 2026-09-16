@@ -1,0 +1,65 @@
+[
+  {
+    "q": "How much did I spend last month?",
+    "isSpendingQuery": true,
+    "startDate": "2026-07-31",
+    "endDate": "2026-08-30",
+    "periodLabel": "August 2026",
+    "entityId": "personal"
+  },
+  {
+    "q": "How much did I spend?",
+    "isSpendingQuery": true,
+    "startDate": "2026-08-31",
+    "endDate": "2026-09-29",
+    "periodLabel": "Current Month (September 2026)",
+    "entityId": "personal"
+  },
+  {
+    "q": "How much did I spend in July 2025?",
+    "isSpendingQuery": true,
+    "startDate": "2025-07-01",
+    "endDate": "2025-07-31",
+    "periodLabel": "July 2025",
+    "entityId": "personal"
+  },
+  {
+    "q": "How much did I spend on 16 September 2026?",
+    "isSpendingQuery": true,
+    "startDate": "2026-09-01",
+    "endDate": "2026-09-30",
+    "periodLabel": "September 2026",
+    "entityId": "personal"
+  },
+  {
+    "q": "How much did I spend on 2026-09-16?",
+    "isSpendingQuery": true,
+    "startDate": "2026-09-16",
+    "endDate": "2026-09-16",
+    "periodLabel": "2026-09-16",
+    "entityId": "personal"
+  },
+  {
+    "q": "How much did my business spend in July 2025?",
+    "isSpendingQuery": true,
+    "needsClarification": "I'm not sure if you mean personal or business spending. Could you clarify whose finances you are asking about?"
+  },
+  {
+    "q": "Business expenses in July 2025",
+    "isSpendingQuery": true,
+    "needsClarification": "You have multiple business entities. Which business do you mean?"
+  },
+  {
+    "q": "Expenses across all my finances in July 2025",
+    "isSpendingQuery": true,
+    "startDate": "2025-07-01",
+    "endDate": "2025-07-31",
+    "periodLabel": "July 2025",
+    "entityId": "personal"
+  },
+  {
+    "q": "Expenses in February 1999",
+    "isSpendingQuery": true,
+    "needsClarification": "Please specify whose finances you are asking about."
+  }
+]

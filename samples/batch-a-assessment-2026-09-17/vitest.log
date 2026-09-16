@@ -1,0 +1,119 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+ ✓ src/infrastructure/sqlite/db.test.ts (3 tests) 7ms
+ ✓ src/lib/api/localLlm.test.ts (7 tests) 3ms
+ ✓ src/lib/domain/portfolioAnalysis.test.ts (7 tests) 4ms
+ ✓ src/lib/domain/debtCalculator.test.ts (4 tests) 4ms
+stderr | src/lib/domain/mentorAdvice.test.ts > MentorAdvice Service (Local LLM) > should return fallback advice on Local LLM failure (Debt)
+Error generating debt advice with local LLM: Error: Local LLM Offline
+    at setupErrorMock (D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:24:62)
+    at D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:43:9
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+
+stderr | src/lib/domain/mentorAdvice.test.ts > MentorAdvice Service (Local LLM) > should return fallback advice on Local LLM failure (Investment)
+Error generating investment advice with local LLM: Error: Local LLM Offline
+    at setupErrorMock (D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:24:62)
+    at D:/LocalVersions/OpenNetWorth/src/lib/domain/mentorAdvice.test.ts:71:9
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:145:11
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:26
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1209:10)
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:1653:37
+    at Traces.$ (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/traces.CCmnQaNT.js:142:27)
+    at trace (file:///D:/LocalVersions/OpenNetWorth/node_modules/vitest/dist/chunks/test.B8ej_ZHS.js:239:21)
+
+ ✓ src/lib/domain/document/csvParserService.test.ts (16 tests) 8ms
+ ✓ src/lib/domain/mentorAdvice.test.ts (4 tests) 14ms
+stderr | src/lib/domain/templateService.test.ts > templateService > should return null if profile fetch fails
+Error fetching template profile: { message: 'Not found' }
+
+ ✓ src/lib/domain/templateService.test.ts (3 tests) 4ms
+ ✓ src/lib/domain/accounting/accounting.test.ts (12 tests) 35ms
+ ✓ src/app/api/documents/raw/route.test.ts (4 tests) 13ms
+ ✓ src/lib/domain/accounting/slice1b.test.ts (5 tests) 35ms
+stderr | src/infrastructure/sqlite/vault_backup_restore.test.ts > Vault Backup & Restore Safety (Batch A2) > Test 5: Version 2 restore validates balanced postings per currency
+Vault POST Error: ValidationError: Transaction "tx-unbalanced" has unbalanced postings for currency USD: sum of postings is 200 cents (must be 0)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:656:31)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/infrastructure/sqlite/vault_backup_restore.test.ts:292:21
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | src/infrastructure/sqlite/vault_backup_restore.test.ts > Vault Backup & Restore Safety (Batch A2) > Test 6: Version 2 restore validates safe integer amounts and supported currencies
+Vault POST Error: ValidationError: Journal entry "j1" amount_cents must be a safe integer, received: 10.5
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:617:27)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/infrastructure/sqlite/vault_backup_restore.test.ts:333:22
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | src/infrastructure/sqlite/vault_backup_restore.test.ts > Vault Backup & Restore Safety (Batch A2) > Test 6: Version 2 restore validates safe integer amounts and supported currencies
+Vault POST Error: ValidationError: Unsupported currency "FAKE_CURRENCY" in entity "Entity 1". Supported currencies: USD, AUD, EUR, GBP, CAD, NZD, CHF, JPY, SGD, HKD
+    at checkCurrency (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:599:27)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:602:48)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/infrastructure/sqlite/vault_backup_restore.test.ts:348:22
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | src/infrastructure/sqlite/vault_backup_restore.test.ts > Vault Backup & Restore Safety (Batch A2) > Test 7: Version 2 restore validates evidence/source references (referential integrity)
+Vault POST Error: ValidationError: Account "Cash" references non-existent entity_id "non-existent-entity"
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:669:27)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/infrastructure/sqlite/vault_backup_restore.test.ts:386:21
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | src/infrastructure/sqlite/milestone0.test.ts > Milestone 0 Remediation Acceptance Tests (Findings 1, 2, 5, 7) > Finding 7: API route rejects non-numeric monetary inputs ("not-money", NaN) with HTTP 400
+Vault POST Error: ValidationError: Asset value must be a valid finite number, received: "not-money"
+    at parseFiniteNumber (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:45:15)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:223:31)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/infrastructure/sqlite/milestone0.test.ts:474:21
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+ ✓ src/infrastructure/sqlite/vault_backup_restore.test.ts (8 tests) 51ms
+ ✓ src/lib/domain/accounting/unified_workspace.test.ts (7 tests) 58ms
+stderr | src/infrastructure/sqlite/milestone0.test.ts > Milestone 0 Final Blocker Acceptance Tests (Findings 1, 2, 3, 4, 5) > Finding 2: Initial migration failure (HTTP 500) preserves browser data and does NOT set migration flag
+Migration POST commit failed with status: 500
+
+ ✓ src/lib/domain/document/slice1e.test.ts (8 tests) 48ms
+ ✓ src/lib/domain/document/slice1e_remediations.test.ts (9 tests) 49ms
+ ✓ src/lib/domain/accounting/transaction_entry_ux.test.ts (12 tests) 74ms
+ ✓ src/infrastructure/sqlite/milestone0.test.ts (32 tests) 94ms
+stderr | src/lib/domain/document/slice1g_remediations.test.ts > Slice 1G Remediations: State Transitions, Direction Matching & Migration > rejects linking an expense proposal to an incoming deposit transaction with status 400
+Failed to link proposal to transaction: Error: Transaction "81d86745-c708-4132-a1ca-226d7b64ebda" does not have a payment account posting matching proposal amount (-15000 cents), currency (AUD), and direction (expense).
+    at linkProposalToTransaction (D:/LocalVersions/OpenNetWorth/src/lib/domain/document/documentInboxService.ts:1557:15)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/documents/proposals/link/route.ts:42:24)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/src/lib/domain/document/slice1g_remediations.test.ts:538:26
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20
+
+ ✓ src/lib/domain/document/slice1g_remediations.test.ts (6 tests) 72ms
+ ✓ src/lib/domain/document/slice1g.test.ts (6 tests) 85ms
+ ✓ src/lib/domain/document/slice1f_remediations.test.ts (15 tests) 113ms
+ ✓ src/lib/domain/accounting/slice1c.test.ts (24 tests) 162ms
+ ✓ src/lib/domain/accounting/slice1d.test.ts (32 tests) 200ms
+ ✓ src/lib/domain/document/slice1f.test.ts (8 tests) 2015ms
+     ✓ 1. OpenTax-AU adapter extracts supplier, date, currency, line items, and total from supported supplies PDF  449ms
+
+ Test Files  22 passed (22)
+      Tests  232 passed (232)
+   Start at  00:47:32
+   Duration  2.66s (transform 3.61s, setup 0ms, import 5.75s, tests 3.15s, environment 2ms)
+

@@ -14,10 +14,14 @@ import PayoffScheduleChart from '@/components/charts/PayoffScheduleChart';
 import { ContentCard } from '@/components/common/ContentCard';
 
 import { useLiabilitiesQuery } from '@/features/liabilities/hooks/useLiabilitiesQuery';
+import { useAccountingCheck } from '@/features/accounting/hooks/useAccountingCheck';
 
 export default function DebtPayoffCalculator() {
     const { baseCurrency } = useNetWorth();
-    const { liabilities } = useLiabilitiesQuery();
+    const { liabilities, isLoading: isLiabilitiesLoading } = useLiabilitiesQuery();
+    const { hasModernLiabilities, isLoading: isAccountingLoading } = useAccountingCheck();
+
+    const isLoading = isLiabilitiesLoading || isAccountingLoading;
 
     // Lazy initialization
     const [extraPaymentUSD, setExtraPaymentUSD] = useState(() => {
@@ -84,7 +88,28 @@ export default function DebtPayoffCalculator() {
         };
     }, [result, baselineResult]);
 
+    if (isLoading) {
+        return (
+            <ContentCard className="text-center p-8 animate-pulse">
+                <div className="h-12 w-12 bg-slate-200 rounded-full mx-auto mb-4"></div>
+                <div className="h-6 w-1/3 bg-slate-200 rounded mx-auto mt-2"></div>
+            </ContentCard>
+        );
+    }
+
     if (liabilities.length === 0) {
+        if (hasModernLiabilities) {
+            return (
+                <ContentCard className="text-center p-8 bg-slate-50 border-amber-200">
+                    <ShieldCheck size={48} className="mx-auto text-amber-500 mb-4" />
+                    <h3 className="text-xl font-bold text-foreground">Incomplete View</h3>
+                    <p className="text-muted-foreground mt-2">
+                        This view does not yet include all your recorded accounts. <a href="/accounting" className="text-blue-600 hover:underline">See Accounts for your balances.</a>
+                    </p>
+                </ContentCard>
+            );
+        }
+
         return (
             <ContentCard className="text-center p-8">
                 <ShieldCheck size={48} className="mx-auto text-emerald-500 mb-4" />

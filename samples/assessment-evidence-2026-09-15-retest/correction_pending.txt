@@ -1,0 +1,141 @@
+Browser tab: 13, Title: "Accounting Engine | OpenNetWorth", URL: "http://localhost:4005/accounting".
+0 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4005/accounting
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 link Description: Dashboard, Value: localhost:4005/
+		4 link Description: Accounting, Value: localhost:4005/accounting
+		5 link Description: Assets, Value: localhost:4005/assets
+		6 link Description: Liabilities, Value: localhost:4005/liabilities
+		7 link Description: Goals, Value: localhost:4005/goals
+		8 link Description: Cash Flow, Value: localhost:4005/cashflow
+		9 link Description: Growth Engine, Value: localhost:4005/portfolio
+		10 link Description: Freedom, Value: localhost:4005/freedom
+		11 link Description: Mentors, Value: localhost:4005/mentors
+		12 link Description: Privacy, Value: localhost:4005/privacy
+		13 text ON Local Vault Owner 🔒 100% On-Device
+		14 link Description: Backup / Restore Vault, Value: localhost:4005/privacy
+		15 button Light Mode
+		16 button Stealth Mode
+		17 button System Theme
+		18 button Blur Values
+		19 text v 1.0.0
+	20 container
+		21 heading Sovereign Accounting Engine, Value: 1
+			22 text Sovereign Accounting Engine
+		23 text LEDGER ACTIVE Local-first, double-entry financial ledger with exact minor-unit integer cents arithmetic. No floating-point rounding errors, no untraced balances.
+		24 button Daily Events & Ledger
+		25 button Accounts & Balances
+		26 button Reports & Traceability
+		27 button Document Inbox & Imports
+		144 button Back to Document Inbox
+		145 heading invalid_dates.csv, Value: 2
+			146 text invalid_dates.csv
+		147 text SHA-256:  d5dd5502...dd86f705 Review column extractions, duplicate flags, and confirm atomic ledger entries. Target Bank Account:
+		148 pop up button (collapsed, settable) Value: Business Operating (AUD), Secondary Actions: Expand
+			149 menu
+				150 (selected) Business Operating (AUD)
+				151 Everyday Checking (AUD)
+				152 Everyday Checking (AUD)
+				153 High Interest Savings (AUD)
+		154 text Total Extracted 2  rows Unreviewed 1  pending Posted to Ledger 0  approved Linked as Evidence 0  linked Issues & Duplicates 1  flagged Success Updated proposal successfully.
+		155 button All (2)
+			156 text All (
+			157 text 2
+			158 text )
+		159 button Pending (1)
+			160 text Pending (
+			161 text 1
+			162 text )
+		163 button Posted (0)
+			164 text Posted (
+			165 text 0
+			166 text )
+		167 button Linked (0)
+			168 text Linked (
+			169 text 0
+			170 text )
+		171 button Issues (1)
+			172 text Issues (
+			173 text 1
+			174 text )
+		175 button Deselect All
+		176 button (disabled) Approve Selected (0)
+			177 text Approve Selected ( 0 )
+		178 table
+			179 row
+				180 cell
+					181 checkbox (settable, integer) 0
+				182 cell
+					183 text Date
+				184 cell
+					185 text Description / Payee
+				186 cell
+					187 text Inflow / Outflow
+				188 cell
+					189 text Counterpart Category
+				190 cell
+					191 text Flags & Status
+				192 cell
+					193 text Evidence Source
+				194 cell
+					195 text Actions
+			196 row
+				197 cell
+					198 checkbox (settable, integer) 0
+				199 cell
+					200 text 2025-07-03
+				201 cell
+					202 text Impossible date purchase
+				203 cell
+					204 text - $ 22.00
+				205 cell
+					206 pop up button (collapsed, settable) Value: Living Expense, Secondary Actions: Expand
+						207 menu
+							208 (disabled) Living Expense
+							209 (disabled) Office Supplies
+							210 (disabled) Groceries
+							211 (disabled) Utilities
+							212 (disabled) Rent
+							213 (disabled) Transportation
+							214 (disabled) Entertainment
+							215 (disabled) Healthcare
+							216 (disabled) Interest / Finance
+							217 (disabled) Insurance
+				218 cell
+					252 text Unreviewed
+				220 cell
+					221 text Row 2
+				222 cell
+					223 button Edit, Help: Edit proposal fields
+			224 row
+				225 cell
+					226 checkbox (disabled, settable, integer) 0
+				227 cell
+					228 text NEEDS REVIEW
+				229 cell
+					230 text Missing date
+				231 cell
+					232 text - $ 15.00
+				233 cell
+					234 pop up button (disabled, collapsed, settable) Value: Living Expense, Secondary Actions: Expand
+						235 menu
+							236 (disabled) Living Expense
+							237 (disabled) Office Supplies
+							238 (disabled) Groceries
+							239 (disabled) Utilities
+							240 (disabled) Rent
+							241 (disabled) Transportation
+							242 (disabled) Entertainment
+							243 (disabled) Healthcare
+							244 (disabled) Interest / Finance
+							245 (disabled) Insurance
+				246 cell
+					247 text Date field is empty or missing.
+				248 cell
+					249 text Row 3
+				250 cell
+					251 button Edit, Help: Edit proposal fields
+	142 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		143 image
+
+The focused UI element is 159 button Pending (1)

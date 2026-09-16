@@ -1,0 +1,24 @@
+[
+  {
+    "id": "doc-b1b7ed6b-21eb-4769-9a2b-b7a0a3e071f8",
+    "status": 200,
+    "mime": "application/pdf",
+    "cache": "private, no-store, max-age=0",
+    "hash_matches": true
+  },
+  {
+    "id": "doc-c2689909-bac7-46af-a845-19b18d771b85",
+    "status": 200,
+    "mime": "text/csv",
+    "cache": "private, no-store, max-age=0",
+    "hash_matches": true
+  },
+  {
+    "query": "",
+    "status": 400
+  },
+  {
+    "query": "?id=assessor-unknown-document",
+    "status": 404
+  }
+]

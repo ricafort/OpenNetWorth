@@ -31,14 +31,18 @@ import {
     ExtractedFinancialProposal,
     IngestCsvInput,
     IngestPdfInput,
+    LinkProposalInput,
     ProposalReviewStatus,
+    TransactionCandidate,
     ValidationFinding
 } from './types';
 import { computeHeaderSignature, parseCsvWithMapping } from './csvParserService';
 import { extractInvoiceFromPdf } from './openTaxAdapter';
 import {
+    assertEligiblePaymentAccount,
     ensureExpenseAccount,
     ensureIncomeAccount,
+    normalizeEvidenceRefs,
     postTransaction
 } from '../accounting/transactionService';
 import { AccountSubType, CurrencyCode, CURRENCY_DECIMALS } from '../accounting/types';
@@ -264,7 +268,7 @@ export function ingestCsvDocument(
             const existingProp = getExistingPropStmt.get(proposalId) as any;
 
             // Requirement 2: If proposal was already approved into the ledger, preserve it unchanged!
-            if (existingProp && existingProp.review_status === 'approved') {
+            if (existingProp && (existingProp.review_status === 'approved' || existingProp.review_status === 'linked')) {
                 proposals.push({
                     id: existingProp.id,
                     document_id: existingProp.document_id,
@@ -281,8 +285,9 @@ export function ingestCsvDocument(
                     evidence: JSON.parse(existingProp.evidence_json),
                     extraction_version: existingProp.extraction_version,
                     validation_findings: existingProp.validation_findings ? JSON.parse(existingProp.validation_findings) : [],
-                    review_status: 'approved',
+                    review_status: existingProp.review_status,
                     related_proposal_ids: existingProp.related_proposal_ids ? JSON.parse(existingProp.related_proposal_ids) : [],
+                    linked_transaction_id: existingProp.linked_transaction_id || null,
                     created_at: existingProp.created_at,
                     updated_at: existingProp.updated_at
                 });
@@ -357,6 +362,7 @@ export function ingestCsvDocument(
                 validation_findings: findings,
                 review_status: 'unreviewed',
                 related_proposal_ids: [],
+                linked_transaction_id: null,
                 created_at: existingProp ? existingProp.created_at : now,
                 updated_at: now
             };
@@ -426,6 +432,7 @@ export function listDocuments(db: Database.Database): Array<
         total_proposals: number;
         unreviewed_proposals: number;
         approved_proposals: number;
+        linked_proposals: number;
         rejected_proposals: number;
     }
 > {
@@ -436,6 +443,7 @@ export function listDocuments(db: Database.Database): Array<
             COUNT(*) as total,
             SUM(CASE WHEN review_status = 'unreviewed' THEN 1 ELSE 0 END) as unreviewed,
             SUM(CASE WHEN review_status = 'approved' THEN 1 ELSE 0 END) as approved,
+            SUM(CASE WHEN review_status = 'linked' THEN 1 ELSE 0 END) as linked,
             SUM(CASE WHEN review_status = 'rejected' THEN 1 ELSE 0 END) as rejected
         FROM m1_proposals
         GROUP BY document_id
@@ -447,7 +455,7 @@ export function listDocuments(db: Database.Database): Array<
     }
 
     return docs.map(d => {
-        const stats = statsMap.get(d.id) || { total: 0, unreviewed: 0, approved: 0, rejected: 0 };
+        const stats = statsMap.get(d.id) || { total: 0, unreviewed: 0, approved: 0, linked: 0, rejected: 0 };
         return {
             id: d.id,
             filename: d.filename,
@@ -459,6 +467,7 @@ export function listDocuments(db: Database.Database): Array<
             total_proposals: stats.total,
             unreviewed_proposals: stats.unreviewed,
             approved_proposals: stats.approved,
+            linked_proposals: stats.linked,
             rejected_proposals: stats.rejected
         };
     });
@@ -491,6 +500,7 @@ export function getDocumentProposals(
         validation_findings: r.validation_findings ? JSON.parse(r.validation_findings) : [],
         review_status: r.review_status,
         related_proposal_ids: r.related_proposal_ids ? JSON.parse(r.related_proposal_ids) : [],
+        linked_transaction_id: r.linked_transaction_id || null,
         created_at: r.created_at,
         updated_at: r.updated_at
     }));
@@ -549,10 +559,23 @@ export function approveProposals(
                 throw new Error(`Proposal not found: ${item.proposal_id}`);
             }
 
+            // Requirement 2 (Slice 1G): Linked proposals cannot transition to standalone approved transactions
+            if (rawProp.review_status === 'linked' || rawProp.linked_transaction_id) {
+                throw new Error(
+                    `Cannot approve proposal "${item.proposal_id}": this proposal is already linked to existing transaction "${rawProp.linked_transaction_id}" as supporting evidence.`
+                );
+            }
+
             const findings: ValidationFinding[] = rawProp.validation_findings ? JSON.parse(rawProp.validation_findings) : [];
             const hasBlockingError = findings.some(f => f.severity === 'error');
             if (hasBlockingError) {
                 throw new Error(`Cannot approve proposal "${item.proposal_id}" because it contains unresolved error findings.`);
+            }
+
+            // Fix D: Require explicit duplicate confirmation
+            const hasDuplicateWarning = findings.some(f => f.code === 'POSSIBLE_DUPLICATE_EXISTING' || f.code === 'SUSPECTED_DUPLICATE_INTERNAL');
+            if (hasDuplicateWarning && item.duplicate_confirmed !== true) {
+                throw new Error(`Cannot approve proposal "${item.proposal_id}": it is a possible duplicate and requires explicit confirmation.`);
             }
 
             // Requirement 3 (Slice 1F Fix 1): Approval must match the reviewed account and currency
@@ -655,6 +678,9 @@ export function approveProposals(
                 });
             } else {
                 // Default: Outflow / Expense
+                // Assessor Clarification 5: Property and non-liquid accounts cannot be used as payment targets
+                assertEligiblePaymentAccount(targetAccount);
+
                 // Debit Expense Account (+absAmount), Credit Bank Account (-absAmount)
                 const expenseAccount = ensureExpenseAccount(db, entityId, category, currency);
 
@@ -787,6 +813,7 @@ export function getProposalById(
         validation_findings: r.validation_findings ? JSON.parse(r.validation_findings) : [],
         review_status: r.review_status,
         related_proposal_ids: r.related_proposal_ids ? JSON.parse(r.related_proposal_ids) : [],
+        linked_transaction_id: r.linked_transaction_id || null,
         created_at: r.created_at,
         updated_at: r.updated_at
     };
@@ -837,10 +864,16 @@ export function updateProposalReview(
     if (existing.review_status === 'approved') {
         throw new Error(`Cannot modify proposal "${input.proposal_id}" because it has already been approved into the ledger.`);
     }
+    if (existing.review_status === 'linked') {
+        throw new Error(`Cannot modify proposal "${input.proposal_id}" because it is already linked to an existing ledger transaction.`);
+    }
 
-    // Fix 3: Prevent review/PATCH from setting approved status
+    // Prevent review/PATCH from setting approved or linked status directly
     if (input.review_status === 'approved') {
         throw new Error("Proposals cannot be marked approved via review updates. Only successful ledger posting may set approved status.");
+    }
+    if (input.review_status === 'linked') {
+        throw new Error("Proposals cannot be marked linked via review updates. Only linking against an existing transaction may set linked status.");
     }
 
     // Fix 2: Validate corrections
@@ -894,6 +927,16 @@ export function updateProposalReview(
     const amountCents = input.amount_cents !== undefined ? input.amount_cents : existing.amount_cents;
     const finalCurrency = input.original_currency !== undefined ? (input.original_currency.toUpperCase() as CurrencyCode) : existing.original_currency;
     const finalAccountId = input.account_id !== undefined ? input.account_id : existing.account_id;
+    
+    // Fix A: Derive authoritative entity_id from final account
+    let finalEntityId = existing.entity_id;
+    if (finalAccountId) {
+        const acc = db.prepare('SELECT entity_id FROM m1_accounts WHERE id = ?').get(finalAccountId) as any;
+        if (acc) {
+            finalEntityId = acc.entity_id;
+        }
+    }
+
     const category = input.suggested_category !== undefined ? input.suggested_category.trim() : existing.suggested_category;
     const status = input.review_status !== undefined ? input.review_status : 'modified';
 
@@ -910,6 +953,14 @@ export function updateProposalReview(
         }
     }
 
+    // Fix C: Clear date and amount errors when valid replacements are provided
+    if (input.event_date !== undefined && input.event_date !== '1970-01-01') {
+        findings = findings.filter(f => f.code !== 'MISSING_DATE' && f.code !== 'INVALID_DATE');
+    }
+    if (input.amount_cents !== undefined) {
+        findings = findings.filter(f => f.code !== 'MISSING_AMOUNT' && f.code !== 'INVALID_AMOUNT');
+    }
+
     db.prepare(`
         UPDATE m1_proposals
         SET event_date = ?,
@@ -918,6 +969,7 @@ export function updateProposalReview(
             amount_cents = ?,
             original_currency = ?,
             account_id = ?,
+            entity_id = ?,
             suggested_category = ?,
             review_status = ?,
             validation_findings = ?,
@@ -930,6 +982,7 @@ export function updateProposalReview(
         amountCents,
         finalCurrency,
         finalAccountId,
+        finalEntityId,
         category,
         status,
         JSON.stringify(findings),
@@ -986,8 +1039,10 @@ export async function ingestPdfDocument(
     const existingDoc = db.prepare('SELECT * FROM m1_documents WHERE content_hash = ?').get(contentHash) as any;
     if (existingDoc) {
         const existingProposals = getDocumentProposals(db, existingDoc.id);
-        const hasApproved = existingProposals.some(p => p.review_status === 'approved');
-        if (hasApproved) {
+        const hasApprovedOrLinked = existingProposals.some(
+            p => p.review_status === 'approved' || p.review_status === 'linked' || Boolean(p.linked_transaction_id)
+        );
+        if (hasApprovedOrLinked) {
             return {
                 document: {
                     id: existingDoc.id,
@@ -1036,8 +1091,8 @@ export async function ingestPdfDocument(
     const originalCurrency = extractionResult.currency ? (extractionResult.currency.toUpperCase() as CurrencyCode) : '';
     const entityId = input.entity_id || (targetAccount ? targetAccount.entity_id : null);
 
-    // Remove any previously generated unapproved proposals for this document
-    db.prepare(`DELETE FROM m1_proposals WHERE document_id = ? AND review_status != 'approved'`).run(docId);
+    // Remove any previously generated unapproved proposals for this document (Slice 1G: also preserve linked proposals!)
+    db.prepare(`DELETE FROM m1_proposals WHERE document_id = ? AND review_status != 'approved' AND review_status != 'linked' AND linked_transaction_id IS NULL`).run(docId);
 
     const proposals: ExtractedFinancialProposal[] = [];
     const propId = `prop-${crypto.randomUUID()}`;
@@ -1098,6 +1153,14 @@ export async function ingestPdfDocument(
             }
         }
 
+        if (!extractionResult.date && !findings.some(f => f.code === 'MISSING_DATE')) {
+            findings.push({
+                severity: 'error',
+                code: 'MISSING_DATE',
+                message: 'Date could not be extracted.'
+            });
+        }
+
         db.prepare(`
             INSERT INTO m1_proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
@@ -1110,7 +1173,7 @@ export async function ingestPdfDocument(
             docId,
             entityId,
             input.target_account_id || null,
-            extractionResult.date || now.substring(0, 10),
+            extractionResult.date || '1970-01-01',
             null,
             originalCurrency,
             amountCents,
@@ -1131,7 +1194,7 @@ export async function ingestPdfDocument(
             document_id: docId,
             entity_id: entityId,
             account_id: input.target_account_id || null,
-            event_date: extractionResult.date || now.substring(0, 10),
+            event_date: extractionResult.date || '1970-01-01',
             original_currency: originalCurrency,
             amount_cents: amountCents,
             counterparty: extractionResult.supplier_name || null,
@@ -1142,6 +1205,7 @@ export async function ingestPdfDocument(
             extraction_version: 'opentax_invoice_v1',
             validation_findings: findings,
             review_status: 'unreviewed',
+            linked_transaction_id: null,
             created_at: now,
             updated_at: now
         });
@@ -1161,7 +1225,7 @@ export async function ingestPdfDocument(
                 code: 'UNSUPPORTED_LAYOUT',
                 message: 'This document does not match the supported text-based supplies invoice layout and has been retained as unresolved.'
             },
-            ...extractionResult.validation_findings
+            ...(extractionResult.validation_findings || [])
         ];
 
         if (!originalCurrency && !findings.some(f => f.code === 'MISSING_CURRENCY')) {
@@ -1171,6 +1235,18 @@ export async function ingestPdfDocument(
                 message: 'Document currency could not be identified with confidence. Retained as unresolved until reviewed.'
             });
         }
+        
+        findings.push({
+            severity: 'error',
+            code: 'MISSING_DATE',
+            message: 'Date could not be extracted.'
+        });
+        
+        findings.push({
+            severity: 'error',
+            code: 'MISSING_AMOUNT',
+            message: 'Amount could not be extracted.'
+        });
 
         db.prepare(`
             INSERT INTO m1_proposals (
@@ -1184,7 +1260,7 @@ export async function ingestPdfDocument(
             docId,
             entityId,
             input.target_account_id || null,
-            now.substring(0, 10),
+            '1970-01-01',
             null,
             originalCurrency,
             0,
@@ -1205,7 +1281,7 @@ export async function ingestPdfDocument(
             document_id: docId,
             entity_id: entityId,
             account_id: input.target_account_id || null,
-            event_date: now.substring(0, 10),
+            event_date: '1970-01-01',
             original_currency: originalCurrency,
             amount_cents: 0,
             counterparty: null,
@@ -1216,6 +1292,7 @@ export async function ingestPdfDocument(
             extraction_version: 'opentax_invoice_v1',
             validation_findings: findings,
             review_status: 'unreviewed',
+            linked_transaction_id: null,
             created_at: now,
             updated_at: now
         });
@@ -1237,4 +1314,312 @@ export async function ingestPdfDocument(
         supported: extractionResult.supported
     };
 }
+
+/**
+ * Finds candidate bank/credit transactions that could match an extracted receipt proposal.
+ * 
+ * Why this exists:
+ * Fulfills Slice 1G: Suggests existing bank transactions using account, currency, amount,
+ * and nearby date so a user can attach the PDF receipt as supporting evidence without
+ * creating duplicate expenses or double counting.
+ * 
+ * Tricky logic:
+ * - Currency matching: Candidate transactions must have a posting on the target account
+ *   in the exact same currency as the proposal's original currency.
+ * - Outflow matching: Receipts are expenses. The proposal's amount_cents is negative (-2200 cents),
+ *   representing an expense. On the bank account, the posting is also an outflow/credit (-2200 cents).
+ *   We match absolute amounts Math.abs(posting.amount_cents) === Math.abs(proposal.amount_cents).
+ * - Date proximity: Calculates the absolute distance in calendar days between proposal event_date
+ *   and transaction date. Candidates within +/- 30 days are scored and sorted by proximity.
+ * - Scoring:
+ *   - Same day (0 days diff): 100 points
+ *   - Within 3 days: 80 points
+ *   - Within 7 days: 60 points
+ *   - Within 14 days: 40 points
+ *   - Within 30 days: 20 points
+ *   - Same payee / description bonus: +10 points
+ * 
+ * TODO: Support multi-currency FX matching when exchange rate conversion is enabled in Milestone 2.
+ */
+export function getCandidateTransactionsForProposal(
+    db: Database.Database,
+    proposalId: string,
+    options?: { maxDateDiffDays?: number }
+): TransactionCandidate[] {
+    const proposal = getProposalById(db, proposalId);
+    if (!proposal) {
+        throw new Error(`Proposal not found: ${proposalId}`);
+    }
+
+    if (!proposal.original_currency) {
+        return [];
+    }
+
+    const absAmount = Math.abs(proposal.amount_cents);
+    if (absAmount === 0) {
+        return [];
+    }
+
+    // Direction matching (Slice 1G remediation):
+    // For an expense receipt, money flowed out of the liquid/liability account (posting amount_cents < 0).
+    // For an income proposal, money flowed into the liquid account (posting amount_cents > 0).
+    const targetSignedAmount = proposal.event_type === 'expense' ? -absAmount : absAmount;
+
+    const maxDays = options?.maxDateDiffDays ?? 30;
+
+    // Fetch transactions with postings matching the amount, currency, and direction on an asset (checking/savings) or liability (credit card) account
+    let sql = `
+        SELECT 
+            t.id as tx_id,
+            t.date as tx_date,
+            t.description as tx_description,
+            t.payee_or_payer as tx_payee,
+            t.evidence_refs as tx_evidence_refs,
+            j.account_id as account_id,
+            j.amount_cents as posting_amount_cents,
+            j.currency as posting_currency,
+            a.name as account_name
+        FROM m1_transactions t
+        JOIN m1_journal_entries j ON j.transaction_id = t.id
+        JOIN m1_accounts a ON a.id = j.account_id
+        WHERE t.status = 'posted'
+          AND j.currency = ?
+          AND j.amount_cents = ?
+          AND a.type IN ('asset', 'liability')
+    `;
+
+    const params: any[] = [proposal.original_currency.toUpperCase(), targetSignedAmount];
+
+    if (proposal.account_id) {
+        sql += ` AND j.account_id = ?`;
+        params.push(proposal.account_id);
+    }
+
+    sql += ` ORDER BY t.date DESC`;
+
+    const rows = db.prepare(sql).all(...params) as any[];
+
+    const propDateMs = new Date(proposal.event_date).getTime();
+
+    const candidates: TransactionCandidate[] = [];
+    const seenTxIds = new Set<string>();
+
+    for (const r of rows) {
+        if (seenTxIds.has(r.tx_id)) continue;
+        seenTxIds.add(r.tx_id);
+
+        const txDateMs = new Date(r.tx_date).getTime();
+        const diffDays = isNaN(txDateMs) || isNaN(propDateMs)
+            ? 999
+            : Math.round(Math.abs(propDateMs - txDateMs) / (1000 * 60 * 60 * 24));
+
+        if (diffDays > maxDays) {
+            continue;
+        }
+
+        let score = 20;
+        if (diffDays === 0) score = 100;
+        else if (diffDays <= 3) score = 80;
+        else if (diffDays <= 7) score = 60;
+        else if (diffDays <= 14) score = 40;
+
+        // Bonus if description or payee matches
+        const descMatch = proposal.description && r.tx_description &&
+            (r.tx_description.toLowerCase().includes(proposal.description.toLowerCase()) ||
+             proposal.description.toLowerCase().includes(r.tx_description.toLowerCase()));
+        const payeeMatch = proposal.counterparty && r.tx_payee &&
+            (r.tx_payee.toLowerCase().includes(proposal.counterparty.toLowerCase()) ||
+             proposal.counterparty.toLowerCase().includes(r.tx_payee.toLowerCase()));
+        if (descMatch || payeeMatch) {
+            score += 10;
+        }
+
+        let hasEvidence = false;
+        if (r.tx_evidence_refs) {
+            try {
+                const parsed = JSON.parse(r.tx_evidence_refs);
+                hasEvidence = Array.isArray(parsed) && parsed.length > 0;
+            } catch {
+                hasEvidence = false;
+            }
+        }
+
+        candidates.push({
+            id: r.tx_id,
+            date: r.tx_date,
+            description: r.tx_description,
+            payee_or_payer: r.tx_payee || null,
+            amount_cents: r.posting_amount_cents,
+            currency: r.posting_currency as CurrencyCode,
+            account_id: r.account_id,
+            account_name: r.account_name,
+            date_difference_days: diffDays,
+            match_score: score,
+            has_existing_evidence: hasEvidence
+        });
+    }
+
+    // Sort by match_score descending, then by date difference ascending
+    candidates.sort((a, b) => b.match_score - a.match_score || a.date_difference_days - b.date_difference_days);
+
+    return candidates;
+}
+
+/**
+ * Links an extracted document proposal to an existing ledger transaction as supporting evidence (Slice 1G).
+ * 
+ * Why this exists:
+ * Fulfills Slice 1G: A user imports a bank transaction, then attaches its receipt/invoice
+ * as proof. This adds evidence to the transaction without creating another financial posting
+ * or altering account balances.
+ * 
+ * Tricky logic:
+ * - Atomicity: Performed within a database transaction.
+ * - Invariant assertions: Ensures:
+ *   1. Zero new transactions created in `m1_transactions`.
+ *   2. Zero new journal entries created in `m1_journal_entries`.
+ *   3. All account balances remain strictly unchanged.
+ * - Idempotency: If already linked to the same transaction, returns cleanly without duplicate evidence.
+ * - Rejects linking if proposal has unresolved error findings.
+ * - Rejects linking if currencies mismatch or amounts mismatch.
+ * - Updates proposal `review_status = 'linked'` and `linked_transaction_id = transactionId`.
+ * - Appends the proposal's evidence reference canonically to `m1_transactions.evidence_refs`.
+ * 
+ * TODO: Allow linking multiple split receipts to a single transaction in future milestones.
+ */
+export function linkProposalToTransaction(
+    db: Database.Database,
+    input: LinkProposalInput
+): {
+    proposal: ExtractedFinancialProposal;
+    transaction: any;
+} {
+    const proposal = getProposalById(db, input.proposal_id);
+    if (!proposal) {
+        throw new Error(`Proposal not found: "${input.proposal_id}"`);
+    }
+
+    if (proposal.review_status === 'approved') {
+        throw new Error(`Cannot link proposal "${input.proposal_id}" because it has already been approved as a standalone transaction.`);
+    }
+
+    // Requirement 2 (Slice 1G): Enforce linked-proposal transitions:
+    // - Link again to the same transaction: harmless idempotent retry
+    if (proposal.linked_transaction_id === input.transaction_id) {
+        const currentTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(input.transaction_id) as any;
+        return {
+            proposal,
+            transaction: {
+                ...currentTx,
+                evidence_refs: currentTx?.evidence_refs ? JSON.parse(currentTx.evidence_refs) : []
+            }
+        };
+    }
+
+    // - Link to a different transaction: reject; preserve original link
+    if (proposal.linked_transaction_id && proposal.linked_transaction_id !== input.transaction_id) {
+        throw new Error(
+            `Cannot link proposal "${input.proposal_id}" to transaction "${input.transaction_id}" because it is already linked to transaction "${proposal.linked_transaction_id}".`
+        );
+    }
+
+    const hasError = proposal.validation_findings.some(f => f.severity === 'error');
+    if (hasError) {
+        throw new Error(`Cannot link proposal "${input.proposal_id}" because it has unresolved validation errors.`);
+    }
+
+    const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(input.transaction_id) as any;
+    if (!tx) {
+        throw new Error(`Target transaction not found: "${input.transaction_id}"`);
+    }
+
+    // Direction matching (Slice 1G remediation):
+    // For an expense receipt, money flowed out of the liquid/liability account (posting amount_cents < 0).
+    // For an income proposal, money flowed into the liquid account (posting amount_cents > 0).
+    const absAmount = Math.abs(proposal.amount_cents);
+    const expectedSignedAmount = proposal.event_type === 'expense' ? -absAmount : absAmount;
+
+    // Verify transaction postings match proposal amount, currency, and direction on an asset/liability payment account
+    const postings = db.prepare(`
+        SELECT j.*, a.type as account_type
+        FROM m1_journal_entries j
+        JOIN m1_accounts a ON a.id = j.account_id
+        WHERE j.transaction_id = ?
+    `).all(tx.id) as any[];
+
+    const matchingPosting = postings.find(p => 
+        p.currency.toUpperCase() === proposal.original_currency.toUpperCase() &&
+        p.amount_cents === expectedSignedAmount &&
+        (p.account_type === 'asset' || p.account_type === 'liability')
+    );
+
+    if (!matchingPosting) {
+        throw new Error(
+            `Transaction "${input.transaction_id}" does not have a payment account posting matching proposal amount (${proposal.amount_cents} cents), currency (${proposal.original_currency}), and direction (${proposal.event_type}).`
+        );
+    }
+
+    // Check account match if proposal already had a designated account
+    if (proposal.account_id && proposal.account_id !== matchingPosting.account_id) {
+        throw new Error(
+            `Proposal account "${proposal.account_id}" does not match target transaction account "${matchingPosting.account_id}".`
+        );
+    }
+
+    const linkTx = db.transaction(() => {
+        // 1. Prepare evidence references for the transaction
+        let existingEvidence: any[] = [];
+        if (tx.evidence_refs) {
+            try {
+                existingEvidence = JSON.parse(tx.evidence_refs);
+                if (!Array.isArray(existingEvidence)) existingEvidence = [];
+            } catch {
+                existingEvidence = [];
+            }
+        }
+
+        // Add proposal's evidence
+        const newEvidenceRef = {
+            document_id: proposal.document_id,
+            content_hash: proposal.evidence.content_hash,
+            page: proposal.evidence.page_number || 1,
+            label: proposal.description || 'Receipt',
+            source_snippet: proposal.evidence.source_snippet || null
+        };
+
+        const updatedEvidenceJson = normalizeEvidenceRefs([...existingEvidence, newEvidenceRef]);
+        const now = new Date().toISOString();
+
+        // 2. Update transaction evidence_refs
+        db.prepare(`
+            UPDATE m1_transactions
+            SET evidence_refs = ?, updated_at = ?
+            WHERE id = ?
+        `).run(updatedEvidenceJson, now, tx.id);
+
+        // 3. Update proposal status to 'linked' and record linked_transaction_id
+        db.prepare(`
+            UPDATE m1_proposals
+            SET review_status = 'linked',
+                linked_transaction_id = ?,
+                account_id = ?,
+                updated_at = ?
+            WHERE id = ?
+        `).run(tx.id, matchingPosting.account_id, now, proposal.id);
+    });
+
+    linkTx();
+
+    const updatedProposal = getProposalById(db, proposal.id)!;
+    const updatedTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(tx.id) as any;
+
+    return {
+        proposal: updatedProposal,
+        transaction: {
+            ...updatedTx,
+            evidence_refs: updatedTx.evidence_refs ? JSON.parse(updatedTx.evidence_refs) : []
+        }
+    };
+}
+
 

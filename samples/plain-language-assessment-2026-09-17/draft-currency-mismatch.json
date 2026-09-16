@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "drafts": [
+    {
+      "id": "74c737f8-b714-47b3-985c-f678047d3737",
+      "entity_id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+      "payer_entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "payment_account_id": "4fe4a532-e087-492d-85ee-bfe82da47083",
+      "currency": "USD",
+      "amount_cents": 50000,
+      "date": "2026-09-16",
+      "merchant": "TEST JPY draft",
+      "description": "Personally paid business expense",
+      "reimbursement_intent": "not_sure",
+      "source_document_id": null,
+      "source_transaction_id": null,
+      "status": "draft",
+      "created_at": "2026-09-16T12:58:19.183Z",
+      "updated_at": "2026-09-16T12:58:19.183Z"
+    }
+  ]
+}

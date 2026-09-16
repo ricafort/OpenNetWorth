@@ -1,0 +1,65 @@
+{
+  "node": {
+    "70dc30771ae51eb171ed2585594c3f10ea10359e8c": {
+      "workers": {
+        "app/_not-found/page": {
+          "moduleId": 556389,
+          "async": false,
+          "exportedName": "generateDebtAdviceAction",
+          "filename": "src/app/actions.ts"
+        }
+      },
+      "layer": {
+        "app/_not-found/page": "action-browser"
+      },
+      "exportedName": "generateDebtAdviceAction",
+      "filename": "src/app/actions.ts"
+    },
+    "00055ba16cf74741e4a48e2fe3cbb3bc6a3ccb0555": {
+      "workers": {
+        "app/_not-found/page": {
+          "moduleId": 556389,
+          "async": false,
+          "exportedName": "revokeSupportAccess",
+          "filename": "src/features/privacy/actions.ts"
+        }
+      },
+      "layer": {
+        "app/_not-found/page": "rsc"
+      },
+      "exportedName": "revokeSupportAccess",
+      "filename": "src/features/privacy/actions.ts"
+    },
+    "005e5e403ba64acc8fc63e4bbf151593fe621af9d4": {
+      "workers": {
+        "app/_not-found/page": {
+          "moduleId": 556389,
+          "async": false,
+          "exportedName": "getSupportStatus",
+          "filename": "src/features/privacy/actions.ts"
+        }
+      },
+      "layer": {
+        "app/_not-found/page": "rsc"
+      },
+      "exportedName": "getSupportStatus",
+      "filename": "src/features/privacy/actions.ts"
+    },
+    "60e0245b0cad949980dc4392646a85a4602cadf779": {
+      "workers": {
+        "app/_not-found/page": {
+          "moduleId": 556389,
+          "async": false,
+          "exportedName": "grantSupportAccess",
+          "filename": "src/features/privacy/actions.ts"
+        }
+      },
+      "layer": {
+        "app/_not-found/page": "rsc"
+      },
+      "exportedName": "grantSupportAccess",
+      "filename": "src/features/privacy/actions.ts"
+    }
+  },
+  "edge": {}
+}

@@ -1,0 +1,57 @@
+{
+  "companyCountBefore": 1,
+  "companyDatabaseCount": 102,
+  "companyApiReturned": 100,
+  "companyBalance": 49399,
+  "householdBalances": [
+    {
+      "name": "Everyday",
+      "currency": "AUD",
+      "balance_cents": 170300
+    },
+    {
+      "name": "Home",
+      "currency": "AUD",
+      "balance_cents": 30000000
+    },
+    {
+      "name": "Savings",
+      "currency": "AUD",
+      "balance_cents": 60000
+    },
+    {
+      "name": "USD Bank",
+      "currency": "USD",
+      "balance_cents": 10000
+    },
+    {
+      "name": "Credit Card",
+      "currency": "AUD",
+      "balance_cents": 25000
+    },
+    {
+      "name": "Mortgage",
+      "currency": "AUD",
+      "balance_cents": 19990000
+    }
+  ],
+  "incomeCategories": [
+    {
+      "account_id": "acc-inc-012b2691-1975-4823-a52a-b696bcd86c6e-groceries-aud",
+      "account_name": "Groceries",
+      "type": "income",
+      "sub_type": "groceries",
+      "currency": "AUD",
+      "total_cents": 100000,
+      "formatted_total": "A$1,000.00",
+      "transaction_count": 1
+    }
+  ],
+  "unbalancedTransactions": [],
+  "voids": [
+    {
+      "description": "Expense - TEST Invalid Property Payment",
+      "status": "void"
+    }
+  ]
+}

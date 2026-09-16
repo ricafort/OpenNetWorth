@@ -1,0 +1,3 @@
+{
+  "/api/webhooks/plaid/route": "app/api/webhooks/plaid/route.js"
+}

@@ -1,0 +1,127 @@
+[
+  {
+    "name": "Unmodified populated export",
+    "status": 400,
+    "body": {
+      "error": "Transaction \"5594bfe0-c2b8-4d3b-99c5-9bc092bdcd81\" evidence references non-existent document_id \"{\"bounding_box\":null,\"content_hash\":\"5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9\",\"document_id\":\"doc-de6d693c-189d-412b-bc57-247571ff7ae7\",\"label\":null,\"page\":null,\"table_or_cell_ref\":null,\"type\":\"structured\"}\""
+    }
+  },
+  {
+    "name": "Unmodified populated export rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Diagnostic: only JPY replaced with AUD",
+    "status": 400,
+    "body": {
+      "error": "Transaction \"5594bfe0-c2b8-4d3b-99c5-9bc092bdcd81\" evidence references non-existent document_id \"{\"bounding_box\":null,\"content_hash\":\"5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9\",\"document_id\":\"doc-de6d693c-189d-412b-bc57-247571ff7ae7\",\"label\":null,\"page\":null,\"table_or_cell_ref\":null,\"type\":\"structured\"}\""
+    }
+  },
+  {
+    "name": "Diagnostic: only JPY replaced with AUD rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Diagnostic: JPY and unresolved proposal currency replaced",
+    "status": 400,
+    "body": {
+      "error": "Transaction \"5594bfe0-c2b8-4d3b-99c5-9bc092bdcd81\" evidence references non-existent document_id \"{\"bounding_box\":null,\"content_hash\":\"5cb785309532947924b52e18353c64e97c4cb7430d0f1a928a8789dafdcfacf9\",\"document_id\":\"doc-de6d693c-189d-412b-bc57-247571ff7ae7\",\"label\":null,\"page\":null,\"table_or_cell_ref\":null,\"type\":\"structured\"}\""
+    }
+  },
+  {
+    "name": "Diagnostic: JPY and unresolved proposal currency replaced rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Accounting-only round trip",
+    "status": 200,
+    "body": {
+      "success": true,
+      "message": "Version 2 vault fully restored and verified."
+    }
+  },
+  {
+    "name": "Accounting-only round trip changed collections",
+    "diffs": []
+  },
+  {
+    "name": "Invalid posted transactions without postings",
+    "status": 400,
+    "body": {
+      "error": "Transaction \"24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544\" is missing required double-entry journal postings (found 0, minimum 2 required)"
+    }
+  },
+  {
+    "name": "Invalid posted transactions without postings rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Invalid journal/account currency mismatch",
+    "status": 400,
+    "body": {
+      "error": "Journal entry \"9459effc-7955-4a3f-940a-b317c3c3fd0a\" currency (USD) does not match account \"Other\" currency (AUD)"
+    }
+  },
+  {
+    "name": "Invalid journal/account currency mismatch rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Invalid embedded evidence reference",
+    "status": 400,
+    "body": {
+      "error": "Transaction \"24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544\" evidence references non-existent document_id \"missing-document\""
+    }
+  },
+  {
+    "name": "Invalid embedded evidence reference rejected without mutation",
+    "unchanged": true
+  },
+  {
+    "name": "Unknown version 99",
+    "status": 400,
+    "body": {
+      "error": "Unsupported archive schemaVersion: 99"
+    }
+  },
+  {
+    "name": "Valid JPY draft and source references",
+    "draft": {
+      "id": "test-correct-jpy-roundtrip",
+      "entity_id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+      "payer_entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "payment_account_id": "4fe4a532-e087-492d-85ee-bfe82da47083",
+      "currency": "JPY",
+      "amount_cents": 500,
+      "date": "2026-09-16",
+      "merchant": "TEST correct JPY500",
+      "description": "JPY 500 browser edit preserves source references",
+      "reimbursement_intent": "yes",
+      "source_document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+      "source_transaction_id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+      "status": "draft",
+      "created_at": "2026-09-16T13:14:30.168Z",
+      "updated_at": "2026-09-16T15:08:07.384Z"
+    }
+  },
+  {
+    "name": "Partial draft description update",
+    "draft": {
+      "id": "test-correct-jpy-roundtrip",
+      "entity_id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+      "payer_entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+      "payment_account_id": "4fe4a532-e087-492d-85ee-bfe82da47083",
+      "currency": "JPY",
+      "amount_cents": 500,
+      "date": "2026-09-16",
+      "merchant": "TEST correct JPY500",
+      "description": "Assessor partial description only",
+      "reimbursement_intent": "yes",
+      "source_document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+      "source_transaction_id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+      "status": "draft",
+      "created_at": "2026-09-16T13:14:30.168Z",
+      "updated_at": "2026-09-16T15:08:07.385Z"
+    }
+  }
+]

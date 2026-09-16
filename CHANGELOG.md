@@ -7,11 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- OpenNetWorth milestone 1 core double-entry accounting engine
+- Vault backup and restore functionalities for local data management
+- Document inbox service for local AI document extraction
+- Legacy UI integrations for handling mixed legacy and modern accounting records
+
+### Changed
+- Re-architected Mentor Assistant API to utilize deterministic data extraction directly from `PeriodIncomeExpenseResult` instead of generic LLM formatting.
+- Updated `FreedomDateCard` and `DebtPayoffCalculator` UI components to show appropriate warnings and loading states to avoid misleading zero debt screens.
 - OpenSpec baseline specifications for 5 capabilities
-- Architecture diagram in CONTRIBUTING.md
-- SECURITY.md with RLS and token handling documentation
-- GitHub issue templates for bugs and features
-- `.env.example` for easier onboarding
 
 ### Changed
 - Consolidated `supabase_schema.sql` (126 → 326 lines)

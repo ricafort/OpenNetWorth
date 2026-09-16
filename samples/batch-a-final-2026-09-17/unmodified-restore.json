@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "body": {
+    "success": true,
+    "message": "Version 2 vault fully restored and verified."
+  }
+}

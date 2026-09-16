@@ -1,0 +1,27 @@
+{
+  "live": [
+    {
+      "file": "data/opennetworth.sqlite",
+      "unchanged": true
+    },
+    {
+      "file": "data/opennetworth.sqlite-wal",
+      "unchanged": true
+    }
+  ],
+  "balances": [
+    {
+      "name": "Everyday Checking",
+      "cents": 88312
+    },
+    {
+      "name": "Business Operating",
+      "cents": 39000
+    }
+  ],
+  "counts": {
+    "documents": 9,
+    "imported_transactions": 7,
+    "receipt_links": 2
+  }
+}

@@ -32,6 +32,7 @@ import {
     Layers,
     DollarSign,
     Edit3,
+    Link2,
     X
 } from 'lucide-react';
 import {
@@ -39,12 +40,14 @@ import {
     ExtractedFinancialProposal,
     ValidationFinding
 } from '@/lib/domain/document/types';
-import { Account, CurrencyCode, CURRENCY_DECIMALS, formatMoney } from '@/lib/domain/accounting/types';
+import { Account, CurrencyCode, CURRENCY_DECIMALS, formatMoney, Entity } from '@/lib/domain/accounting/types';
+import { LinkTransactionModal } from './LinkTransactionModal';
 
 interface ProposalReviewTableProps {
     documentId: string;
     onBack: () => void;
     accounts: Account[];
+    entities?: Entity[];
     onApprovalComplete?: () => void;
 }
 
@@ -52,6 +55,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     documentId,
     onBack,
     accounts,
+    entities = [],
     onApprovalComplete
 }) => {
     const [proposals, setProposals] = useState<ExtractedFinancialProposal[]>([]);
@@ -61,8 +65,8 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-    // Filter status: 'all' | 'unreviewed' | 'approved' | 'issues'
-    const [statusFilter, setStatusFilter] = useState<'all' | 'unreviewed' | 'approved' | 'issues'>('all');
+    // Filter status: 'all' | 'unreviewed' | 'approved' | 'linked' | 'issues'
+    const [statusFilter, setStatusFilter] = useState<'all' | 'unreviewed' | 'approved' | 'linked' | 'issues'>('all');
 
     // Selection set for approval
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -73,14 +77,21 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     // Payment confirmation map for invoice expense proposals (Slice 1F)
     const [paymentConfirmedMap, setPaymentConfirmedMap] = useState<Record<string, boolean>>({});
 
+    // Explicit duplicate confirmation map (Slice 1F Fix D)
+    const [duplicateConfirmedMap, setDuplicateConfirmedMap] = useState<Record<string, boolean>>({});
+
     // Target liquid account for this document
     const [targetAccountId, setTargetAccountId] = useState<string>('');
+
+    // Linking Modal State (Slice 1G)
+    const [linkingProposal, setLinkingProposal] = useState<ExtractedFinancialProposal | null>(null);
 
     // Edit Modal State (Slice 1F Fix 2)
     // Why this exists: Enables users to correct extracted supplier, date, amount, currency,
     // category, and payment account before committing to the double-entry ledger.
     const [editingProposal, setEditingProposal] = useState<ExtractedFinancialProposal | null>(null);
     const [editSupplier, setEditSupplier] = useState<string>('');
+    const [editDescription, setEditDescription] = useState<string>('');
     const [editDate, setEditDate] = useState<string>('');
     const [editAmount, setEditAmount] = useState<string>('');
     const [editCurrency, setEditCurrency] = useState<CurrencyCode>('AUD');
@@ -95,6 +106,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     const startEditing = (proposal: ExtractedFinancialProposal) => {
         setEditingProposal(proposal);
         setEditSupplier(proposal.counterparty || proposal.description || '');
+        setEditDescription(proposal.description || '');
         setEditDate(proposal.event_date);
         const scale = CURRENCY_DECIMALS[proposal.original_currency] ?? 2;
         const absMajor = (Math.abs(proposal.amount_cents) / Math.pow(10, scale)).toFixed(scale);
@@ -154,7 +166,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                     proposal_id: editingProposal.id,
                     event_date: editDate,
                     counterparty: editSupplier,
-                    description: `${editSupplier} purchase`,
+                    description: editDescription,
                     amount_cents: finalSignedCents,
                     original_currency: editCurrency,
                     account_id: editAccountId || undefined,
@@ -225,7 +237,8 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                 const validUnreviewed = new Set<string>();
                 for (const p of propData.proposals) {
                     const hasError = p.validation_findings.some((f: ValidationFinding) => f.severity === 'error');
-                    if (!hasError && p.review_status === 'unreviewed') {
+                    const hasDuplicate = p.validation_findings.some((f: ValidationFinding) => f.code === 'POSSIBLE_DUPLICATE_EXISTING' || f.code === 'SUSPECTED_DUPLICATE_INTERNAL');
+                    if (!hasError && !hasDuplicate && (p.review_status === 'unreviewed' || p.review_status === 'modified')) {
                         validUnreviewed.add(p.id);
                     }
                 }
@@ -248,11 +261,13 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     const metrics = useMemo(() => {
         let unreviewed = 0;
         let approved = 0;
+        let linked = 0;
         let withIssues = 0;
 
         for (const p of proposals) {
             if (p.review_status === 'approved') approved++;
-            else if (p.review_status === 'unreviewed') unreviewed++;
+            else if (p.review_status === 'linked' || p.linked_transaction_id) linked++;
+            else if (p.review_status === 'unreviewed' || p.review_status === 'modified') unreviewed++;
 
             const hasWarningOrError = p.validation_findings.length > 0;
             if (hasWarningOrError) withIssues++;
@@ -262,6 +277,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
             total: proposals.length,
             unreviewed,
             approved,
+            linked,
             withIssues
         };
     }, [proposals]);
@@ -269,16 +285,17 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     // Filtered proposals for display
     const filteredProposals = useMemo(() => {
         return proposals.filter(p => {
-            if (statusFilter === 'unreviewed') return p.review_status === 'unreviewed';
+            if (statusFilter === 'unreviewed') return p.review_status === 'unreviewed' || p.review_status === 'modified';
             if (statusFilter === 'approved') return p.review_status === 'approved';
+            if (statusFilter === 'linked') return p.review_status === 'linked' || Boolean(p.linked_transaction_id);
             if (statusFilter === 'issues') return p.validation_findings.length > 0;
             return true;
         });
     }, [proposals, statusFilter]);
 
     // Toggle single proposal selection
-    const toggleSelect = (id: string, hasError: boolean, isApproved: boolean) => {
-        if (hasError || isApproved) return; // Cannot select errors or already approved
+    const toggleSelect = (id: string, hasError: boolean, isApprovedOrLinked: boolean) => {
+        if (hasError || isApprovedOrLinked) return; // Cannot select errors, already approved, or linked
         setSelectedIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id);
@@ -291,7 +308,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
     const toggleSelectAll = () => {
         const validUnreviewed = proposals.filter(p => {
             const hasError = p.validation_findings.some(f => f.severity === 'error');
-            return !hasError && p.review_status === 'unreviewed';
+            return !hasError && (p.review_status === 'unreviewed' || p.review_status === 'modified');
         });
 
         const allSelected = validUnreviewed.every(p => selectedIds.has(p.id));
@@ -336,7 +353,8 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                 category: categoryOverrides[p.id] || p.suggested_category || 'office_supplies',
                 description: p.description,
                 counterparty: p.counterparty || p.description,
-                payment_confirmed: paymentConfirmedMap[p.id] ?? (!isPdfDoc)
+                payment_confirmed: paymentConfirmedMap[p.id] ?? (!isPdfDoc),
+                duplicate_confirmed: duplicateConfirmedMap[p.id] ?? false
             }));
 
         try {
@@ -421,7 +439,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                 </div>
 
                 {/* Progress / Status Metrics */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs">
                     <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
                         <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Total Extracted</span>
                         <span className="text-base font-bold text-slate-900 dark:text-slate-100">{metrics.total} rows</span>
@@ -431,8 +449,12 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                         <span className="text-base font-bold text-amber-700 dark:text-amber-400">{metrics.unreviewed} pending</span>
                     </div>
                     <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900/40">
-                        <span className="text-emerald-700 dark:text-emerald-400 block text-[11px]">Confirmed in Ledger</span>
+                        <span className="text-emerald-700 dark:text-emerald-400 block text-[11px]">Posted to Ledger</span>
                         <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">{metrics.approved} approved</span>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-950/30 p-2.5 rounded-xl border border-blue-200 dark:border-blue-900/40">
+                        <span className="text-blue-700 dark:text-blue-400 block text-[11px]">Linked as Evidence</span>
+                        <span className="text-base font-bold text-blue-700 dark:text-blue-400">{metrics.linked} linked</span>
                     </div>
                     <div className="bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40">
                         <span className="text-rose-700 dark:text-rose-400 block text-[11px]">Issues & Duplicates</span>
@@ -465,7 +487,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
             {/* Action Bar & Filter Controls */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl">
                 {/* Filter Tabs */}
-                <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-xs font-semibold">
+                <div className="flex flex-wrap bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-xs font-semibold">
                     <button
                         onClick={() => setStatusFilter('all')}
                         className={`px-3 py-1.5 rounded-lg transition ${statusFilter === 'all' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
@@ -482,7 +504,13 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                         onClick={() => setStatusFilter('approved')}
                         className={`px-3 py-1.5 rounded-lg transition ${statusFilter === 'approved' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
                     >
-                        Approved ({metrics.approved})
+                        Posted ({metrics.approved})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('linked')}
+                        className={`px-3 py-1.5 rounded-lg transition ${statusFilter === 'linked' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
+                    >
+                        Linked ({metrics.linked})
                     </button>
                     <button
                         onClick={() => setStatusFilter('issues')}
@@ -561,9 +589,13 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                                 {filteredProposals.map(proposal => {
                                     const hasError = proposal.validation_findings.some(f => f.severity === 'error');
+                                    const isMissingDate = proposal.validation_findings.some(f => f.code === 'MISSING_DATE');
+                                    const isMissingAmount = proposal.validation_findings.some(f => f.code === 'MISSING_AMOUNT');
                                     const internalDup = proposal.validation_findings.find(f => f.code === 'SUSPECTED_DUPLICATE_INTERNAL');
                                     const externalDup = proposal.validation_findings.find(f => f.code === 'POSSIBLE_DUPLICATE_EXISTING');
                                     const isApproved = proposal.review_status === 'approved';
+                                    const isLinked = proposal.review_status === 'linked' || Boolean(proposal.linked_transaction_id);
+                                    const isSettled = isApproved || isLinked;
                                     const isSelected = selectedIds.has(proposal.id);
 
                                     const isIncome = proposal.event_type === 'income';
@@ -572,22 +604,28 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                     return (
                                         <tr
                                             key={proposal.id}
-                                            className={`transition ${hasError ? 'bg-rose-50/40 dark:bg-rose-950/20' : isApproved ? 'bg-slate-50/50 dark:bg-slate-800/30' : isSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'}`}
+                                            className={`transition ${hasError ? 'bg-rose-50/40 dark:bg-rose-950/20' : isApproved ? 'bg-slate-50/50 dark:bg-slate-800/30' : isLinked ? 'bg-blue-50/40 dark:bg-blue-950/20' : isSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'}`}
                                         >
                                             {/* Selection Checkbox */}
                                             <td className="py-3 px-4 text-center">
                                                 <input
                                                     type="checkbox"
-                                                    disabled={hasError || isApproved}
+                                                    disabled={hasError || isSettled}
                                                     checked={isSelected}
-                                                    onChange={() => toggleSelect(proposal.id, hasError, isApproved)}
+                                                    onChange={() => toggleSelect(proposal.id, hasError, isSettled)}
                                                     className="rounded border-slate-300 text-indigo-600 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                                                 />
                                             </td>
 
                                             {/* Date */}
                                             <td className="py-3 px-3 font-mono text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                                                {proposal.event_date}
+                                                {isMissingDate ? (
+                                                    <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 text-[10px] font-bold uppercase tracking-wider border border-rose-500/20">Unknown</span>
+                                                ) : proposal.event_date === '1970-01-01' || !proposal.event_date ? (
+                                                    <span className="text-amber-500 font-semibold text-[10px] bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded uppercase tracking-wider">Needs Review</span>
+                                                ) : (
+                                                    proposal.event_date
+                                                )}
                                             </td>
 
                                             {/* Description */}
@@ -596,13 +634,17 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                             </td>
 
                                             {/* Amount */}
-                                            <td className={`py-3 px-3 text-right font-mono font-bold whitespace-nowrap ${isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                                                {isIncome ? '+' : '-'}${Math.abs(proposal.amount_cents / 100).toFixed(2)}
+                                            <td className={`py-3 px-3 text-right font-mono font-bold whitespace-nowrap ${isMissingAmount ? 'text-slate-900 dark:text-slate-100' : isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                                                {isMissingAmount ? (
+                                                    <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 text-[10px] font-bold uppercase tracking-wider border border-rose-500/20">Unknown</span>
+                                                ) : (
+                                                    <>{isIncome ? '+' : '-'}${Math.abs(proposal.amount_cents / 100).toFixed(2)}</>
+                                                )}
                                             </td>
 
                                             {/* Category Selector */}
                                             <td className="py-3 px-3">
-                                                {isApproved ? (
+                                                {isSettled ? (
                                                     <span className="capitalize text-slate-600 dark:text-slate-400">
                                                         {currentCategory.replace(/_/g, ' ')}
                                                     </span>
@@ -644,7 +686,12 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                             {/* Payment Confirmed (Slice 1F) */}
                                             {document?.mime_type === 'application/pdf' && (
                                                 <td className="py-3 px-3">
-                                                    {isApproved ? (
+                                                    {isLinked ? (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                                                            <Link2 className="w-3.5 h-3.5" />
+                                                            Evidence Linked
+                                                        </span>
+                                                    ) : isApproved ? (
                                                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
                                                             <CheckCircle2 className="w-3.5 h-3.5" />
                                                             Confirmed
@@ -669,10 +716,15 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                             {/* Flags & Status */}
                                             <td className="py-3 px-3">
                                                 <div className="flex flex-wrap items-center gap-1.5">
-                                                    {isApproved ? (
+                                                    {isLinked ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 font-semibold text-[10px]">
+                                                            <Link2 className="w-3 h-3" />
+                                                            Linked to existing transaction
+                                                        </span>
+                                                    ) : isApproved ? (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-semibold text-[10px]">
                                                             <CheckCircle2 className="w-3 h-3" />
-                                                            Approved
+                                                            Posted
                                                         </span>
                                                     ) : hasError ? (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 font-semibold text-[10px]">
@@ -702,6 +754,20 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                                     Ledger Match
                                                                 </span>
                                                             )}
+                                                            {(internalDup || externalDup) && !isSettled && (
+                                                                <label className="inline-flex items-center gap-1 ml-1 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={duplicateConfirmedMap[proposal.id] ?? false}
+                                                                        onChange={e => {
+                                                                            const checked = e.target.checked;
+                                                                            setDuplicateConfirmedMap(prev => ({ ...prev, [proposal.id]: checked }));
+                                                                        }}
+                                                                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                                                    />
+                                                                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">Confirm Separate</span>
+                                                                </label>
+                                                            )}
                                                         </>
                                                     )}
                                                 </div>
@@ -717,20 +783,40 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                 </span>
                                             </td>
 
-                                            {/* Actions / Edit (Slice 1F Fix 2) */}
+                                            {/* Actions / Edit / Link */}
                                             <td className="py-3 px-3 text-center whitespace-nowrap">
-                                                {!isApproved ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => startEditing(proposal)}
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 rounded-lg transition"
-                                                        title="Edit proposal fields"
-                                                    >
-                                                        <Edit3 className="w-3.5 h-3.5" />
-                                                        <span>Edit</span>
-                                                    </button>
-                                                ) : (
+                                                {isLinked ? (
+                                                    <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 text-[11px] font-semibold">
+                                                        <Link2 className="w-3.5 h-3.5" />
+                                                        Linked
+                                                    </span>
+                                                ) : isApproved ? (
                                                     <span className="text-slate-400 dark:text-slate-600 text-[11px] italic">Locked</span>
+                                                ) : (
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => startEditing(proposal)}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 rounded-lg transition"
+                                                            title="Edit proposal fields"
+                                                        >
+                                                            <Edit3 className="w-3.5 h-3.5" />
+                                                            <span>Edit</span>
+                                                        </button>
+
+                                                        {/* Slice 1G: Link to existing transaction (PDF receipts) */}
+                                                        {document?.mime_type === 'application/pdf' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setLinkingProposal(proposal)}
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 rounded-lg transition"
+                                                                title="Link this receipt/invoice as supporting evidence to an existing bank transaction"
+                                                            >
+                                                                <Link2 className="w-3.5 h-3.5" />
+                                                                <span>Link</span>
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </td>
                                         </tr>
@@ -872,11 +958,14 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
                                 >
                                     <option value="">(None / Keep Current)</option>
-                                    {accounts.map(acc => (
-                                        <option key={acc.id} value={acc.id}>
-                                            {acc.name} ({acc.currency})
-                                        </option>
-                                    ))}
+                                    {accounts.map(acc => {
+                                        const entityName = entities.find(e => e.id === acc.entity_id)?.name || 'Unknown Entity';
+                                        return (
+                                            <option key={acc.id} value={acc.id}>
+                                                {entityName} - {acc.name} ({acc.currency})
+                                            </option>
+                                        );
+                                    })}
                                 </select>
                             </div>
 
@@ -900,6 +989,17 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                     </div>
                 </div>
             )}
+
+            {/* Link Transaction Modal (Slice 1G) */}
+            <LinkTransactionModal
+                isOpen={linkingProposal !== null}
+                onClose={() => setLinkingProposal(null)}
+                proposal={linkingProposal}
+                onLinked={() => {
+                    loadProposals();
+                    onApprovalComplete?.();
+                }}
+            />
         </div>
     );
 };

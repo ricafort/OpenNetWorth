@@ -1,0 +1,65 @@
+{
+  "node": {
+    "007123cbfe976ef498ef0c9da55adf05db71028a6e": {
+      "workers": {
+        "app/accounting/page": {
+          "moduleId": "[project]/.next-internal/server/app/accounting/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/privacy/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/app/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "revokeSupportAccess",
+          "filename": "src/features/privacy/actions.ts"
+        }
+      },
+      "layer": {
+        "app/accounting/page": "action-browser"
+      },
+      "exportedName": "revokeSupportAccess",
+      "filename": "src/features/privacy/actions.ts"
+    },
+    "00920e71018088d3370c4205d52426e3de93187a47": {
+      "workers": {
+        "app/accounting/page": {
+          "moduleId": "[project]/.next-internal/server/app/accounting/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/privacy/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/app/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getSupportStatus",
+          "filename": "src/features/privacy/actions.ts"
+        }
+      },
+      "layer": {
+        "app/accounting/page": "rsc"
+      },
+      "exportedName": "getSupportStatus",
+      "filename": "src/features/privacy/actions.ts"
+    },
+    "60b6c73b16a1dfcb6370f503186d918d96a2b06d0a": {
+      "workers": {
+        "app/accounting/page": {
+          "moduleId": "[project]/.next-internal/server/app/accounting/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/privacy/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/app/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "grantSupportAccess",
+          "filename": "src/features/privacy/actions.ts"
+        }
+      },
+      "layer": {
+        "app/accounting/page": "rsc"
+      },
+      "exportedName": "grantSupportAccess",
+      "filename": "src/features/privacy/actions.ts"
+    },
+    "706da5426ef1e15fc0c38cd6f187ef0936f7d650ad": {
+      "workers": {
+        "app/accounting/page": {
+          "moduleId": "[project]/.next-internal/server/app/accounting/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/privacy/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/app/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "generateDebtAdviceAction",
+          "filename": "src/app/actions.ts"
+        }
+      },
+      "layer": {
+        "app/accounting/page": "action-browser"
+      },
+      "exportedName": "generateDebtAdviceAction",
+      "filename": "src/app/actions.ts"
+    }
+  },
+  "edge": {}
+}

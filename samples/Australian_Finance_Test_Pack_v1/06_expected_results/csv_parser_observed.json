@@ -1,0 +1,350 @@
+[
+  {
+    "file": "01_start_here/business_simple_expense.csv",
+    "rows": 1,
+    "valid": 1,
+    "errors": 0,
+    "total_signed_minor_units": -11000
+  },
+  {
+    "file": "01_start_here/household_simple_expenses.csv",
+    "rows": 3,
+    "valid": 3,
+    "errors": 0,
+    "total_signed_minor_units": -11688
+  },
+  {
+    "file": "02_bank_exports/biz-bank_signed.csv",
+    "rows": 16,
+    "valid": 16,
+    "errors": 0,
+    "total_signed_minor_units": 1457500
+  },
+  {
+    "file": "02_bank_exports/hh-card_signed.csv",
+    "rows": 29,
+    "valid": 29,
+    "errors": 0,
+    "total_signed_minor_units": 60000
+  },
+  {
+    "file": "02_bank_exports/hh-everyday_signed.csv",
+    "rows": 62,
+    "valid": 62,
+    "errors": 0,
+    "total_signed_minor_units": 1126915
+  },
+  {
+    "file": "02_bank_exports/hh-rental_signed.csv",
+    "rows": 6,
+    "valid": 6,
+    "errors": 0,
+    "total_signed_minor_units": -99984
+  },
+  {
+    "file": "02_bank_exports/hh-savings_signed.csv",
+    "rows": 6,
+    "valid": 6,
+    "errors": 0,
+    "total_signed_minor_units": 329400
+  },
+  {
+    "file": "02_bank_exports/hh_everyday_debit_credit_ALTERNATIVE.csv",
+    "rows": 62,
+    "valid": 62,
+    "errors": 0,
+    "total_signed_minor_units": 1126915
+  },
+  {
+    "file": "05_edge_cases/ambiguous_dates.csv",
+    "rows": 2,
+    "valid": 2,
+    "errors": 0,
+    "total_signed_minor_units": -2500,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "07/08/2025,Australian date means 7 August,-12.00",
+        "date": "2025-08-07",
+        "raw_date": "07/08/2025",
+        "description": "Australian date means 7 August",
+        "amount_cents": -1200,
+        "raw_amount": "-12.00",
+        "event_type": "expense",
+        "validation_findings": []
+      },
+      {
+        "row_number": 3,
+        "raw_snippet": "08/07/2025,Australian date means 8 July,-13.00",
+        "date": "2025-07-08",
+        "raw_date": "08/07/2025",
+        "description": "Australian date means 8 July",
+        "amount_cents": -1300,
+        "raw_amount": "-13.00",
+        "event_type": "expense",
+        "validation_findings": []
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/currency_rounding_jpy.csv",
+    "rows": 1,
+    "valid": 1,
+    "errors": 0,
+    "total_signed_minor_units": -500,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "03/07/2025,Fictional JPY purchase,-500",
+        "date": "2025-07-03",
+        "raw_date": "03/07/2025",
+        "description": "Fictional JPY purchase",
+        "amount_cents": -500,
+        "raw_amount": "-500",
+        "event_type": "expense",
+        "validation_findings": []
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/duplicate_identical_rows.csv",
+    "rows": 2,
+    "valid": 2,
+    "errors": 0,
+    "total_signed_minor_units": -4400,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "03/07/2025,Waratah Office Supplies paper ream,-22.00",
+        "date": "2025-07-03",
+        "raw_date": "03/07/2025",
+        "description": "Waratah Office Supplies paper ream",
+        "amount_cents": -2200,
+        "raw_amount": "-22.00",
+        "event_type": "expense",
+        "validation_findings": []
+      },
+      {
+        "row_number": 3,
+        "raw_snippet": "03/07/2025,Waratah Office Supplies paper ream,-22.00",
+        "date": "2025-07-03",
+        "raw_date": "03/07/2025",
+        "description": "Waratah Office Supplies paper ream",
+        "amount_cents": -2200,
+        "raw_amount": "-22.00",
+        "event_type": "expense",
+        "validation_findings": []
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/formula_like_description.csv",
+    "rows": 1,
+    "valid": 1,
+    "errors": 0,
+    "total_signed_minor_units": -100,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "03/07/2025,=1+1,-1.00",
+        "date": "2025-07-03",
+        "raw_date": "03/07/2025",
+        "description": "=1+1",
+        "amount_cents": -100,
+        "raw_amount": "-1.00",
+        "event_type": "expense",
+        "validation_findings": []
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/incoming_same_amount.csv",
+    "rows": 1,
+    "valid": 1,
+    "errors": 0,
+    "total_signed_minor_units": 2200,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "03/07/2025,Incoming payment is not receipt expense,22.00",
+        "date": "2025-07-03",
+        "raw_date": "03/07/2025",
+        "description": "Incoming payment is not receipt expense",
+        "amount_cents": 2200,
+        "raw_amount": "22.00",
+        "event_type": "income",
+        "validation_findings": []
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/invalid_amounts.csv",
+    "rows": 3,
+    "valid": 0,
+    "errors": 3,
+    "total_signed_minor_units": 0,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "07/07/2025,Trailing characters,12oops",
+        "date": "2025-07-07",
+        "raw_date": "07/07/2025",
+        "description": "Trailing characters",
+        "amount_cents": null,
+        "raw_amount": "12oops",
+        "event_type": "expense",
+        "validation_findings": [
+          {
+            "severity": "error",
+            "code": "INVALID_AMOUNT",
+            "message": "Invalid monetary value: \"12oops\". Entire value must be a valid numeric amount.",
+            "field": "amount"
+          }
+        ]
+      },
+      {
+        "row_number": 3,
+        "raw_snippet": "08/07/2025,Two decimal separators,1.2.3",
+        "date": "2025-07-08",
+        "raw_date": "08/07/2025",
+        "description": "Two decimal separators",
+        "amount_cents": null,
+        "raw_amount": "1.2.3",
+        "event_type": "expense",
+        "validation_findings": [
+          {
+            "severity": "error",
+            "code": "INVALID_AMOUNT",
+            "message": "Invalid monetary value: \"1.2.3\". Entire value must be a valid numeric amount.",
+            "field": "amount"
+          }
+        ]
+      },
+      {
+        "row_number": 4,
+        "raw_snippet": "09/07/2025,Bad thousands grouping,\"1,2,3.00\"",
+        "date": "2025-07-09",
+        "raw_date": "09/07/2025",
+        "description": "Bad thousands grouping",
+        "amount_cents": null,
+        "raw_amount": "1,2,3.00",
+        "event_type": "expense",
+        "validation_findings": [
+          {
+            "severity": "error",
+            "code": "INVALID_AMOUNT",
+            "message": "Invalid monetary value: \"1,2,3.00\". Entire value must be a valid numeric amount.",
+            "field": "amount"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/invalid_dates.csv",
+    "rows": 2,
+    "valid": 0,
+    "errors": 2,
+    "total_signed_minor_units": -3700,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "31/02/2025,Impossible date,-22.00",
+        "date": null,
+        "raw_date": "31/02/2025",
+        "description": "Impossible date",
+        "amount_cents": -2200,
+        "raw_amount": "-22.00",
+        "event_type": "expense",
+        "validation_findings": [
+          {
+            "severity": "error",
+            "code": "INVALID_DATE",
+            "message": "Date \"31/02/2025\" is not a valid calendar day.",
+            "field": "date"
+          }
+        ]
+      },
+      {
+        "row_number": 3,
+        "raw_snippet": ",Missing date,-15.00",
+        "date": null,
+        "raw_date": "",
+        "description": "Missing date",
+        "amount_cents": -1500,
+        "raw_amount": "-15.00",
+        "event_type": "expense",
+        "validation_findings": [
+          {
+            "severity": "error",
+            "code": "INVALID_DATE",
+            "message": "Date field is empty or missing.",
+            "field": "date"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/legitimate_same_day_same_amount.csv",
+    "rows": 2,
+    "valid": 2,
+    "errors": 0,
+    "total_signed_minor_units": -1700,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "09/08/2025,Banksia Cafe two separate purchases,-8.50",
+        "date": "2025-08-09",
+        "raw_date": "09/08/2025",
+        "description": "Banksia Cafe two separate purchases",
+        "amount_cents": -850,
+        "raw_amount": "-8.50",
+        "event_type": "expense",
+        "validation_findings": []
+      },
+      {
+        "row_number": 3,
+        "raw_snippet": "09/08/2025,Banksia Cafe two separate purchases,-8.50",
+        "date": "2025-08-09",
+        "raw_date": "09/08/2025",
+        "description": "Banksia Cafe two separate purchases",
+        "amount_cents": -850,
+        "raw_amount": "-8.50",
+        "event_type": "expense",
+        "validation_findings": []
+      }
+    ]
+  },
+  {
+    "file": "05_edge_cases/overlap_with_starter.csv",
+    "rows": 2,
+    "valid": 2,
+    "errors": 0,
+    "total_signed_minor_units": -3700,
+    "details": [
+      {
+        "row_number": 2,
+        "raw_snippet": "03/07/2025,Waratah Office Supplies paper ream,-22.00",
+        "date": "2025-07-03",
+        "raw_date": "03/07/2025",
+        "description": "Waratah Office Supplies paper ream",
+        "amount_cents": -2200,
+        "raw_amount": "-22.00",
+        "event_type": "expense",
+        "validation_findings": []
+      },
+      {
+        "row_number": 3,
+        "raw_snippet": "04/07/2025,Waratah Office Supplies pens,-15.00",
+        "date": "2025-07-04",
+        "raw_date": "04/07/2025",
+        "description": "Waratah Office Supplies pens",
+        "amount_cents": -1500,
+        "raw_amount": "-15.00",
+        "event_type": "expense",
+        "validation_findings": []
+      }
+    ]
+  }
+]

@@ -1,0 +1,219 @@
+{
+  "synthetic": true,
+  "period": [
+    "2025-07-01",
+    "2025-09-30"
+  ],
+  "currency": "AUD",
+  "accounts": [
+    {
+      "account_id": "HH-EVERYDAY",
+      "name": "Everyday Checking",
+      "currency": "AUD",
+      "opening_cents": 1500000,
+      "credits_cents": 3275500,
+      "debits_cents": 2148585,
+      "closing_cents": 2626915,
+      "row_count": 62
+    },
+    {
+      "account_id": "HH-SAVINGS",
+      "name": "Rainy Day Savings",
+      "currency": "AUD",
+      "opening_cents": 2500000,
+      "credits_cents": 329400,
+      "debits_cents": 0,
+      "closing_cents": 2829400,
+      "row_count": 6
+    },
+    {
+      "account_id": "HH-CARD",
+      "name": "Everyday Credit Card",
+      "currency": "AUD",
+      "opening_cents": -60000,
+      "credits_cents": 157920,
+      "debits_cents": 97920,
+      "closing_cents": 0,
+      "row_count": 29
+    },
+    {
+      "account_id": "HH-RENTAL",
+      "name": "Rental Property Bank",
+      "currency": "AUD",
+      "opening_cents": 500000,
+      "credits_cents": 722850,
+      "debits_cents": 822834,
+      "closing_cents": 400016,
+      "row_count": 6
+    },
+    {
+      "account_id": "BIZ-BANK",
+      "name": "Business Operating",
+      "currency": "AUD",
+      "opening_cents": 2000000,
+      "credits_cents": 1650000,
+      "debits_cents": 192500,
+      "closing_cents": 3457500,
+      "row_count": 16
+    }
+  ],
+  "starter": {
+    "scenario": "fresh isolated vault; opening Everyday Checking AUD 1000; Business Operating AUD 500",
+    "household_rows": 3,
+    "household_expense_cents": 11688,
+    "household_closing_cents": 88312,
+    "business_rows": 1,
+    "business_expense_cents": 11000,
+    "business_closing_cents": 39000,
+    "household_office_supplies_cents": 3700,
+    "household_utilities_cents": 7988,
+    "receipt_linking_additional_postings": 0,
+    "receipt_linking_balance_change_cents": 0,
+    "receipt_coverage_household": {
+      "with_receipt": 1,
+      "without_receipt": 2
+    },
+    "unpaid_invoice_total_cents": 33000,
+    "unpaid_invoice_expected_cash_effect_cents": 0
+  },
+  "loans": [
+    {
+      "id": "HOME-LOAN",
+      "principal_cents": 52000000,
+      "annual_rate": "0.061",
+      "months": 360,
+      "paying_account": "HH-EVERYDAY",
+      "scheduled_payment_cents": 315117
+    },
+    {
+      "id": "RENTAL-LOAN",
+      "principal_cents": 41000000,
+      "annual_rate": "0.064",
+      "months": 300,
+      "paying_account": "HH-RENTAL",
+      "scheduled_payment_cents": 274278
+    }
+  ],
+  "quarter_loan_totals": [
+    {
+      "loan_id": "HOME-LOAN",
+      "payment_cents": 945351,
+      "interest_cents": 792224,
+      "principal_cents": 153127,
+      "closing_principal_cents": 51846873
+    },
+    {
+      "loan_id": "RENTAL-LOAN",
+      "payment_cents": 822834,
+      "interest_cents": 655109,
+      "principal_cents": 167725,
+      "closing_principal_cents": 40832275
+    }
+  ],
+  "expenses_gross_cash_basis_fixture": [
+    {
+      "entity": "BIZ-WATTLE",
+      "category": "office_supplies",
+      "net_cents": 27500
+    },
+    {
+      "entity": "BIZ-WATTLE",
+      "category": "rent_expense",
+      "net_cents": 132000
+    },
+    {
+      "entity": "BIZ-WATTLE",
+      "category": "software",
+      "net_cents": 33000
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "childcare",
+      "net_cents": 370500
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "dining",
+      "net_cents": 9450
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "groceries",
+      "net_cents": 222305
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "insurance",
+      "net_cents": 42690
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "interest_expense",
+      "net_cents": 1447333
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "office_supplies",
+      "net_cents": 3200
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "property_management",
+      "net_cents": 55650
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "property_repairs",
+      "net_cents": 16500
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "transportation",
+      "net_cents": 114170
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "utilities",
+      "net_cents": 80419
+    }
+  ],
+  "income_gross_cash_basis_fixture": [
+    {
+      "entity": "BIZ-WATTLE",
+      "category": "business_income",
+      "amount_cents": 1650000
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "interest_income",
+      "amount_cents": 29400
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "rent_income",
+      "amount_cents": 795000
+    },
+    {
+      "entity": "HH-NGUYEN",
+      "category": "salary",
+      "amount_cents": 3275000
+    }
+  ],
+  "meaning": "Ground truth after proper transfer, loan and net-rent classification. This is not the expected output of blindly approving all full-bank rows. Business amounts are GST-inclusive fixture amounts, not a statutory P&L or BAS.",
+  "receipts": [
+    {
+      "file": "receipt_office_supplies_22.pdf",
+      "transaction_id": "TX-0108",
+      "amount_cents": 2200,
+      "date": "2025-07-03",
+      "account_id": "HH-EVERYDAY"
+    },
+    {
+      "file": "receipt_business_supplies_110.pdf",
+      "transaction_id": "TX-0113",
+      "amount_cents": 11000,
+      "date": "2025-07-11",
+      "account_id": "BIZ-BANK"
+    }
+  ]
+}

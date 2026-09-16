@@ -1,0 +1,52 @@
+[
+  {
+    "q": "How much did I spend in July 2025?",
+    "isSpendingQuery": true,
+    "startDate": "2025-06-30",
+    "endDate": "2025-07-30",
+    "periodLabel": "July 2025",
+    "entityId": "personal"
+  },
+  {
+    "q": "How much did I spend on 16 September 2026?",
+    "isSpendingQuery": true,
+    "startDate": "2026-08-31",
+    "endDate": "2026-09-29",
+    "periodLabel": "September 2026",
+    "entityId": "personal"
+  },
+  {
+    "q": "How much did I spend on 2026-09-16?",
+    "isSpendingQuery": true,
+    "needsClarification": "You mentioned a year, but please specify a month or exact date for the spending lookup."
+  },
+  {
+    "q": "How much did my business spend in July 2025?",
+    "isSpendingQuery": true,
+    "needsClarification": "I'm not sure if you mean personal or business spending. Could you clarify whose finances you are asking about?"
+  },
+  {
+    "q": "Business expenses in July 2025",
+    "isSpendingQuery": true,
+    "startDate": "2025-06-30",
+    "endDate": "2025-07-30",
+    "periodLabel": "July 2025",
+    "entityId": "alpha"
+  },
+  {
+    "q": "Expenses across all my finances in July 2025",
+    "isSpendingQuery": true,
+    "startDate": "2025-06-30",
+    "endDate": "2025-07-30",
+    "periodLabel": "July 2025",
+    "entityId": "personal"
+  },
+  {
+    "q": "Expenses in February 1999",
+    "isSpendingQuery": true,
+    "startDate": "2026-01-31",
+    "endDate": "2026-02-27",
+    "periodLabel": "February 2026",
+    "entityId": "personal"
+  }
+]

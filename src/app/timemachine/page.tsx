@@ -69,7 +69,10 @@ export default function TimeMachinePage() {
                         {selectedDate && snapshot ? (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 {/* Vintage Overlay Effect */}
-                                <div className="pointer-events-none fixed inset-0 z-50 bg-[url('https://www.transparenttextures.com/patterns/aged-paper.png')] opacity-20 mix-blend-multiply"></div>
+                                <div
+                                    className="pointer-events-none fixed inset-0 z-50 opacity-20 mix-blend-multiply"
+                                    style={{ backgroundImage: "url('https://www.transparenttextures.com/patterns/aged-paper.png')" }}
+                                />
 
                                 <div className="bg-[#eee8d5] border-2 border-[#d33682] p-4 rounded-xl mb-6 shadow-xl transform -rotate-1">
                                     <div className="flex items-center gap-3 text-[#d33682] font-bold">

@@ -1,0 +1,403 @@
+Browser tab: 5, Title: "Accounting Engine | OpenNetWorth", URL: "http://localhost:4007/accounting?view=reports".
+1 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4007/accounting?view=reports
+	2 container
+		3 text OpenNetWorth LOCAL
+		4 container
+			5 link Description: Dashboard, Value: localhost:4007/
+			6 link Description: Accounting My finances, Value: localhost:4007/accounting
+			7 link Description: Assets What I own, Value: localhost:4007/assets
+			8 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			9 link Description: Goals, Value: localhost:4007/goals
+			10 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			11 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			12 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			13 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			14 link Description: Privacy, Value: localhost:4007/privacy
+		15 text ON Local Vault Owner 🔒 100% On-Device
+		16 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		17 button Light Mode
+		18 button Stealth Mode
+		19 button System Theme
+		20 button Blur Values
+		21 text v 1.0.0
+	22 container
+		23 heading Your finances, Value: 1
+			24 text Your finances
+		25 text See your personal and business finances together. Viewing:
+		26 pop up button (collapsed, settable) Value: All my finances, Secondary Actions: Expand
+			27 menu
+				28 (selected) All my finances
+				29 container Filtered Views
+					30 TEST Alex (Personal)
+					31 TEST Alex Business (Business)
+		32 button Transactions
+		33 button Accounts
+		34 button Reports
+		35 button Documents
+		36 text ACCOUNTING SCOPE
+		37 pop up button (collapsed, settable) Value: Individual Entity (Ownership Share %), Secondary Actions: Expand
+			38 menu
+				39 (selected) Individual Entity (Ownership Share %)
+				40 Household Unit (100% De-duplicated)
+		41 text AS OF VALUATION DATE
+		42 date field (settable) 2026-09-17
+			43 container
+				44 stepper
+				45 stepper
+				46 stepper
+			47 pop up button Show date picker
+		48 text PERIOD START / END
+		49 date field (settable)
+			50 container
+				51 stepper
+				52 stepper
+				53 stepper
+			54 pop up button Show date picker
+		55 text to
+		56 date field (settable)
+			57 container
+				58 stepper
+				59 stepper
+				60 stepper
+			61 pop up button Show date picker
+		62 button Revalue Asset
+		63 button Exchange Rates
+		64 button Refresh All Reports
+		65 button Your finances by owner
+		66 button Cash Flow vs Accrual Performance
+		67 button Ledger Drill-Down & Evidence Links
+		68 text Your finances by owner — Overview Cross-entity consolidation is deferred to prevent commingling sovereign entities (individuals, companies, trusts) without certified exchange rates and inter-entity eliminations. Review each component owner's assets, liabilities, and accounts below, or select an entity to open its dedicated consolidated report.
+		69 heading TEST Alex, Value: 4
+			70 text TEST Alex
+		71 text PERSONAL Sovereign Currency:  USD Balance as of  2026-09-17  ·  19  active account s
+		72 button View TEST Alex's Report
+			73 text View 
+			74 text TEST Alex
+			75 text 's Report
+		76 text NET WORTH ( AUD ) AUD What you own minus what you owe A$112,158.24 Assets:  A$312,308.24 Liab:  A$200,150.00 NET WORTH ( JPY ) JPY What you own minus what you owe ¥10,000 Assets:  ¥10,000 Liab:  ¥0 NET WORTH ( USD ) USD What you own minus what you owe $1,000.00 Assets:  $1,000.00 Liab:  $0.00
+		77 table
+			78 row
+				79 cell
+					80 text ACCOUNT
+				81 cell
+					82 text TYPE / CATEGORY
+				83 cell
+					84 text CURRENCY
+				85 cell
+					86 text BALANCE
+				87 cell
+					88 text AS OF DATE
+				89 cell
+					90 text ACTION
+			91 row
+				92 cell
+					93 text TEST Everyday
+				94 cell
+					95 text Asset  ·  Checking
+				96 cell
+					97 text AUD
+				98 cell
+					99 text A$725.00
+				100 cell
+					101 text 2026-09-17
+				102 cell
+					103 button Drill down to Ledger
+			104 row
+				105 cell
+					106 text TEST Home
+				107 cell
+					108 text Asset  ·  Property
+				109 cell
+					110 text AUD
+				111 cell
+					112 text A$310,000.00
+				113 cell
+					114 text 2026-09-17
+				115 cell
+					116 button Drill down to Ledger
+			117 row
+				118 cell
+					119 text TEST Household CSV
+				120 cell
+					121 text Asset  ·  Checking
+				122 cell
+					123 text AUD
+				124 cell
+					125 text A$883.12
+				126 cell
+					127 text 2026-09-17
+				128 cell
+					129 button Drill down to Ledger
+			130 row
+				131 cell
+					132 text TEST Savings
+				133 cell
+					134 text Asset  ·  Savings
+				135 cell
+					136 text AUD
+				137 cell
+					138 text A$600.00
+				139 cell
+					140 text 2026-09-17
+				141 cell
+					142 button Drill down to Ledger
+			143 row
+				144 cell
+					145 text TEST Today Balance
+				146 cell
+					147 text Asset  ·  Checking
+				148 cell
+					149 text AUD
+				150 cell
+					151 text A$100.12
+				152 cell
+					153 text 2026-09-17
+				154 cell
+					155 button Drill down to Ledger
+			156 row
+				157 cell
+					158 text TEST USD
+				159 cell
+					160 text Asset  ·  Checking
+				161 cell
+					162 text USD
+				163 cell
+					164 text $1,000.00
+				165 cell
+					166 text 2026-09-17
+				167 cell
+					168 button Drill down to Ledger
+			169 row
+				170 cell
+					171 text TEST Yen
+				172 cell
+					173 text Asset  ·  Checking
+				174 cell
+					175 text JPY
+				176 cell
+					177 text ¥10,000
+				178 cell
+					179 text 2026-09-17
+				180 cell
+					181 button Drill down to Ledger
+			182 row
+				183 cell
+					184 text Opening Balance Equity
+				185 cell
+					186 text Equity  ·  Opening_balance_equity
+				187 cell
+					188 text AUD
+				189 cell
+					190 text A$101,300.12
+				191 cell
+					192 text 2026-09-17
+				193 cell
+					194 button Drill down to Ledger
+			195 row
+				196 cell
+					197 text Opening Balance Equity
+				198 cell
+					199 text Equity  ·  Opening_balance_equity
+				200 cell
+					201 text JPY
+				202 cell
+					203 text ¥10,000
+				204 cell
+					205 text 2026-09-17
+				206 cell
+					207 button Drill down to Ledger
+			208 row
+				209 cell
+					210 text Opening Balance Equity
+				211 cell
+					212 text Equity  ·  Opening_balance_equity
+				213 cell
+					214 text USD
+				215 cell
+					216 text $1,000.00
+				217 cell
+					218 text 2026-09-17
+				219 cell
+					220 button Drill down to Ledger
+			221 row
+				222 cell
+					223 text Unrealized Valuation Reserve (AUD)
+				224 cell
+					225 text Equity  ·  Valuation_reserve
+				226 cell
+					227 text AUD
+				228 cell
+					229 text A$10,000.00
+				230 cell
+					231 text 2026-09-17
+				232 cell
+					233 button Drill down to Ledger
+			234 row
+				235 cell
+					236 text Bank Fee
+				237 cell
+					238 text Expense  ·  Bank_fee
+				239 cell
+					240 text AUD
+				241 cell
+					242 text A$5.00
+				243 cell
+					244 text 2026-09-17
+				245 cell
+					246 button Drill down to Ledger
+			247 row
+				248 cell
+					249 text Loan Interest
+				250 cell
+					251 text Expense  ·  Loan_interest
+				252 cell
+					253 text AUD
+				254 cell
+					255 text A$20.00
+				256 cell
+					257 text 2026-09-17
+				258 cell
+					259 button Drill down to Ledger
+			260 row
+				261 cell
+					262 text Office Supplies
+				263 cell
+					264 text Expense  ·  Office_supplies
+				265 cell
+					266 text AUD
+				267 cell
+					268 text A$37.00
+				269 cell
+					270 text 2026-09-17
+				271 cell
+					272 button Drill down to Ledger
+			273 row
+				274 cell
+					275 text Other
+				276 cell
+					277 text Expense  ·  Other
+				278 cell
+					279 text AUD
+				280 cell
+					281 text A$0.00
+				282 cell
+					283 text 2026-09-17
+				284 cell
+					285 button Drill down to Ledger
+			286 row
+				287 cell
+					288 text Utilities
+				289 cell
+					290 text Expense  ·  Utilities
+				291 cell
+					292 text AUD
+				293 cell
+					294 text A$79.88
+				295 cell
+					296 text 2026-09-17
+				297 cell
+					298 button Drill down to Ledger
+			299 row
+				300 cell
+					301 text Salary
+				302 cell
+					303 text Income  ·  Salary
+				304 cell
+					305 text AUD
+				306 cell
+					307 text A$1,000.00
+				308 cell
+					309 text 2026-09-17
+				310 cell
+					311 button Drill down to Ledger
+			312 row
+				313 cell
+					314 text TEST Credit Card
+				315 cell
+					316 text Liability  ·  Credit_card
+				317 cell
+					318 text AUD
+				319 cell
+					320 text A$250.00
+				321 cell
+					322 text 2026-09-17
+				323 cell
+					324 button Drill down to Ledger
+			325 row
+				326 cell
+					327 text TEST Mortgage
+				328 cell
+					329 text Liability  ·  Mortgage
+				330 cell
+					331 text AUD
+				332 cell
+					333 text A$199,900.00
+				334 cell
+					335 text 2026-09-17
+				336 cell
+					337 button Drill down to Ledger
+		338 heading TEST Alex Business, Value: 4
+			339 text TEST Alex Business
+		340 text BUSINESS Sovereign Currency:  USD Balance as of  2026-09-17  ·  3  active account s
+		341 button View TEST Alex Business's Report
+			342 text View 
+			343 text TEST Alex Business
+			344 text 's Report
+		345 text NET WORTH ( AUD ) AUD What you own minus what you owe A$390.00 Assets:  A$390.00 Liab:  A$0.00
+		346 table
+			347 row
+				348 cell
+					349 text ACCOUNT
+				350 cell
+					351 text TYPE / CATEGORY
+				352 cell
+					353 text CURRENCY
+				354 cell
+					355 text BALANCE
+				356 cell
+					357 text AS OF DATE
+				358 cell
+					359 text ACTION
+			360 row
+				361 cell
+					362 text TEST Business Bank
+				363 cell
+					364 text Asset  ·  Checking
+				365 cell
+					366 text AUD
+				367 cell
+					368 text A$390.00
+				369 cell
+					370 text 2026-09-17
+				371 cell
+					372 button Drill down to Ledger
+			373 row
+				374 cell
+					375 text Opening Balance Equity
+				376 cell
+					377 text Equity  ·  Opening_balance_equity
+				378 cell
+					379 text AUD
+				380 cell
+					381 text A$500.00
+				382 cell
+					383 text 2026-09-17
+				384 cell
+					385 button Drill down to Ledger
+			386 row
+				387 cell
+					388 text Office Supplies
+				389 cell
+					390 text Expense  ·  Office_supplies
+				391 cell
+					392 text AUD
+				393 cell
+					394 text A$110.00
+				395 cell
+					396 text 2026-09-17
+				397 cell
+					398 button Drill down to Ledger
+	399 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		400 image
+
+The focused UI element is 1 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4007/accounting?view=reports

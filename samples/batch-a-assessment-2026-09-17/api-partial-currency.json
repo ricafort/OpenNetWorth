@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "draft": {
+    "id": "test-correct-jpy-roundtrip",
+    "entity_id": "a6bdbae5-aac5-4f3d-983e-29e87d863e3d",
+    "payer_entity_id": "87e9194f-afed-4bae-8d3d-5a362b2395d2",
+    "payment_account_id": "4fe4a532-e087-492d-85ee-bfe82da47083",
+    "currency": "USD",
+    "amount_cents": 500,
+    "date": "2026-09-16",
+    "merchant": "TEST correct JPY500",
+    "description": "JPY 500 browser edit preserves source references",
+    "reimbursement_intent": "yes",
+    "source_document_id": "doc-de6d693c-189d-412b-bc57-247571ff7ae7",
+    "source_transaction_id": "24fbfaa7-89b4-4ccf-b3ed-1bf79c25b544",
+    "status": "draft",
+    "created_at": "2026-09-16T13:14:30.168Z",
+    "updated_at": "2026-09-16T14:54:05.365Z"
+  }
+}

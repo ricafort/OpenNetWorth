@@ -1216,7 +1216,7 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
          * 
          * TODO: Add telemetry logging for detected replay attacks.
          */
-        it('changed payee, description, or evidence produces ConflictError and leaves database unchanged', () => {
+        it('changed payee or description produces ConflictError and leaves database unchanged', () => {
             const entity = createEntity(db, { name: 'Audit Owner', type: 'person', currency: 'USD' });
             const bank = createAccount(db, {
                 entity_id: entity.id,
@@ -1287,20 +1287,19 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
             expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
 
-            // 3. Conflict on changed evidence references
-            expect(() => {
-                postTransaction(db, {
-                    date: '2026-09-10',
-                    description: 'Hosting Subscription',
-                    payee_or_payer: 'AWS Cloud',
-                    idempotency_key: key,
-                    evidence_refs: ['different_invoice.pdf'], // Changed evidence!
-                    postings: [
-                        { account_id: bank.account.id, amount_cents: -12000, currency: 'USD' },
-                        { account_id: exp.account.id, amount_cents: 12000, currency: 'USD' }
-                    ]
-                });
-            }).toThrow(ConflictError);
+            // 3. Changed evidence references returns existing transaction without conflict (Fix A-E Idempotency)
+            const result = postTransaction(db, {
+                date: '2026-09-10',
+                description: 'Hosting Subscription',
+                payee_or_payer: 'AWS Cloud',
+                idempotency_key: key,
+                evidence_refs: ['different_invoice.pdf'], // Changed evidence!
+                postings: [
+                    { account_id: bank.account.id, amount_cents: -12000, currency: 'USD' },
+                    { account_id: exp.account.id, amount_cents: 12000, currency: 'USD' }
+                ]
+            });
+            expect(result.id).toBe(seedTx.id);
 
             expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
             expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
@@ -1421,6 +1420,60 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             const entryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
             expect(txCount).toBe(1);
             expect(entryCount).toBe(2);
+        });
+
+        it('rejects income and expense recordings with non-liquid asset accounts', () => {
+            const entity = createEntity(db, { name: 'Validation Entity', type: 'person', currency: 'USD' });
+            
+            // Create a non-liquid asset account (investment)
+            const investment = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Vanguard ETF',
+                type: 'asset',
+                sub_type: 'investment',
+                currency: 'USD'
+            });
+
+            // Create a liquid asset account (checking)
+            const checking = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Chase Checking',
+                type: 'asset',
+                sub_type: 'checking',
+                currency: 'USD'
+            });
+
+            // Attempting to record income into an investment account should fail
+            expect(() => {
+                recordIncome(db, {
+                    entity_id: entity.id,
+                    bank_account_id: investment.account.id,
+                    amount_cents: 10000,
+                    date: '2026-09-10',
+                    description: 'Dividend Income'
+                });
+            }).toThrow(/Deposit account must be a liquid asset account/);
+
+            // Attempting to record expense paid from an investment account should fail
+            expect(() => {
+                recordExpense(db, {
+                    entity_id: entity.id,
+                    payment_account_id: investment.account.id,
+                    amount_cents: 5000,
+                    date: '2026-09-10',
+                    description: 'Management Fee'
+                });
+            }).toThrow(/Payment account must be a liquid asset or credit card/);
+
+            // Using checking should succeed
+            const incomeRes = recordIncome(db, {
+                entity_id: entity.id,
+                bank_account_id: checking.account.id,
+                amount_cents: 10000,
+                date: '2026-09-10',
+                description: 'Salary'
+            });
+            expect(incomeRes.id).toBeDefined();
         });
     });
 });

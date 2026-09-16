@@ -1,0 +1,82 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Cash Flow" [level=2]
+  - paragraph: Master your inflows and outflows.
+  - button "History":
+    - text: History
+  - button "Autopilot":
+    - text: Autopilot
+  - button "Log Month":
+    - text: Log Month
+  - generic: Income
+  - paragraph: $0
+  - generic: Expenses
+  - paragraph: $0
+  - generic: Net Savings
+  - paragraph: +$0
+  - generic: 0.0% Rate
+  - heading "Monthly Trends" [level=3]
+  - application
+  - heading "History" [level=3]
+  - table:
+    - rowgroup:
+      - row "Month Income Expenses Net Actions":
+        - columnheader "Month"
+        - columnheader "Income"
+        - columnheader "Expenses"
+        - columnheader "Net"
+        - columnheader "Actions"
+    - rowgroup
+- button "Open Next.js Dev Tools":
+- alert

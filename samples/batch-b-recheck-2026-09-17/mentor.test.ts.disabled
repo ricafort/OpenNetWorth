@@ -1,0 +1,26 @@
+import {it,expect,vi,afterAll} from 'vitest';
+import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import {NextRequest} from 'next/server';
+import {setTestDb} from '../../src/infrastructure/sqlite/db';
+import {initAccountingSchema} from '../../src/lib/domain/accounting/schema';
+import {createEntity,createAccount} from '../../src/lib/domain/accounting/accountService';
+import {recordExpense,recordIncome} from '../../src/lib/domain/accounting/transactionService';
+import {POST} from '../../src/app/api/mentor/route';
+import {queryLocalLlm} from '../../src/lib/api/localLlm';
+vi.mock('../../src/lib/api/localLlm',()=>({queryLocalLlm:vi.fn(async()=> 'Assessor stub: no model inference.')}));
+const db=new Database(':memory:');initAccountingSchema(db);setTestDb(db);
+const e=createEntity(db,{name:'Assessor Person',type:'person',currency:'AUD'});
+function bank(currency:string){return createAccount(db,{entity_id:e.id,name:`Test ${currency}`,type:'asset',sub_type:'checking',currency}).account;}
+const aud=bank('AUD'),jpy=bank('JPY');
+recordExpense(db,{entity_id:e.id,payment_account_id:aud.id,amount_cents:2500,date:'2026-09-16',description:'Expense'});
+recordExpense(db,{entity_id:e.id,payment_account_id:jpy.id,amount_cents:1250,date:'2026-09-16',description:'Yen expense'});
+recordIncome(db,{entity_id:e.id,bank_account_id:aud.id,amount_cents:100000,date:'2026-09-16',description:'Salary'});
+let result:any;
+async function query(){const response=await POST(new NextRequest('http://localhost/api/mentor',{method:'POST',body:JSON.stringify({message:'How much did I spend on 2026-09-16?',userContext:{netWorth:987654321,totalAssets:987654321,totalLiabilities:0,currency:'AUD'}})}));result=await response.json();return {status:response.status,...result};}
+it('returns correct separate AUD and JPY totals',async()=>{const r=await query();expect(r.status).toBe(200);expect(r.facts.totals).toEqual({AUD:2500,JPY:1250});expect(r.facts.formattedTotals.JPY).toContain('1,250');});
+it('spending citations reference expense transactions only',async()=>{const r=await query();const expected=db.prepare("SELECT DISTINCT t.id FROM m1_transactions t JOIN m1_journal_entries j ON j.transaction_id=t.id JOIN m1_accounts a ON a.id=j.account_id WHERE a.type='expense' AND t.status='posted'").all().map((x:any)=>x.id).sort();expect(r.facts.transactionIds.sort()).toEqual(expected);});
+it('spending categories exclude salary',async()=>{const r=await query();expect(r.facts.categories.every((c:any)=>c.type==='expense')).toBe(true);});
+it('does not inject stale client wealth as verified financial context',async()=>{await query();const prompt=vi.mocked(queryLocalLlm).mock.calls.at(-1)![0][0].content;expect(prompt).not.toContain('987,654,321');});
+afterAll(()=>{fs.writeFileSync('samples/batch-b-recheck-2026-09-17/mentor-probe.json',JSON.stringify({result,prompt:vi.mocked(queryLocalLlm).mock.calls.at(-1)?.[0][0].content},null,2));setTestDb(null);db.close();});
+

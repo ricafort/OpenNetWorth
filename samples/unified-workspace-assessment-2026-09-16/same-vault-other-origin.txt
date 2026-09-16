@@ -1,0 +1,162 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - text: Dashboard
+  - link "Accounting":
+    - /url: /accounting
+    - text: Accounting
+  - link "Assets":
+    - /url: /assets
+    - text: Assets
+  - link "Liabilities":
+    - /url: /liabilities
+    - text: Liabilities
+  - link "Goals":
+    - /url: /goals
+    - text: Goals
+  - link "Cash Flow":
+    - /url: /cashflow
+    - text: Cash Flow
+  - link "Growth Engine":
+    - /url: /portfolio
+    - text: Growth Engine
+  - link "Freedom":
+    - /url: /freedom
+    - text: Freedom
+  - link "Mentors":
+    - /url: /mentors
+    - text: Mentors
+  - link "Privacy":
+    - /url: /privacy
+    - text: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Sovereign Accounting Engine" [level=1]
+  - generic: Ledger Active
+  - paragraph: Local-first, double-entry financial ledger with exact minor-unit integer cents arithmetic. No floating-point rounding errors, no untraced balances.
+  - combobox:
+    - option "Overview - Everything" [selected]
+    - option "TEST Morgan (person)"
+    - option "TEST Morgan Business (business)"
+  - button "Daily Events & Ledger":
+    - generic: Daily Events & Ledger
+  - button "Accounts & Balances":
+    - generic: Accounts & Balances
+  - button "Reports & Traceability":
+    - generic: Reports & Traceability
+  - button "Document Inbox & Imports":
+    - generic: Document Inbox & Imports
+  - heading "Daily Financial Events" [level=2]
+  - paragraph: Strict double-entry journal with exact cents arithmetic
+  - textbox: 2026-09-01
+  - generic: to
+  - textbox: 2026-09-16
+  - button "Refresh":
+  - button "Record Event":
+    - generic: Record Event
+  - heading "Double-Entry Journal Ledger" [level=3]
+  - paragraph: Every event has balanced debit and credit legs summing to $0.00
+  - generic: 12 entries
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Morgan
+  - generic: Loan Instalment Payment
+  - generic: A$125.00
+  - generic: 4 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Morgan
+  - generic: Credit Card Bill Repayment
+  - generic: A$50.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Morgan
+  - generic: Internal Account Transfer
+  - generic: A$100.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Morgan
+  - text: Income - TEST Personal Employer
+  - generic: — TEST Personal Employer
+  - generic: A$1,000.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Morgan
+  - text: Expense - TEST Personal Grocer
+  - generic: — TEST Personal Grocer
+  - generic: A$22.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (opening_balance)
+  - generic: TEST Morgan
+  - generic: Opening Balance - TEST AUD Everyday
+  - generic: A$1,000.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Morgan Business
+  - text: Income - TEST Employer
+  - generic: — TEST Employer
+  - generic: $1,000.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Morgan Business
+  - text: TEST personal expense draft
+  - generic: — TEST Grocer
+  - generic: $22.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (opening_balance)
+  - generic: TEST Morgan
+  - generic: Opening Balance - TEST Home
+  - generic: A$300,000.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (opening_balance)
+  - generic: TEST Morgan
+  - generic: Opening Balance - TEST Mortgage
+  - generic: A$200,000.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (opening_balance)
+  - generic: TEST Morgan
+  - generic: Opening Balance - TEST Card
+  - generic: A$300.00
+  - generic: 2 legs
+  - button "Auditable Void":
+  - generic: posted
+  - generic: (opening_balance)
+  - generic: TEST Morgan
+  - generic: Opening Balance - TEST Savings
+  - generic: A$500.00
+  - generic: 2 legs
+  - button "Auditable Void":
+- button "Open Next.js Dev Tools":
+- alert

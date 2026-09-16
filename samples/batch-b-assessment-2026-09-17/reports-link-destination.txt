@@ -1,0 +1,201 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Your finances" [level=1]
+  - paragraph: See your personal and business finances together.
+  - generic: "Viewing:"
+  - combobox:
+    - option "All my finances" [selected]
+    - option "TEST Alex (Personal)"
+    - option "TEST Alex Business (Business)"
+  - button "Transactions":
+    - generic: Transactions
+  - button "Accounts":
+    - generic: Accounts
+  - button "Reports":
+    - generic: Reports
+  - button "Documents":
+    - generic: Documents
+  - generic: "Date range:"
+  - textbox: 2026-09-01
+  - generic: to
+  - textbox: 2026-09-17
+  - button "Refresh transactions":
+  - button "Add transaction":
+    - generic: Add transaction
+  - heading "Transactions" [level=3]
+  - generic: Showing 7 of 7 transactions
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Home
+  - text: Valuation Adjustment - TEST Home (Professional Appraisal)
+  - generic: — Professional Appraisal
+  - generic: +A$10,000.00
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (opening_balance)
+  - generic: TEST Alex
+  - generic: TEST Today Balance
+  - generic: Opening Balance - TEST Today Balance
+  - generic: +A$100.12
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - generic: Loan Instalment Payment
+  - generic: "-A$125.00"
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - generic: Credit Card Bill Repayment
+  - generic: "-A$50.00"
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - generic: Internal Account Transfer
+  - generic: "-A$100.00"
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: posted
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - text: Income - TEST Employer
+  - generic: — TEST Employer
+  - generic: +A$1,000.00
+  - button "Accounting details"
+  - button "Void transaction":
+  - generic: 2026-09-16
+  - generic: void
+  - generic: (manual)
+  - generic: TEST Alex
+  - generic: TEST Everyday
+  - text: Preserve this note
+  - generic: — Officeworks TEST
+  - generic: "-A$22.00"
+  - button "Accounting details"
+  - heading "Unresolved Drafts (3)" [level=4]
+  - generic: Action Required
+  - text: Only description changed via API
+  - generic: — TEST AUD 12.34 edited
+  - generic: 2026-09-17
+  - generic: •
+  - text: "Business:"
+  - strong: TEST Alex Business
+  - generic: •
+  - text: "Payer:"
+  - strong: TEST Alex
+  - generic: •
+  - text: "Account:"
+  - strong: TEST Everyday
+  - generic: •
+  - generic: "Reimbursement: not_sure"
+  - generic: Amount Unspecified
+  - button "Edit"
+  - generic: •
+  - button "Discard"
+  - text: JPY 500 browser edit preserves source references
+  - generic: — TEST correct JPY500
+  - generic: 2026-09-16
+  - generic: •
+  - text: "Business:"
+  - strong: TEST Alex Business
+  - generic: •
+  - text: "Payer:"
+  - strong: TEST Alex
+  - generic: •
+  - text: "Account:"
+  - strong: TEST Yen
+  - generic: •
+  - generic: "Reimbursement: yes"
+  - generic: ¥500
+  - button "Edit"
+  - generic: •
+  - button "Discard"
+  - text: Personally paid business expense
+  - generic: — TEST JPY draft
+  - generic: 2026-09-16
+  - generic: •
+  - text: "Business:"
+  - strong: TEST Alex Business
+  - generic: •
+  - text: "Payer:"
+  - strong: TEST Alex
+  - generic: •
+  - text: "Account:"
+  - strong: TEST Yen
+  - generic: •
+  - generic: "Reimbursement: not_sure"
+  - generic: $500.00
+  - button "Edit"
+  - generic: •
+  - button "Discard"
+  - paragraph: These drafts do not affect your posted balances. Cross-entity automation (Owner's Draw / Due To) will be available in a future update to resolve these correctly.
+- button "Open Next.js Dev Tools":
+- alert

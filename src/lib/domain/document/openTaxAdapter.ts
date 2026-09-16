@@ -184,7 +184,10 @@ export async function extractInvoiceFromPdf(source: string | Buffer): Promise<Ex
         const rawResult = JSON.parse(stdout);
 
         // Preserve extracted currency without fallback (Fix 1)
-        const currency: CurrencyCode | null = rawResult.currency ? (rawResult.currency.toUpperCase() as CurrencyCode) : null;
+        let currency: CurrencyCode | null = rawResult.currency ? (rawResult.currency.toUpperCase() as CurrencyCode) : null;
+        if (currency && CURRENCY_DECIMALS[currency] === undefined) {
+            currency = null; // Ignore invalid currency strings like "DUE"
+        }
         const totalCents = toMinorUnits(rawResult.total_amount, currency);
         const taxCents = toMinorUnits(rawResult.gst_amount, currency);
         const netCents = toMinorUnits(rawResult.subtotal, currency);
@@ -227,10 +230,15 @@ export async function extractInvoiceFromPdf(source: string | Buffer): Promise<Ex
             }))
             : [];
 
+        let supplierName = rawResult.supplier_name || null;
+        if (supplierName && (supplierName.toUpperCase().includes('TAX INVOICE') || supplierName.toUpperCase().includes('RECEIPT') || supplierName.toUpperCase().includes('STATEMENT') || supplierName.toUpperCase().includes('SYNTHETIC SAMPLE'))) {
+            supplierName = null; // Reject common banner text masquerading as supplier name
+        }
+
         return {
             supported: Boolean(rawResult.supported),
             layout_name: rawResult.layout,
-            supplier_name: rawResult.supplier_name || null,
+            supplier_name: supplierName,
             invoice_number: rawResult.invoice_number || null,
             date: rawResult.date || null,
             currency,

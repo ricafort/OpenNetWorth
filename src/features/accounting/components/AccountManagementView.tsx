@@ -16,14 +16,35 @@
  */
 
 'use client';
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Wallet, CreditCard, Shield, AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
-import { Account, AccountSubType, AccountType, CurrencyCode, Entity, parseToCents } from '@/lib/domain/accounting/types';
+import { Account, AccountSubType, AccountType, CurrencyCode, Entity, formatMoney, parseToCents } from '@/lib/domain/accounting/types';
+
+/**
+ * Format entity types into user-friendly labels without losing trust/household distinctions.
+ * Why this exists:
+ * Presents clean, human-understandable labels (Personal, Household, Business, Trust)
+ * across the UI while preserving domain integrity.
+ */
+const getOwnerTypeLabel = (type: string) => {
+    switch (type) {
+        case 'person':
+            return 'Personal';
+        case 'household':
+            return 'Household';
+        case 'business':
+            return 'Business';
+        case 'trust':
+            return 'Trust';
+        default:
+            return type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Owner';
+    }
+};
 
 interface AccountWithBalance extends Account {
     balance_cents: number;
     formatted_balance: string;
+    as_of_date?: string;
 }
 
 interface NetWorthSummary {
@@ -33,9 +54,7 @@ interface NetWorthSummary {
     total_liabilities_cents_by_currency: Record<string, number>;
 }
 
-export const AccountManagementView: React.FC = () => {
-    const [entities, setEntities] = useState<Entity[]>([]);
-    const [selectedEntityId, setSelectedEntityId] = useState<string>('');
+export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntityId: string }> = ({ entities, selectedEntityId }) => {
     const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
     const [netWorth, setNetWorth] = useState<NetWorthSummary | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -45,49 +64,77 @@ export const AccountManagementView: React.FC = () => {
 
     // Form fields
     const [formName, setFormName] = useState('');
+    const [formEntityId, setFormEntityId] = useState('');
     const [formType, setFormType] = useState<AccountType>('asset');
     const [formSubType, setFormSubType] = useState<AccountSubType>('checking');
     const [formCurrency, setFormCurrency] = useState<CurrencyCode>('USD');
     const [formOpeningAmount, setFormOpeningAmount] = useState('');
-    const [formOpeningDate, setFormOpeningDate] = useState(new Date().toISOString().split('T')[0]);
+    const getLocalIsoDate = () => {
+        const d = new Date();
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().split('T')[0];
+    };
+
+    const [formOpeningDate, setFormOpeningDate] = useState(getLocalIsoDate);
     const [formInstitution, setFormInstitution] = useState('');
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isModalOpen) {
+                setIsModalOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isModalOpen]);
+
+    const handleOpenModal = () => {
+        if (selectedEntityId && selectedEntityId !== 'all') {
+            setFormEntityId(selectedEntityId);
+            const ent = entities.find(e => e.id === selectedEntityId);
+            if (ent?.currency) setFormCurrency(ent.currency as CurrencyCode);
+        } else {
+            setFormEntityId('');
+        }
+        setError(null);
+        setIsModalOpen(true);
+    };
 
     const fetchData = async (entityId?: string) => {
         setIsLoading(true);
         setError(null);
         try {
-            const url = entityId ? `/api/accounting?entity_id=${entityId}` : '/api/accounting';
-            const res = await fetch(url);
+            const localDate = getLocalIsoDate();
+            const params = new URLSearchParams({ as_of_date: localDate });
+            if (entityId && entityId !== 'all') {
+                params.set('entity_id', entityId);
+            }
+            const res = await fetch(`/api/accounting?${params.toString()}`);
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.error || 'Failed to load accounting data');
             }
             const data = await res.json();
-            if (data.entities && data.entities.length > 0) {
-                setEntities(data.entities);
-                if (!selectedEntityId && !entityId) {
-                    setSelectedEntityId(data.entities[0].id);
-                    // Fetch for first entity
-                    fetchData(data.entities[0].id);
-                    return;
-                }
-            }
             if (data.accounts) {
                 setAccounts(data.accounts);
             }
-            if (data.net_worth) {
+            // Clear stale single-entity net worth if in 'all' view or on null response (Clarification 1)
+            if (entityId === 'all' || !data.net_worth) {
+                setNetWorth(null);
+            } else {
                 setNetWorth(data.net_worth);
             }
         } catch (err: any) {
             console.error('Fetch error:', err);
             setError(err.message || 'Failed to connect to local accounting database');
+            setNetWorth(null);
         } finally {
             setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchData(selectedEntityId || undefined);
+        if (selectedEntityId) fetchData(selectedEntityId);
     }, [selectedEntityId]);
 
     const handleCreateAccount = async (e: React.FormEvent) => {
@@ -98,6 +145,11 @@ export const AccountManagementView: React.FC = () => {
         setIsSubmitting(true);
 
         try {
+            const concreteEntityId = selectedEntityId === 'all' ? formEntityId : selectedEntityId;
+            if (!concreteEntityId || concreteEntityId === 'all') {
+                throw new Error('Please select an owner entity for this account.');
+            }
+
             let openingCents: number | null = null;
             if (formOpeningAmount && formOpeningAmount.trim() !== '') {
                 openingCents = parseToCents(formOpeningAmount, formCurrency);
@@ -106,7 +158,7 @@ export const AccountManagementView: React.FC = () => {
             const payload = {
                 action: 'create_account',
                 account: {
-                    entity_id: selectedEntityId,
+                    entity_id: concreteEntityId,
                     name: formName,
                     type: formType,
                     sub_type: formSubType,
@@ -155,19 +207,19 @@ export const AccountManagementView: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                         <Wallet className="w-6 h-6 text-primary" />
-                        Financial Accounts & Ledger
+                        Accounts
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Sovereign, double-entry accounts with exact minor-unit arithmetic and verified opening balances.
+                        Track everything you own and owe in one place.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => setIsModalOpen(true)}
+                        onClick={handleOpenModal}
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition shadow-sm text-sm"
                     >
                         <Plus className="w-4 h-4" />
-                        Add Account
+                        Add account
                     </button>
                     <button
                         onClick={() => fetchData(selectedEntityId)}
@@ -181,19 +233,22 @@ export const AccountManagementView: React.FC = () => {
             </div>
 
             {/* Net Worth Summary Cards */}
-            {netWorth && Object.keys(netWorth.formatted_net_worth_by_currency).length > 0 && (
+            {netWorth && Object.keys(netWorth.formatted_net_worth_by_currency || {}).length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {Object.keys(netWorth.formatted_net_worth_by_currency).map(currency => (
                         <div key={currency} className="bg-card border border-border p-5 rounded-xl">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                 Net Worth ({currency})
                             </span>
+                            <div className="text-xs text-muted-foreground mb-1">
+                                What you own minus what you owe
+                            </div>
                             <div className="text-2xl font-bold mt-1 text-foreground">
                                 {netWorth.formatted_net_worth_by_currency[currency]}
                             </div>
                             <div className="text-xs text-muted-foreground mt-2 flex justify-between">
-                                <span>Assets: ${(netWorth.total_assets_cents_by_currency[currency] / 100).toLocaleString()}</span>
-                                <span>Debt: ${(netWorth.total_liabilities_cents_by_currency[currency] / 100).toLocaleString()}</span>
+                                <span>Assets: {formatMoney({ amount_cents: netWorth.total_assets_cents_by_currency?.[currency] ?? 0, currency: currency as CurrencyCode })}</span>
+                                <span>Debt: {formatMoney({ amount_cents: netWorth.total_liabilities_cents_by_currency?.[currency] ?? 0, currency: currency as CurrencyCode })}</span>
                             </div>
                         </div>
                     ))}
@@ -218,7 +273,7 @@ export const AccountManagementView: React.FC = () => {
                     <div className="flex items-center justify-between pb-2 border-b border-border">
                         <h2 className="text-lg font-semibold flex items-center gap-2">
                             <Shield className="w-4 h-4 text-emerald-500" />
-                            Assets (What You Own)
+                            What you own
                         </h2>
                         <span className="text-xs text-muted-foreground font-mono">{assetAccounts.length} accounts</span>
                     </div>
@@ -229,22 +284,32 @@ export const AccountManagementView: React.FC = () => {
                         </div>
                     )}
 
-                    {assetAccounts.map(acc => (
-                        <div key={acc.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between hover:border-primary/50 transition">
-                            <div>
-                                <div className="font-medium text-foreground">{acc.name}</div>
-                                <div className="text-xs text-muted-foreground capitalize mt-0.5">
-                                    {acc.sub_type.replace('_', ' ')} {acc.institution ? `• ${acc.institution}` : ''}
+                    {assetAccounts.map(acc => {
+                        const owner = entities.find(e => e.id === acc.entity_id);
+                        return (
+                            <div key={acc.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between hover:border-primary/50 transition">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-medium text-foreground">{acc.name}</span>
+                                        {owner && selectedEntityId === 'all' && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold uppercase">
+                                                {owner.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground capitalize mt-0.5">
+                                        {acc.sub_type.replace('_', ' ')} {acc.institution ? `• ${acc.institution}` : ''}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="font-semibold text-foreground font-mono">{acc.formatted_balance}</div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                        As of {acc.as_of_date || acc.opening_date || getLocalIsoDate()}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <div className="font-semibold text-foreground font-mono">{acc.formatted_balance}</div>
-                                {acc.opening_date && (
-                                    <div className="text-[10px] text-muted-foreground">As of {acc.opening_date}</div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {/* Liabilities Column */}
@@ -252,7 +317,7 @@ export const AccountManagementView: React.FC = () => {
                     <div className="flex items-center justify-between pb-2 border-b border-border">
                         <h2 className="text-lg font-semibold flex items-center gap-2">
                             <CreditCard className="w-4 h-4 text-rose-500" />
-                            Liabilities (What You Owe)
+                            What you owe
                         </h2>
                         <span className="text-xs text-muted-foreground font-mono">{liabilityAccounts.length} accounts</span>
                     </div>
@@ -263,22 +328,32 @@ export const AccountManagementView: React.FC = () => {
                         </div>
                     )}
 
-                    {liabilityAccounts.map(acc => (
-                        <div key={acc.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between hover:border-primary/50 transition">
-                            <div>
-                                <div className="font-medium text-foreground">{acc.name}</div>
-                                <div className="text-xs text-muted-foreground capitalize mt-0.5">
-                                    {acc.sub_type.replace('_', ' ')} {acc.institution ? `• ${acc.institution}` : ''}
+                    {liabilityAccounts.map(acc => {
+                        const owner = entities.find(e => e.id === acc.entity_id);
+                        return (
+                            <div key={acc.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between hover:border-primary/50 transition">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-medium text-foreground">{acc.name}</span>
+                                        {owner && selectedEntityId === 'all' && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold uppercase">
+                                                {owner.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground capitalize mt-0.5">
+                                        {acc.sub_type.replace('_', ' ')} {acc.institution ? `• ${acc.institution}` : ''}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="font-semibold text-rose-500 font-mono">{acc.formatted_balance}</div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                        As of {acc.as_of_date || acc.opening_date || getLocalIsoDate()}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <div className="font-semibold text-rose-500 font-mono">{acc.formatted_balance}</div>
-                                {acc.opening_date && (
-                                    <div className="text-[10px] text-muted-foreground">As of {acc.opening_date}</div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
@@ -289,12 +364,13 @@ export const AccountManagementView: React.FC = () => {
                         {/* Modal Header */}
                         <div className="p-6 border-b border-border flex justify-between items-center bg-card">
                             <div>
-                                <h3 className="text-lg font-bold text-foreground">Create Financial Account</h3>
+                                <h3 className="text-lg font-bold text-foreground">Add an account</h3>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                    Establishes an account and posts balanced opening balance entries.
+                                    Add a bank account, credit card, loan or investment.
                                 </p>
                             </div>
                             <button
+                                aria-label="Close dialog"
                                 onClick={() => !isSubmitting && setIsModalOpen(false)}
                                 className="text-muted-foreground hover:text-foreground transition p-1"
                             >
@@ -310,6 +386,41 @@ export const AccountManagementView: React.FC = () => {
                                     <span>{error}</span>
                                 </div>
                             )}
+
+                            {/* Account Owner Selection (Clarification 2) */}
+                            <div>
+                                <label className="block text-xs font-semibold text-foreground mb-1">
+                                    Who owns this account? *
+                                </label>
+                                {selectedEntityId !== 'all' ? (
+                                    <div className="px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm flex items-center justify-between">
+                                        <span className="font-medium text-foreground">
+                                            {entities.find(e => e.id === selectedEntityId)?.name || 'Selected Entity'}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground uppercase font-semibold">
+                                            {getOwnerTypeLabel(entities.find(e => e.id === selectedEntityId)?.type || 'person')} • {entities.find(e => e.id === selectedEntityId)?.currency}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <select
+                                        required
+                                        value={formEntityId}
+                                        onChange={e => {
+                                            setFormEntityId(e.target.value);
+                                            const ent = entities.find(item => item.id === e.target.value);
+                                            if (ent?.currency) setFormCurrency(ent.currency as CurrencyCode);
+                                        }}
+                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                        <option value="">-- Select Owner (Required) --</option>
+                                        {entities.map(ent => (
+                                            <option key={ent.id} value={ent.id}>
+                                                {ent.name} ({getOwnerTypeLabel(ent.type)} • {ent.currency})
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
 
                             {/* Account Name */}
                             <div>
@@ -436,7 +547,7 @@ export const AccountManagementView: React.FC = () => {
                                     </div>
                                 </div>
                                 <p className="text-[10px] text-muted-foreground">
-                                    Creates balanced double-entry postings with an Opening Balance Equity counterpart (M1-FLOW-01).
+                                    Sets the balance of this account as of this date.
                                 </p>
                             </div>
 
@@ -456,7 +567,7 @@ export const AccountManagementView: React.FC = () => {
                                     className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition flex items-center gap-2"
                                 >
                                     {isSubmitting && <RefreshCw className="w-4 h-4 animate-spin" />}
-                                    {isSubmitting ? 'Saving...' : 'Create Account'}
+                                    {isSubmitting ? 'Saving...' : 'Save account'}
                                 </button>
                             </div>
                         </form>

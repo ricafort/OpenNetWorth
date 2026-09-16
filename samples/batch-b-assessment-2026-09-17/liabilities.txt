@@ -1,0 +1,75 @@
+- generic: OpenNetWorth
+- generic: Local
+- navigation:
+  - link "Dashboard":
+    - /url: /
+    - generic: Dashboard
+  - link "Accounting My finances":
+    - /url: /accounting
+    - generic: Accounting
+    - generic: My finances
+  - link "Assets What I own":
+    - /url: /assets
+    - generic: Assets
+    - generic: What I own
+  - link "Liabilities What I owe":
+    - /url: /liabilities
+    - generic: Liabilities
+    - generic: What I owe
+  - link "Goals":
+    - /url: /goals
+    - generic: Goals
+  - link "Cash Flow Money in & out":
+    - /url: /cashflow
+    - generic: Cash Flow
+    - generic: Money in & out
+  - link "Growth Engine Investments":
+    - /url: /portfolio
+    - generic: Growth Engine
+    - generic: Investments
+  - link "Freedom Debt payoff":
+    - /url: /freedom
+    - generic: Freedom
+    - generic: Debt payoff
+  - link "Mentors AI Assistant":
+    - /url: /mentors
+    - generic: Mentors
+    - generic: AI Assistant
+  - link "Privacy":
+    - /url: /privacy
+    - generic: Privacy
+- generic: "ON"
+- paragraph: Local Vault Owner
+- paragraph: 🔒 100% On-Device
+- link "Backup / Restore Vault":
+  - /url: /privacy
+  - text: Backup / Restore Vault
+- button "Light Mode":
+- button "Stealth Mode":
+- button "System Theme":
+- button "Blur Values":
+  - text: Blur Values
+- generic: v 1.0.0
+- main:
+  - heading "Your Liabilities" [level=2]
+  - paragraph: Track your debts and leverage profile.
+  - button "Add Liability":
+    - text: Add Liability
+  - table:
+    - rowgroup:
+      - row "Name Type Balance Rate Actions":
+        - columnheader "Name"
+        - columnheader "Type"
+        - columnheader "Balance"
+        - columnheader "Rate"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "No liabilities found. Good job!":
+        - cell "No liabilities found. Good job!"
+    - rowgroup:
+      - row "Total Liabilities $0":
+        - cell "Total Liabilities"
+        - cell "$0"
+        - cell
+- button "Open Next.js Dev Tools":
+- alert

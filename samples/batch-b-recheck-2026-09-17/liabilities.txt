@@ -1,0 +1,61 @@
+Browser tab: 5, Title: "Liabilities | OpenNetWorth", URL: "http://localhost:4007/liabilities".
+1 AXWebArea Liabilities | OpenNetWorth, URL: localhost:4007/liabilities
+	2 container
+		3 text OpenNetWorth LOCAL
+		4 container
+			5 link Description: Dashboard, Value: localhost:4007/
+			6 link Description: Accounting My finances, Value: localhost:4007/accounting
+			7 link Description: Assets What I own, Value: localhost:4007/assets
+			8 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			9 link Description: Goals, Value: localhost:4007/goals
+			10 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			11 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			12 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			13 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			14 link Description: Privacy, Value: localhost:4007/privacy
+		15 text ON Local Vault Owner 🔒 100% On-Device
+		16 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		17 button Light Mode
+		18 button Stealth Mode
+		19 button System Theme
+		20 button Blur Values
+		21 text v 1.0.0
+	22 container
+		401 heading Your Liabilities, Value: 2
+			402 text Your Liabilities
+		403 text Track your debts and leverage profile.
+		404 button Add Liability
+		405 table
+			406 row
+				407 cell
+					408 text NAME
+				409 cell
+					410 text TYPE
+				411 cell
+					412 text BALANCE
+				413 cell
+					414 text RATE
+				415 cell
+					416 text ACTIONS
+			417 row
+				418 cell
+					419 text TEST Legacy Personal Loan
+				420 cell
+					421 text Personal Loan
+				422 cell
+					423 text $649
+				424 cell
+					425 text 10%
+				426 cell
+					427 button Description: Edit liability TEST Legacy Personal Loan, Help: Edit TEST Legacy Personal Loan
+					428 button Description: Delete liability TEST Legacy Personal Loan, Help: Delete TEST Legacy Personal Loan
+			429 row
+				430 cell
+					431 text TOTAL LIABILITIES
+				432 cell
+					433 text $649
+	399 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		400 image
+	434 text Liabilities | OpenNetWorth
+
+The focused UI element is 8 link Description: Liabilities What I owe, URL: localhost:4007/liabilities

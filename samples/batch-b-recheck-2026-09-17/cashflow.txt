@@ -1,0 +1,52 @@
+Browser tab: 5, Title: "Cash Flow | OpenNetWorth", URL: "http://localhost:4007/cashflow".
+1 AXWebArea Cash Flow | OpenNetWorth, URL: localhost:4007/cashflow
+	2 container
+		3 text OpenNetWorth LOCAL
+		4 container
+			5 link Description: Dashboard, Value: localhost:4007/
+			6 link Description: Accounting My finances, Value: localhost:4007/accounting
+			7 link Description: Assets What I own, Value: localhost:4007/assets
+			8 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			9 link Description: Goals, Value: localhost:4007/goals
+			10 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			11 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			12 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			13 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			14 link Description: Privacy, Value: localhost:4007/privacy
+		15 text ON Local Vault Owner 🔒 100% On-Device
+		16 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		17 button Light Mode
+		18 button Stealth Mode
+		19 button System Theme
+		20 button Blur Values
+		21 text v 1.0.0
+	22 container
+		435 heading Cash Flow, Value: 2
+			436 text Cash Flow
+		437 text Master your inflows and outflows.
+		438 button History
+		439 button Autopilot
+		440 button Log Month
+		441 text Income $0 Expenses $0 Net Savings + $0 0.0 % Rate
+		442 heading Monthly Trends, Value: 3
+			443 text Monthly Trends
+		444 container
+		445 heading History, Value: 3
+			446 text History
+		447 table
+			448 row
+				449 cell
+					450 text Month
+				451 cell
+					452 text Income
+				453 cell
+					454 text Expenses
+				455 cell
+					456 text Net
+				457 cell
+					458 text Actions
+	399 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		400 image
+	434 text Cash Flow | OpenNetWorth
+
+The focused UI element is 10 link Description: Cash Flow Money in & out, URL: localhost:4007/cashflow
