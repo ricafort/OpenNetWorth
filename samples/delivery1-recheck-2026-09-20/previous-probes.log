@@ -1,0 +1,19 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+stderr | samples/delivery1-recheck-2026-09-20/previous-probes.test.ts > P14 vault rejects observation whose currency differs from account
+Vault POST Error: ValidationError: Balance observation "e7f7a678-3242-4142-87d7-3f7f638bd9f0" currency "JPY" does not match account currency "AUD"
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:749:31)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/samples/delivery1-recheck-2026-09-20/previous-probes.test.ts:29:277
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+ ✓ samples/delivery1-recheck-2026-09-20/previous-probes.test.ts (19 tests) 72ms
+
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+   Start at  18:19:23
+   Duration  493ms (transform 156ms, setup 0ms, import 236ms, tests 72ms, environment 0ms)
+

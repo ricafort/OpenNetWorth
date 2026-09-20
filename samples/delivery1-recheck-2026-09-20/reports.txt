@@ -1,0 +1,196 @@
+Browser tab: 2, Title: "Accounting Engine | OpenNetWorth", URL: "http://localhost:4007/accounting".
+0 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4007/accounting
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 container
+			4 link Description: Dashboard, Value: localhost:4007/
+			5 link Description: Accounting My finances, Value: localhost:4007/accounting
+			6 link Description: Assets What I own, Value: localhost:4007/assets
+			7 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			8 link Description: Goals, Value: localhost:4007/goals
+			9 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			10 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			11 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			12 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			13 link Description: Privacy, Value: localhost:4007/privacy
+		14 text ON Local Vault Owner 🔒 100% On-Device
+		15 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		16 button Light Mode
+		17 button Stealth Mode
+		18 button System Theme
+		19 button Blur Values
+		20 text v 1.0.0
+	21 container
+		88 heading Your finances, Value: 1
+			89 text Your finances
+		90 text See your personal and business finances together. Viewing:
+		91 pop up button (collapsed, settable) Value: All my finances, Secondary Actions: Expand
+			92 menu
+				93 (selected) All my finances
+				94 container Filtered Views
+					95 Assessor Business (Business)
+					96 Assessor Household (Household)
+		97 button Transactions
+		98 button Accounts
+		99 button Reports
+		100 button Documents
+		125 text ACCOUNTING SCOPE
+		126 pop up button (collapsed, settable) Value: Individual Entity (Ownership Share %), Secondary Actions: Expand
+			127 menu
+				128 (selected) Individual Entity (Ownership Share %)
+				129 Household Unit (100% De-duplicated)
+		130 text AS OF VALUATION DATE
+		131 date field (settable) 2026-09-20
+			132 container
+				133 stepper
+				134 stepper
+				135 stepper
+			136 pop up button Show date picker
+		137 text PERIOD START / END
+		138 date field (settable)
+			139 container
+				140 stepper
+				141 stepper
+				142 stepper
+			143 pop up button Show date picker
+		144 text to
+		145 date field (settable)
+			146 container
+				147 stepper
+				148 stepper
+				149 stepper
+			150 pop up button Show date picker
+		151 button Revalue Asset
+		152 button Exchange Rates
+		153 button Refresh All Reports
+		154 button Your finances by owner
+		155 button Cash Flow vs Accrual Performance
+		156 button Ledger Drill-Down & Evidence Links
+		157 text Your finances by owner — Overview Cross-entity consolidation is deferred to prevent commingling sovereign entities (individuals, companies, trusts) without certified exchange rates and inter-entity eliminations. Review each component owner's assets, liabilities, and accounts below, or select an entity to open its dedicated consolidated report.
+		158 heading Assessor Business, Value: 4
+			159 text Assessor Business
+		160 text BUSINESS Sovereign Currency:  AUD Balance as of  2026-09-20  ·  1  active account
+		161 button View Assessor Business's Report
+			162 text View 
+			163 text Assessor Business
+			164 text 's Report
+		165 text NET WORTH ( AUD ) AUD What you own minus what you owe A$0.00 Assets:  A$0.00 Liab:  A$0.00
+		166 table
+			167 row
+				168 cell
+					169 text ACCOUNT
+				170 cell
+					171 text TYPE / CATEGORY
+				172 cell
+					173 text CURRENCY
+				174 cell
+					175 text BALANCE
+				176 cell
+					177 text AS OF DATE
+				178 cell
+					179 text ACTION
+			180 row
+				181 cell
+					182 text Assessor Everyday
+				183 cell
+					184 text Asset  ·  Checking
+				185 cell
+					186 text AUD
+				187 cell
+					188 text A$500.00
+				189 cell
+					190 text 2026-09-19
+				191 cell
+					192 button Drill down to Ledger
+		193 heading Assessor Household, Value: 4
+			194 text Assessor Household
+		195 text HOUSEHOLD Sovereign Currency:  AUD Balance as of  2026-09-20  ·  5  active account s
+		196 button View Assessor Household's Report
+			197 text View 
+			198 text Assessor Household
+			199 text 's Report
+		200 text NET WORTH ( AUD ) AUD What you own minus what you owe A$0.00 Assets:  A$0.00 Liab:  A$0.00 NET WORTH ( JPY ) JPY What you own minus what you owe ¥0 Assets:  ¥0 Liab:  ¥0
+		201 table
+			202 row
+				203 cell
+					204 text ACCOUNT
+				205 cell
+					206 text TYPE / CATEGORY
+				207 cell
+					208 text CURRENCY
+				209 cell
+					210 text BALANCE
+				211 cell
+					212 text AS OF DATE
+				213 cell
+					214 text ACTION
+			215 row
+				216 cell
+					217 text Assessor Everyday
+				218 cell
+					219 text Asset  ·  Checking
+				220 cell
+					221 text AUD
+				222 cell
+					223 text A$0.00
+				224 cell
+					225 text 2026-09-20
+				226 cell
+					227 button Drill down to Ledger
+			228 row
+				229 cell
+					230 text Assessor Super
+				231 cell
+					232 text Asset  ·  Brokerage
+				233 cell
+					234 text AUD
+				235 cell
+					236 text A$130,000.00
+				237 cell
+					238 text 2026-09-20
+				239 cell
+					240 button Drill down to Ledger
+			241 row
+				242 cell
+					243 text Awaiting Balance
+				244 cell
+					245 text Asset  ·  Savings
+				246 cell
+					247 text AUD
+				248 cell
+					249 text A$0.00
+				250 cell
+					251 text 2026-09-20
+				252 cell
+					253 button Drill down to Ledger
+			254 row
+				255 cell
+					256 text Tokyo Savings
+				257 cell
+					258 text Asset  ·  Savings
+				259 cell
+					260 text JPY
+				261 cell
+					262 text ¥150,000
+				263 cell
+					264 text 2026-09-20
+				265 cell
+					266 button Drill down to Ledger
+			267 row
+				268 cell
+					269 text Assessor Card
+				270 cell
+					271 text Liability  ·  Credit_card
+				272 cell
+					273 text AUD
+				274 cell
+					275 text -A$50.00
+				276 cell
+					277 text 2026-09-20
+				278 cell
+					279 button Drill down to Ledger
+	86 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		87 image
+	124 text Accounting Engine | OpenNetWorth
+
+The focused UI element is 99 button Reports

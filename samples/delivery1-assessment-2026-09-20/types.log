@@ -1,0 +1,30 @@
+src/app/api/accounting/balances/route.ts(66,15): error TS7034: Variable 'savedObservations' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/app/api/accounting/balances/route.ts(105,20): error TS7005: Variable 'savedObservations' implicitly has an 'any[]' type.
+src/features/dashboard/widgets/StatNetWorthWidget.tsx(25,68): error TS2339: Property 'accounts' does not exist on type 'SharedFinancialSummary'.
+src/features/sync/components/AccountFreshnessCard.tsx(40,31): error TS2339: Property 'accounts' does not exist on type 'SharedFinancialSummary'.
+src/features/sync/components/AccountFreshnessCard.tsx(45,43): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/features/sync/components/AccountFreshnessCard.tsx(51,43): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/features/sync/components/AccountFreshnessCard.tsx(52,40): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/features/sync/components/AccountFreshnessCard.tsx(53,47): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/lib/domain/accounting/accountService.ts(173,13): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/accountService.ts(194,9): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/accountService.ts(285,13): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/accountService.ts(412,9): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/accountService.ts(439,9): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/balance_updates_delivery1.test.ts(88,17): error TS2322: Type '"superannuation"' is not assignable to type 'AccountSubType'.
+src/lib/domain/accounting/balance_updates_delivery1.test.ts(175,17): error TS2353: Object literal may only specify known properties, and 'entity_id' does not exist in type 'PostTransactionInput'.
+src/lib/domain/accounting/balance_updates_delivery1.test.ts(195,17): error TS2353: Object literal may only specify known properties, and 'entity_id' does not exist in type 'PostTransactionInput'.
+src/lib/domain/accounting/balance_updates_delivery1.test.ts(375,17): error TS2322: Type '"superannuation"' is not assignable to type 'AccountSubType'.
+src/lib/domain/accounting/balance_updates_delivery1.test.ts(528,17): error TS2322: Type '"superannuation"' is not assignable to type 'AccountSubType'.
+src/lib/domain/accounting/migrationMapping.ts(140,9): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/migrationMapping.ts(168,13): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/migrationMapping.ts(229,13): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/slice1b.test.ts(203,32): error TS2339: Property 'revision' does not exist on type 'Account'.
+src/lib/domain/accounting/slice1b.test.ts(208,28): error TS2339: Property 'revision' does not exist on type 'Account'.
+src/lib/domain/accounting/slice1b.test.ts(218,29): error TS2339: Property 'revision' does not exist on type 'Account'.
+src/lib/domain/accounting/transactionService.ts(236,13): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/transactionService.ts(259,9): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/transactionService.ts(294,13): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/transactionService.ts(317,9): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/transactionService.ts(355,13): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.
+src/lib/domain/accounting/transactionService.ts(378,9): error TS2353: Object literal may only specify known properties, and 'revision' does not exist in type 'Account'.

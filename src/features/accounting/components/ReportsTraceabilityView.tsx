@@ -91,7 +91,7 @@ interface ComponentEntityData {
         formatted_net_worth_by_currency: Record<CurrencyCode, string>;
         account_count: number;
     };
-    accounts: Array<Account & { balance_cents: number; formatted_balance: string; as_of_date: string }>;
+    accounts: Array<Account & { balance_cents: number | null; formatted_balance: string; as_of_date: string | null; is_unknown?: boolean }>;
 }
 
 interface ReportsTraceabilityViewProps {
@@ -774,10 +774,16 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                                                 {acc.currency}
                                                             </td>
                                                             <td className="px-3.5 py-2.5 text-right font-extrabold text-slate-900 dark:text-slate-100 font-mono">
-                                                                {acc.formatted_balance || formatMoney({ amount_cents: acc.balance_cents || 0, currency: acc.currency })}
+                                                                {(acc.is_unknown || acc.balance_cents === null) ? (
+                                                                    <span className="text-amber-600 dark:text-amber-400 font-bold italic text-xs">
+                                                                        Unknown (Needs balance)
+                                                                    </span>
+                                                                ) : (
+                                                                    acc.formatted_balance || formatMoney({ amount_cents: acc.balance_cents || 0, currency: acc.currency })
+                                                                )}
                                                             </td>
                                                             <td className="px-3.5 py-2.5 text-center text-slate-500 font-mono text-[11px]">
-                                                                {acc.as_of_date || asOfDate}
+                                                                {(acc.is_unknown || acc.balance_cents === null || !acc.as_of_date) ? '—' : acc.as_of_date}
                                                             </td>
                                                             <td className="px-3.5 py-2.5 text-center">
                                                                 <button

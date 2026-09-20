@@ -57,7 +57,61 @@ import {
 } from '@/lib/domain/accounting/transactionService';
 import { saveDraft, getDrafts, deleteDraft } from '@/lib/domain/accounting/draftService';
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
-import { ScopeType } from '@/lib/domain/accounting/types';
+import { ScopeType, formatMoney, Account } from '@/lib/domain/accounting/types';
+import { getLatestValuationObservation } from '@/lib/domain/accounting/balanceObservationService';
+
+/**
+ * Resolves the effective balance for an account.
+ * Why this exists:
+ * Bridges accounts tracking balances (via dated observations) with accounts tracking
+ * transactions (via double-entry ledger calculation).
+ * Tricky logic:
+ * For balance-tracked accounts ('balance'):
+ * - Returns the latest accepted valuation observation on or before asOfDate.
+ * - Falls back to opening balance if an explicit opening balance was configured.
+ * - CRITICAL: If no accepted observation or opening balance exists, it must NOT fall back to
+ *   a ledger $0.00 balance claiming "as of today" (which misrepresents an unknown balance as verified zero).
+ *   Instead, returns null balance_cents, formatted_balance: 'Unknown (Needs balance)', and null as_of_date.
+ * For transaction-tracked accounts ('transactions'):
+ * - Returns the calculated double-entry ledger balance.
+ * TODO: Support automated balance request triggers when is_unknown is true.
+ */
+function resolveAccountBalance(db: any, acc: Account, asOfDate?: string) {
+    if (acc.tracking_mode === 'balance') {
+        const obs = getLatestValuationObservation(db, acc.id, asOfDate);
+        if (obs) {
+            return {
+                balance_cents: obs.amount_cents,
+                formatted_balance: formatMoney({ amount_cents: obs.amount_cents, currency: acc.currency }),
+                as_of_date: obs.effective_date,
+                is_unknown: false
+            };
+        }
+        if (acc.opening_balance_cents !== undefined && acc.opening_balance_cents !== null) {
+            return {
+                balance_cents: acc.opening_balance_cents,
+                formatted_balance: formatMoney({ amount_cents: acc.opening_balance_cents, currency: acc.currency }),
+                as_of_date: acc.opening_date || null,
+                is_unknown: false
+            };
+        }
+        // Balance-tracked account with NO observation and NO opening balance:
+        // Truthfully report unknown state rather than claiming $0.00 as of today.
+        return {
+            balance_cents: null,
+            formatted_balance: 'Unknown (Needs balance)',
+            as_of_date: null,
+            is_unknown: true
+        };
+    }
+    const ledger = getAccountBalance(db, acc.id, asOfDate);
+    return {
+        balance_cents: ledger.balance_cents,
+        formatted_balance: ledger.formatted_balance,
+        as_of_date: ledger.as_of_date,
+        is_unknown: false
+    };
+}
 
 export async function GET(request: Request) {
     try {
@@ -128,12 +182,13 @@ export async function GET(request: Request) {
                     entity: ent,
                     net_worth: getEntityNetWorth(db, ent.id, asOfDate),
                     accounts: listAccounts(db, ent.id).map(acc => {
-                        const bal = getAccountBalance(db, acc.id, asOfDate);
+                        const bal = resolveAccountBalance(db, acc, asOfDate);
                         return {
                             ...acc,
                             balance_cents: bal.balance_cents,
                             formatted_balance: bal.formatted_balance,
-                            as_of_date: bal.as_of_date
+                            as_of_date: bal.as_of_date,
+                            is_unknown: bal.is_unknown
                         };
                     })
                 }));
@@ -200,12 +255,13 @@ export async function GET(request: Request) {
 
             const accounts = listAccounts(db, entityId);
             const accountsWithBalances = accounts.map(acc => {
-                const bal = getAccountBalance(db, acc.id, asOfDate);
+                const bal = resolveAccountBalance(db, acc, asOfDate);
                 return {
                     ...acc,
                     balance_cents: bal.balance_cents,
                     formatted_balance: bal.formatted_balance,
-                    as_of_date: bal.as_of_date
+                    as_of_date: bal.as_of_date,
+                    is_unknown: bal.is_unknown
                 };
             });
 
@@ -230,12 +286,13 @@ export async function GET(request: Request) {
         // Default: return all entities, accounts, and optional transactions
         const allAccounts = listAccounts(db);
         const accountsWithBalances = allAccounts.map(acc => {
-            const bal = getAccountBalance(db, acc.id, asOfDate);
+            const bal = resolveAccountBalance(db, acc, asOfDate);
             return {
                 ...acc,
                 balance_cents: bal.balance_cents,
                 formatted_balance: bal.formatted_balance,
-                as_of_date: bal.as_of_date
+                as_of_date: bal.as_of_date,
+                is_unknown: bal.is_unknown
             };
         });
 

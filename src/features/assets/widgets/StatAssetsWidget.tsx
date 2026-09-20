@@ -17,11 +17,35 @@ import { formatCurrency } from '@/lib/utils/currencyService';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useHistory } from '@/hooks/useHistory';
+import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
+import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
 
 export default function StatAssetsWidget() {
     const { baseCurrency, assets } = useNetWorth();
     const { isEditMode, hideWidget } = useDashboard();
     const { history } = useHistory();
+    const { summary } = useSharedFinancialSummary();
+
+    // Check if the shared financial summary has authoritative assets for baseCurrency.
+    // Why this exists:
+    // Prevents contradictory zero display when user imports balance observations in non-AUD currencies (e.g. JPY).
+    // Tricky logic:
+    // Divisor is 10^decimals, where decimals is 0 for JPY (divisor 1) and 2 for AUD/USD (divisor 100).
+    // TODO: Support automated FX conversion for consolidated multi-currency asset totals.
+    const trackedCents = summary?.total_assets_cents_by_currency?.[baseCurrency];
+    const decimals = (baseCurrency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[baseCurrency as CurrencyCode] : 2;
+    const divisor = Math.pow(10, decimals);
+    const finalAssets = (trackedCents !== undefined && (summary?.accounts?.length || 0) > 0)
+        ? (trackedCents / divisor)
+        : assets;
+
+    const currencyBuckets = summary?.net_worth_cents_by_currency ? Object.keys(summary.net_worth_cents_by_currency) : [];
+    const hasMultipleCurrencies = currencyBuckets.length > 1;
+    const isFxConverted = summary?.converted_net_worth?.is_complete === true;
+
+    const title = (hasMultipleCurrencies && !isFxConverted)
+        ? `Total Assets (${baseCurrency} Subtotal)`
+        : `Total Assets (${baseCurrency})`;
 
     // Calculate truthful historical comparison only when comparative history exists
     let change: string | undefined = undefined;
@@ -31,7 +55,7 @@ export default function StatAssetsWidget() {
         const previous = history[history.length - 2];
         const prevAssets = previous.totalAssets;
         if (prevAssets && prevAssets !== 0) {
-            const diff = assets - prevAssets;
+            const diff = finalAssets - prevAssets;
             const pct = ((diff / Math.abs(prevAssets)) * 100).toFixed(1);
             change = `${diff >= 0 ? '+' : ''}${pct}%`;
             trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral';
@@ -45,8 +69,8 @@ export default function StatAssetsWidget() {
             onRemove={() => hideWidget('stat-assets')}
         >
             <StatCard
-                title="Total Assets"
-                value={formatCurrency(assets, baseCurrency)}
+                title={title}
+                value={formatCurrency(finalAssets, baseCurrency)}
                 change={change}
                 trend={trend}
                 icon={<DollarSign className="text-emerald-600" size={24} />}

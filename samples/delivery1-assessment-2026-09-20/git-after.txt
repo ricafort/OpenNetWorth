@@ -1,0 +1,15 @@
+ M src/app/api/vault/route.ts
+ M src/app/timemachine/page.tsx
+ M src/features/dashboard/components/DashboardHeader.tsx
+ M src/features/dashboard/components/DashboardPage.tsx
+ M src/features/dashboard/widgets/StatNetWorthWidget.tsx
+ M src/lib/domain/accounting/accountService.ts
+ M src/lib/domain/accounting/schema.ts
+ M src/lib/domain/accounting/types.ts
+?? samples/delivery1-assessment-2026-09-20/
+?? src/app/api/accounting/balances/
+?? src/features/sync/
+?? src/lib/domain/accounting/balanceObservationService.ts
+?? src/lib/domain/accounting/balance_updates_delivery1.test.ts
+?? src/lib/domain/accounting/sharedFinancialSummaryService.ts
+?? src/lib/domain/accounting/structuredBalanceParser.ts

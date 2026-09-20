@@ -71,7 +71,7 @@ export default function TimeMachinePage() {
                                 {/* Vintage Overlay Effect */}
                                 <div
                                     className="pointer-events-none fixed inset-0 z-50 opacity-20 mix-blend-multiply"
-                                    style={{ backgroundImage: "url('https://www.transparenttextures.com/patterns/aged-paper.png')" }}
+                                    style={{ backgroundImage: 'url(' + 'https://www.transparenttextures.com/patterns/aged-paper.png' + ')' }}
                                 />
 
                                 <div className="bg-[#eee8d5] border-2 border-[#d33682] p-4 rounded-xl mb-6 shadow-xl transform -rotate-1">

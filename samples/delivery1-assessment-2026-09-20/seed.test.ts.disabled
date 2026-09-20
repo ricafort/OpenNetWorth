@@ -1,0 +1,3 @@
+import { it } from 'vitest';
+import { main } from './seed';
+it('creates only the isolated assessor fixture', main);

@@ -1,0 +1,132 @@
+{
+  "observations": [
+    {
+      "id": "00891f2b-0fde-41bc-ac04-e6a96000869e",
+      "account_id": "29c5a469-8bdb-4b7d-a215-28a87a617055",
+      "amount_cents": 75000,
+      "currency": "AUD",
+      "balance_kind": "current_balance",
+      "effective_date": "2026-09-19",
+      "effective_time": null,
+      "imported_at": "2026-09-20T08:44:38.746Z",
+      "source_type": "manual",
+      "source_reference": null,
+      "source_batch_id": null,
+      "superseded_by_id": null,
+      "review_status": "accepted",
+      "raw_label": null,
+      "created_at": "2026-09-20T08:44:38.746Z"
+    },
+    {
+      "id": "019486e2-3325-485f-b53b-1c000b2cf88e",
+      "account_id": "7f2ede7a-3d50-4053-9a19-f55d94c6afe4",
+      "amount_cents": 160000,
+      "currency": "JPY",
+      "balance_kind": "current_balance",
+      "effective_date": "2026-09-20",
+      "effective_time": null,
+      "imported_at": "2026-09-20T08:45:49.059Z",
+      "source_type": "table_paste",
+      "source_reference": "row-1-1kdk6v2",
+      "source_batch_id": "batch-77dnx6",
+      "superseded_by_id": null,
+      "review_status": "accepted",
+      "raw_label": null,
+      "created_at": "2026-09-20T08:45:49.059Z"
+    },
+    {
+      "id": "4ea8066f-7e8b-4a1a-af22-808c9cb8c946",
+      "account_id": "964f3b60-3cd9-4a9a-b243-15b7783f7eae",
+      "amount_cents": 12500000,
+      "currency": "AUD",
+      "balance_kind": "current_balance",
+      "effective_date": "2026-09-19",
+      "effective_time": null,
+      "imported_at": "2026-09-20T08:44:38.745Z",
+      "source_type": "manual",
+      "source_reference": null,
+      "source_batch_id": null,
+      "superseded_by_id": null,
+      "review_status": "accepted",
+      "raw_label": null,
+      "created_at": "2026-09-20T08:44:38.745Z"
+    },
+    {
+      "id": "4fb38e6b-9cb8-4988-93ae-7638dfac1626",
+      "account_id": "964f3b60-3cd9-4a9a-b243-15b7783f7eae",
+      "amount_cents": 13000000,
+      "currency": "AUD",
+      "balance_kind": "current_balance",
+      "effective_date": "2026-09-20",
+      "effective_time": null,
+      "imported_at": "2026-09-20T08:45:49.059Z",
+      "source_type": "table_paste",
+      "source_reference": "row-0-1lgwb1l",
+      "source_batch_id": "batch-77dnx6",
+      "superseded_by_id": null,
+      "review_status": "accepted",
+      "raw_label": null,
+      "created_at": "2026-09-20T08:45:49.059Z"
+    },
+    {
+      "id": "64f2a3db-882b-4568-b5b5-70a56cff3983",
+      "account_id": "7f2ede7a-3d50-4053-9a19-f55d94c6afe4",
+      "amount_cents": 150000,
+      "currency": "JPY",
+      "balance_kind": "current_balance",
+      "effective_date": "2026-09-19",
+      "effective_time": null,
+      "imported_at": "2026-09-20T08:44:38.746Z",
+      "source_type": "manual",
+      "source_reference": null,
+      "source_batch_id": null,
+      "superseded_by_id": null,
+      "review_status": "accepted",
+      "raw_label": null,
+      "created_at": "2026-09-20T08:44:38.746Z"
+    },
+    {
+      "id": "b8fec5a5-15a0-4a0d-a475-c77ed5c82430",
+      "account_id": "43633353-4b43-4b29-9959-8b7a09518ab3",
+      "amount_cents": 50000,
+      "currency": "AUD",
+      "balance_kind": "current_balance",
+      "effective_date": "2026-09-19",
+      "effective_time": null,
+      "imported_at": "2026-09-20T08:44:38.746Z",
+      "source_type": "manual",
+      "source_reference": null,
+      "source_batch_id": null,
+      "superseded_by_id": null,
+      "review_status": "accepted",
+      "raw_label": null,
+      "created_at": "2026-09-20T08:44:38.746Z"
+    }
+  ],
+  "revisions": [
+    {
+      "id": "05ee6f87-42b9-41ea-a7a6-dbfebe4f00ab",
+      "balance_revision": 1
+    },
+    {
+      "id": "29c5a469-8bdb-4b7d-a215-28a87a617055",
+      "balance_revision": 2
+    },
+    {
+      "id": "43633353-4b43-4b29-9959-8b7a09518ab3",
+      "balance_revision": 2
+    },
+    {
+      "id": "4c5b179a-7030-4e81-8837-0844a28b6648",
+      "balance_revision": 1
+    },
+    {
+      "id": "7f2ede7a-3d50-4053-9a19-f55d94c6afe4",
+      "balance_revision": 3
+    },
+    {
+      "id": "964f3b60-3cd9-4a9a-b243-15b7783f7eae",
+      "balance_revision": 3
+    }
+  ]
+}

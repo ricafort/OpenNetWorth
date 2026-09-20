@@ -58,6 +58,8 @@ The actual application code. Organized by **Feature (Vertical Slice)**.
 📂 src
  ┣━━ 🚀 features                 (DOMAIN LOGIC: Vertical Slices)
  ┃    ┃  "Code that changes together stays together"
+ ┃    ┣━━ ⚖️ accounting          - Double-entry reports, evidence traceability
+ ┃    ┣━━ 🔄 sync                - Fast balance updates, table paste, manual fast entry
  ┃    ┣━━ 💰 assets              - Market prices, Portfolio
  ┃    ┣━━ 💳 liabilities         - Debt payoff engine
  ┃    ┣━━ 📊 dashboard           - Layouts, Widget Registry
@@ -73,8 +75,8 @@ The actual application code. Organized by **Feature (Vertical Slice)**.
  ┃
  ┣━━ 📱 app                      (ROUTING: Thin Layer)
  ┃    ┃  "Framework Entry Points Only"
- ┃    ┣━━ 📂 (routes)            - assets/, liabilities/, etc.
- ┃    ┗━━ 📂 api                 - Route Handlers (REST endpoints)
+ ┃    ┣━━ 📂 (routes)            - assets/, liabilities/, accounting/, timemachine/
+ ┃    ┗━━ 📂 api                 - Route Handlers (REST endpoints: /api/accounting, /api/vault)
  ┃
  ┣━━ 🧩 components               (SHARED UI: No Business Logic)
  ┃    ┣━━ 🎨 ui                  - Atoms: Buttons, Inputs, Cards
@@ -84,12 +86,14 @@ The actual application code. Organized by **Feature (Vertical Slice)**.
  ┃
  ┣━━ ⚙️ infrastructure           (ADAPTERS: External Services)
  ┃    ┣━━ 🏭 dataFactory.ts      - Abstract Factory
- ┃    ┣━━ ☁️ SupabaseService.ts  - Real DB Adapter
+ ┃    ┣━━ 💾 sqlite/             - Embedded SQLite DB adapter (better-sqlite3)
+ ┃    ┣━━ ☁️ SupabaseService.ts  - Optional Cloud DB Adapter
  ┃    ┗━━ 💾 LocalStorageService.ts - Local/Demo Adapter
  ┃
  ┗━━ 📚 lib                      (UTILITIES: Shared Helpers)
-      ┣━━ 📂 utils               - formatting, dates
-      ┗━━ 📂 domain              - Pure logic (interest calculators)
+      ┣━━ 📂 utils               - formatting, dates, currency
+      ┗━━ 📂 domain              - Pure logic (accounting, interest calculators)
+           ┗━━ 📂 accounting     - Double-entry ledger, balance observations, shared summary, table parser
 ```
 
 ### Detailed Breakdown (`src`)

@@ -190,6 +190,9 @@ export type AccountSubType =
     | 'brokerage'
     | 'investment'
     | 'retirement'
+    | 'superannuation'
+    | 'pension'
+    | 'crypto'
     | 'property'
     | 'real_estate'
     | 'land'
@@ -224,9 +227,124 @@ export interface Account {
     account_number_mask?: string | null;
     opening_date?: string | null; // YYYY-MM-DD
     opening_balance_cents?: number | null;
-    revision: number; // Optimistic concurrency tracking
+    tracking_mode?: TrackingMode;
+    balance_revision?: number;
+    revision?: number;
     created_at: string;
     updated_at: string;
+}
+
+// --- BALANCE OBSERVATIONS & RECONCILIATION ---
+
+export type TrackingMode = 'balance' | 'transactions';
+
+export type ValuationBalanceKind =
+    | 'posted_balance'
+    | 'current_balance'
+    | 'statement_closing_balance'
+    | 'outstanding_loan_principal'
+    | 'securities_market_value'
+    | 'total_portfolio_value'
+    | 'brokerage_cash';
+
+export type NonValuationBalanceKind =
+    | 'credit_limit'
+    | 'available_credit'
+    | 'available_redraw'
+    | 'buying_power'
+    | 'projected_future_value'
+    | 'unresolved';
+
+export type BalanceKind = ValuationBalanceKind | NonValuationBalanceKind | 'available_balance';
+
+export const VALUATION_BALANCE_KINDS: readonly ValuationBalanceKind[] = [
+    'posted_balance',
+    'current_balance',
+    'statement_closing_balance',
+    'outstanding_loan_principal',
+    'securities_market_value',
+    'total_portfolio_value',
+    'brokerage_cash'
+];
+
+export function isValuationBalanceKind(kind: string): kind is ValuationBalanceKind {
+    return VALUATION_BALANCE_KINDS.includes(kind as ValuationBalanceKind);
+}
+
+export interface BalanceObservation {
+    id: string;
+    account_id: string;
+    amount_cents: number;
+    currency: CurrencyCode;
+    balance_kind: BalanceKind;
+    effective_date: string; // YYYY-MM-DD
+    effective_time?: string | null;
+    imported_at: string;
+    source_type: 'manual' | 'table_paste' | 'document' | 'api';
+    source_reference?: string | null;
+    source_batch_id?: string | null;
+    superseded_by_id?: string | null;
+    review_status: 'proposed' | 'accepted' | 'superseded' | 'rejected';
+    raw_label?: string | null;
+    created_at: string;
+}
+
+export interface AccountSourceMapping {
+    id: string;
+    account_id: string;
+    provider: string;
+    connection_id: string;
+    source_account_id: string;
+    institution?: string | null;
+    created_at: string;
+}
+
+export interface ReconciliationComparison {
+    account_id: string;
+    account_name: string;
+    currency: CurrencyCode;
+    effective_date: string;
+    reported_amount_cents: number;
+    reported_balance_kind: BalanceKind;
+    recorded_ledger_cents: number;
+    diff_cents: number;
+    is_comparable: boolean;
+    status: 'matched' | 'discrepancy' | 'not_directly_comparable';
+    notes?: string;
+}
+
+export interface SharedFinancialSummaryAccount {
+    account_id: string;
+    account_name: string;
+    entity_id: string;
+    account_type: AccountType;
+    account_sub_type: AccountSubType;
+    tracking_mode: TrackingMode;
+    basis: 'observation' | 'ledger';
+    balance_kind?: BalanceKind;
+    amount_cents: number;
+    currency: CurrencyCode;
+    effective_date: string;
+    is_stale: boolean;
+    reconciliation?: ReconciliationComparison;
+}
+
+export interface SharedFinancialSummary {
+    as_of_date: string;
+    scope_entity_id?: string;
+    reporting_currency: CurrencyCode;
+    total_assets_cents_by_currency: Record<CurrencyCode, number>;
+    total_liabilities_cents_by_currency: Record<CurrencyCode, number>;
+    net_worth_cents_by_currency: Record<CurrencyCode, number>;
+    converted_net_worth?: {
+        amount_cents: number;
+        currency: CurrencyCode;
+        is_complete: boolean;
+        missing_rates: string[];
+    };
+    accounts_included: SharedFinancialSummaryAccount[];
+    accounts?: SharedFinancialSummaryAccount[];
+    coverage_notes: string[];
 }
 
 // --- TRANSACTIONS & POSTINGS (DOUBLE-ENTRY) ---

@@ -1,0 +1,2000 @@
+▲ Next.js 16.1.1 (Turbopack)
+- Local:         http://localhost:4007
+- Network:       http://192.168.1.5:4007
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 705ms
+○ Compiling / ...
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET / 200 in 4.9s (compile: 4.5s, proxy.ts: 103ms, render: 235ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 283ms (compile: 249ms, proxy.ts: 4ms, render: 30ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/vault 200 in 284ms (compile: 262ms, proxy.ts: 14ms, render: 8ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 15ms (compile: 3ms, proxy.ts: 3ms, render: 8ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 14ms (compile: 3ms, proxy.ts: 3ms, render: 8ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 146ms (compile: 134ms, proxy.ts: 3ms, render: 9ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 15ms (compile: 4ms, proxy.ts: 4ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting/balances/parse-table 200 in 144ms (compile: 128ms, proxy.ts: 6ms, render: 11ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting/balances 200 in 21ms (compile: 7ms, proxy.ts: 3ms, render: 11ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 15ms (compile: 4ms, proxy.ts: 3ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 16ms (compile: 5ms, proxy.ts: 4ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances?reporting_currency=AUD&as_of_date=2026-09-20 200 in 14ms (compile: 4ms, proxy.ts: 3ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/vault 200 in 15ms (compile: 4ms, proxy.ts: 4ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 13ms (compile: 3ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting/balances 200 in 14ms (compile: 4ms, proxy.ts: 3ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 14ms (compile: 4ms, proxy.ts: 3ms, render: 8ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 13ms (compile: 4ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances?reporting_currency=AUD&as_of_date=2026-09-20 200 in 14ms (compile: 4ms, proxy.ts: 3ms, render: 8ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET / 200 in 58ms (compile: 5ms, proxy.ts: 3ms, render: 50ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 18ms (compile: 5ms, proxy.ts: 7ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/vault 200 in 14ms (compile: 4ms, proxy.ts: 4ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 14ms (compile: 4ms, proxy.ts: 4ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 12ms (compile: 4ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 12ms (compile: 3ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /accounting 200 in 1026ms (compile: 1006ms, proxy.ts: 3ms, render: 17ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 13ms (compile: 4ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 12ms (compile: 3ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?include_transactions=true&as_of_date=2026-09-20&start_date=2026-09-01&end_date=2026-09-20&limit=50&offset=0 200 in 16ms (compile: 6ms, proxy.ts: 4ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?view=drafts 200 in 22ms (compile: 15ms, proxy.ts: 3ms, render: 4ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?include_transactions=true&as_of_date=2026-09-20&start_date=2026-09-01&end_date=2026-09-20&limit=50&offset=0 200 in 14ms (compile: 4ms, proxy.ts: 4ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?view=drafts 200 in 21ms (compile: 12ms, proxy.ts: 4ms, render: 5ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?as_of_date=2026-09-20 200 in 13ms (compile: 4ms, proxy.ts: 2ms, render: 8ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?as_of_date=2026-09-20 200 in 13ms (compile: 4ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?view=reports&scope_id=all&as_of_date=2026-09-20 200 in 18ms (compile: 7ms, proxy.ts: 3ms, render: 8ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?as_of_date=2026-09-20 200 in 27ms (compile: 16ms, proxy.ts: 4ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?as_of_date=2026-09-20 200 in 14ms (compile: 4ms, proxy.ts: 3ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting?view=reports&scope_id=all&as_of_date=2026-09-20 200 in 23ms (compile: 13ms, proxy.ts: 3ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET / 200 in 648ms (compile: 626ms, proxy.ts: 8ms, render: 14ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 11ms (compile: 3ms, proxy.ts: 2ms, render: 5ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 11ms (compile: 3ms, proxy.ts: 2ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 11ms (compile: 3ms, proxy.ts: 1977µs, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 12ms (compile: 3ms, proxy.ts: 2ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 13ms (compile: 4ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting/balances/parse-table 200 in 14ms (compile: 5ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting/balances 200 in 13ms (compile: 5ms, proxy.ts: 3ms, render: 5ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 13ms (compile: 4ms, proxy.ts: 2ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 12ms (compile: 4ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances?reporting_currency=AUD&as_of_date=2026-09-20 200 in 12ms (compile: 4ms, proxy.ts: 2ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 13ms (compile: 4ms, proxy.ts: 3ms, render: 5ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting/balances/parse-table 200 in 14ms (compile: 5ms, proxy.ts: 3ms, render: 5ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting 201 in 14ms (compile: 3ms, proxy.ts: 3ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting 200 in 12ms (compile: 4ms, proxy.ts: 1771µs, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ POST /api/accounting/balances 200 in 14ms (compile: 5ms, proxy.ts: 3ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 13ms (compile: 3ms, proxy.ts: 3ms, render: 7ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances? 200 in 12ms (compile: 3ms, proxy.ts: 2ms, render: 6ms)
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+⚠ [next]/internal/font/google/inter_c15e96cb.module.css
+next/font: warning:
+Failed to download `Inter` from Google Fonts. Using fallback font instead.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_c15e96cb.module.css
+    [next]/internal/font/google/inter_c15e96cb.js
+    ./src/app/layout.tsx
+
+
+ GET /api/accounting/balances?reporting_currency=AUD&as_of_date=2026-09-20 200 in 14ms (compile: 4ms, proxy.ts: 3ms, render: 6ms)

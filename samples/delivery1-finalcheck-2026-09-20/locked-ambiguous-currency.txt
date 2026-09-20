@@ -1,0 +1,349 @@
+Browser tab: 3, Title: "Dashboard | OpenNetWorth", URL: "http://localhost:4007/".
+0 AXWebArea Dashboard | OpenNetWorth, URL: localhost:4007/
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 container
+			4 link Description: Dashboard, Value: localhost:4007/
+			5 link Description: Accounting My finances, Value: localhost:4007/accounting
+			6 link Description: Assets What I own, Value: localhost:4007/assets
+			7 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			8 link Description: Goals, Value: localhost:4007/goals
+			9 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			10 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			11 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			12 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			13 link Description: Privacy, Value: localhost:4007/privacy
+		14 text ON Local Vault Owner 🔒 100% On-Device
+		15 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		16 button Light Mode
+		17 button Stealth Mode
+		18 button System Theme
+		19 button Blur Values
+		20 text v 1.0.0
+	21 container
+		22 heading Financial Overview, Value: 2
+			23 text Financial Overview
+		24 text Welcome back. Here's your net worth today.
+		25 button Restart Tour
+		26 button App Settings
+		27 button Reset / Choose Demo Profile
+		28 button Update Balances, Help: Update Account Balances (Super, Trading, Bank)
+		29 button LM Studio, Help: Configure Local LLM Engine (LM Studio / Ollama)
+		30 text Currency:
+		31 pop up button (collapsed, settable) Value: ¥ JPY - Japanese Yen, Secondary Actions: Expand
+			32 menu
+				33 $ USD - US Dollar
+				34 € EUR - Euro
+				35 £ GBP - British Pound
+				36 (selected) ¥ JPY - Japanese Yen
+				37 C$ CAD - Canadian Dollar
+				38 A$ AUD - Australian Dollar
+				39 Fr CHF - Swiss Franc
+				40 ¥ CNY - Chinese Yuan
+				41 ₹ INR - Indian Rupee
+				42 S$ SGD - Singapore Dollar
+				43 ₱ PHP - Philippine Peso
+				44 ₩ KRW - South Korean Won
+		45 button Customize, Help: Customize Dashboard Layout
+		46 button ON Local Vault Owner
+			47 text ON
+			48 text Local Vault Owner
+		49 heading Fast Balance Updates 100% On-Device, Value: 3
+			50 text Fast Balance Updates 100% On-Device
+		51 text Quickly refresh your Super, Trading, and Bank running totals without third-party cloud data leaks.
+		52 button
+		53 button Paste Table / CSV
+		54 button Manual Fast Entry
+		55 container
+			56 heading Review & Confirm Balances, Value: 4
+				57 text Review & Confirm Balances
+			58 text Review account matches, balance kinds, and check the delta before saving.
+			59 button Paste Different Text
+			60 table
+				61 row
+					62 cell
+						63 text SOURCE NAME
+					64 cell
+						65 text TARGET ACCOUNT
+					66 cell
+						67 text BALANCE KIND
+					68 cell
+						69 text DATE
+					70 cell
+						71 text AMOUNT
+					72 cell
+						73 text DELTA
+					74 cell
+						75 text ACTION
+				76 row
+					77 cell
+						78 text Assessor Super
+						79 text Ambiguous Currency ($)
+						80 text Date Missing
+						81 button Confirm Row
+					82 cell
+						83 pop up button (collapsed, settable) Value: Assessor Household — Assessor Super (AUD), Secondary Actions: Expand
+							84 menu
+								85 -- Select Account --
+								86 Assessor Household — Assessor Everyday (AUD)
+								87 Assessor Business — Assessor Everyday (AUD)
+								88 (selected) Assessor Household — Assessor Super (AUD)
+								89 Assessor Household — Awaiting Balance (AUD)
+								90 Assessor Household — Tokyo Savings (JPY)
+								91 Assessor Household — Assessor Card (AUD)
+								92 + Create New Account...
+					93 cell
+						94 pop up button (collapsed, settable) Value: Current Balance, Secondary Actions: Expand
+							95 menu
+								96 (selected) Current Balance
+								97 Statement Closing
+								98 Total Portfolio Value
+								99 Securities Market Value
+								100 Brokerage Cash
+								101 Loan Principal
+								102 Available Balance (Holds)
+								103 Credit Limit (Non-Valuation)
+								104 Available Credit (Non-Valuation)
+								105 Available Redraw (Non-Valuation)
+								106 Buying Power (Non-Valuation)
+								107 Projected Value (Non-Valuation)
+					108 cell
+						109 date field (settable) 2026-09-20
+							110 container
+								111 stepper
+								112 stepper
+								113 stepper
+							114 pop up button Show date picker
+					115 cell
+						116 stepper (settable, integer) Value: 130000, Details: 130000.00
+					117 cell
+						118 text $0.00
+					119 cell
+						120 button Remove row
+				121 row
+					122 cell
+						123 text Foreign Savings
+						124 text Ambiguous Currency ($)
+						125 text Date Missing
+						126 button Confirm Row
+					127 cell
+						128 pop up button (collapsed, settable) Value: -- Select Account --, Secondary Actions: Expand
+							129 menu
+								130 (selected) -- Select Account --
+								131 Assessor Household — Assessor Everyday (AUD)
+								132 Assessor Business — Assessor Everyday (AUD)
+								133 Assessor Household — Assessor Super (AUD)
+								134 Assessor Household — Awaiting Balance (AUD)
+								135 Assessor Household — Tokyo Savings (JPY)
+								136 Assessor Household — Assessor Card (AUD)
+								137 + Create New Account...
+					138 cell
+						139 pop up button (collapsed, settable) Value: Current Balance, Secondary Actions: Expand
+							140 menu
+								141 (selected) Current Balance
+								142 Statement Closing
+								143 Total Portfolio Value
+								144 Securities Market Value
+								145 Brokerage Cash
+								146 Loan Principal
+								147 Available Balance (Holds)
+								148 Credit Limit (Non-Valuation)
+								149 Available Credit (Non-Valuation)
+								150 Available Redraw (Non-Valuation)
+								151 Buying Power (Non-Valuation)
+								152 Projected Value (Non-Valuation)
+					153 cell
+						154 date field (settable) 2026-09-20
+							155 container
+								156 stepper
+								157 stepper
+								158 stepper
+							159 pop up button Show date picker
+					160 cell
+						161 stepper (settable, integer) Value: 1000, Details: 1000.00
+					162 cell
+						163 text New
+					164 cell
+						165 button Remove row
+		166 text Balance updates create immutable, dated observations without overwriting transaction history.
+		167 button Cancel
+		168 button Confirm & Save Balances
+		169 container
+			170 heading Create New Account, Value: 4
+				171 text Create New Account
+			172 button
+			173 text Account Name
+			174 text field (settable) Foreign Savings
+			175 text Owner Entity
+			176 pop up button (collapsed, settable) Value: Assessor Business, Secondary Actions: Expand
+				177 menu
+					178 (selected) Assessor Business
+					179 Assessor Household
+			180 text Type
+			181 pop up button (collapsed, settable) Value: Asset, Secondary Actions: Expand
+				182 menu
+					183 (selected) Asset
+					184 Liability
+			185 text Sub-Type
+			186 pop up button (collapsed, settable) Value: Superannuation / Pension, Secondary Actions: Expand
+				187 menu
+					188 (selected) Superannuation / Pension
+					189 Checking / Everyday
+					190 Savings Account
+					191 Trading / Brokerage
+					192 Real Estate
+					193 Cryptocurrency
+					194 Other Asset
+			195 container
+				196 text Currency  (Locked)
+			197 pop up button (disabled, collapsed, settable) Value: AUD ($), Secondary Actions: Expand
+				198 menu
+					199 (disabled) AUD ($)
+					200 (disabled) USD ($)
+					201 (disabled) EUR (€)
+					202 (disabled) GBP (£)
+					203 (disabled) CAD ($)
+					204 (disabled) NZD ($)
+					205 (disabled) JPY (¥)
+			206 text Tracking Mode
+			207 pop up button (collapsed, settable) Value: Balance Only (Fast), Secondary Actions: Expand
+				208 menu
+					209 (selected) Balance Only (Fast)
+					210 Full Transactions
+			211 button Cancel
+			212 button Create Account
+		213 heading Get Started, Value: 3
+			214 text Get Started
+		215 text Complete these steps to unlock full potential. 1  /  4  Steps
+		216 link Description: Add your first asset, Value: localhost:4007/assets
+		217 link Description: Track a liability, Value: localhost:4007/liabilities
+		218 link Description: Set a financial goal, Value: localhost:4007/goals
+		219 link Description: Chat with a mentor, Value: localhost:4007/mentors
+		220 heading Achievements 0 / 6, Value: 3
+			221 text Achievements 0  /  6
+		222 text 🎯
+		223 heading First Steps, Value: 4
+			224 text First Steps
+		225 text Add your first asset
+		226 text 🏆
+		227 heading Goal Setter, Value: 4
+			228 text Goal Setter
+		229 text Create a financial goal
+		230 text 📊
+		231 heading Wealth Tracker, Value: 4
+			232 text Wealth Tracker
+		233 text Achieve positive net worth
+		234 text ⚔️
+		235 heading Debt Slayer, Value: 4
+			236 text Debt Slayer
+		237 text Pay off a liability completely
+		238 text 🔥
+		239 heading Consistent, Value: 4
+			240 text Consistent
+		241 text 3-day check-in streak
+		242 text 💎
+		243 heading Millionaire, Value: 4
+			244 text Millionaire
+		245 text Reach $1M Net Worth
+		246 container
+			247 text Total Net Worth (JPY)
+			248 heading ¥160,000, Value: 3
+				249 text ¥160,000
+			250 text Not enough history
+		251 container
+			252 text Total Assets
+			253 heading ¥0, Value: 3
+				254 text ¥0
+			255 text Not enough history
+		256 container
+			257 text Total Liabilities
+			258 heading ¥0, Value: 3
+				259 text ¥0
+			260 text Not enough history
+		261 container
+			262 heading Net Worth History, Value: 3
+				263 text Net Worth History
+			264 container
+				265 link Description: Time Machine, Value: localhost:4007/timemachine
+				266 button Manage
+				267 pop up button (collapsed, settable) Value: Last 6 Months, Secondary Actions: Expand
+					268 menu
+						269 (selected) Last 6 Months
+						270 Last Year
+						271 All Time
+			272 heading Start your journey, Value: 3
+				273 text Start your journey
+			274 text Add your first asset to track your net worth.
+			275 link Description: Add Asset, Value: localhost:4007/assets
+		276 container
+			277 heading Asset Allocation, Value: 3
+				278 text Asset Allocation
+			279 text No assets to display.
+		280 container
+			281 heading Growth Engine, Value: 3
+				282 text Growth Engine
+			283 text Add investments to unlock portfolio analysis.
+			284 link Description: Go to Assets, Value: localhost:4007/assets
+		285 container
+			286 heading WISDOM BOARD, Value: 3
+				287 text WISDOM BOARD
+			288 container
+				289 button
+				346 container
+					347 text " Capital preservation is the first rule of wealth building. "
+				348 text RISK GUARDIAN
+				293 button
+				294 button
+				295 button L, Help: Long-Term Thinker
+				296 button R, Help: Risk Guardian
+				297 button G, Help: Growth Optimist
+				298 button S, Help: Stoic Minimalist
+				299 button Pause
+				300 button Save Quote
+				301 button Share Quote
+			302 link Description: CONSULT THE BOARD, Value: localhost:4007/mentors
+		303 container
+			304 text INTEGRATION NOTICE
+			305 heading Incomplete View, Value: 3
+				306 text Incomplete View
+			307 text This view does not yet include all your recorded accounts.
+			308 link Description: See Accounts for your balances →, Value: localhost:4007/accounting
+		309 container
+			310 heading TRAVEL POWER, Value: 3
+				311 text TRAVEL POWER
+			312 text Bali
+			313 text Indonesia
+			314 text 0.0 months
+			315 text Freedom
+			316 text Tokyo
+			317 text Japan
+			318 text 0.0 months
+			319 text Freedom
+			320 text New York
+			321 text USA
+			322 text 0.0 months
+			323 text Freedom
+			324 text Based on avg. cost of living for digital nomads
+		325 container
+			326 heading WEALTH MOMENTUM™, Value: 3
+				327 text WEALTH MOMENTUM™
+			328 container
+				329 container
+					330 container
+						331 image
+				332 text 0 STALLED
+			333 container
+				334 text Autopilot Savings:  ¥0 /mo
+			335 container
+				336 text Projected  ¥0  / year
+			337 container
+				338 text 0.0 % Savings Rate
+		339 heading Account Freshness & Balances 100% On-Device, Value: 3
+			340 text Account Freshness & Balances 100% On-Device
+		341 text Real-time running totals across your Super, Trading, and Bank accounts.
+		342 button Update Balances
+		343 text NET WORTH ( AUD ) A$129,750.00 Assets:  A$130,500.00 Liabilities:  A$750.00 NET WORTH ( JPY ) ¥160,000 Assets:  ¥160,000 Liabilities:  ¥0 ACCOUNT FRESHNESS 5  /  5 up-to-date All accounts updated recently
+	344 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		345 image
+
+The focused UI element is 168 button Confirm & Save Balances

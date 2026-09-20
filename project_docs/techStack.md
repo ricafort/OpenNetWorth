@@ -14,11 +14,13 @@
 | **Styling** | [Tailwind CSS](https://tailwindcss.com/) | `v4` | Modern utility CSS with PostCSS integration. Automatically patched via `scripts/patch-tailwind.cjs` for robust Turbopack base-directory resolution on refresh. |
 | **Local AI Engine** | [LM Studio](https://lmstudio.ai/) / [Ollama](https://ollama.ai/) | Native | 100% local, private LLM execution via OpenAI-compatible (`http://localhost:1234/v1`) or Ollama native (`http://localhost:11434`) REST protocols. Supports reasoning models (Qwen 2.5/3.8, DeepSeek R1, Llama 3.2). |
 | **Local State** | React Hooks & Context | Built-in | Manages on-device reactive state (`ProfileContext`, `useNetWorth`, `useAssetsQuery`). |
-| **Data Layer** | [SQLite](https://sqlite.org/) (`better-sqlite3`) | `^13.0.3` | Embedded, ACID-compliant relational SQL database persisted directly to disk at `data/opennetworth.sqlite`. WAL mode enabled for concurrent reads and writes. Bidirectionally synchronized with client Local Vault. |
+| **Data Layer** | [SQLite](https://sqlite.org/) (`better-sqlite3`) | `^13.0.3` | Embedded, ACID-compliant relational SQL database persisted directly to disk at `data/opennetworth.sqlite`. WAL mode enabled for concurrent reads and writes. Manages core double-entry accounting tables (`m1_accounts`, `m1_transactions`, `m1_postings`) and observation ledger (`m1_balance_observations`, `m1_source_batches`). |
+| **Observation Ledger** | Sovereign Accounting Engine | Delivery 1 | Non-destructive balance observation snapshots with concurrency control (`balance_revision`), historical supersession chains, and date-matched reconciliation against double-entry journal postings. |
+| **Balance Parser** | Deterministic Table Parser | Delivery 1 | High-speed offline parser for structured tabular data (CSV, TSV, pipe, multi-space) with delimiter auto-detection, Australian DD-MM-YYYY / ISO date normalization, and currency scaling. |
 | **Authentication** | Local-First Sovereign Vault | Built-in | Zero-cloud authentication. Direct instant local access (`id: 'local_user'`) with optional local PIN and profile switcher. Zero Google OAuth or SaaS session dependencies. |
 | **Charts** | [Recharts](https://recharts.org/) | `^3.6.0` | Responsive SVG financial trajectory, asset allocation, and momentum visualizations. |
 | **Icons** | [Lucide React](https://lucide.dev/) | `^0.562.0` | Crisp, modern, accessible iconography. |
-| **Testing** | [Vitest](https://vitest.dev/) | `^4.0.18` | Ultra-fast unit & integration testing for portfolio math, debt calculation, and local LLM intent parsing. |
+| **Testing** | [Vitest](https://vitest.dev/) | `^4.0.18` | Ultra-fast unit & integration testing for accounting ledger, balance updates, portfolio math, debt calculation, and local LLM intent parsing. |
 
 ---
 
@@ -31,6 +33,8 @@
 
 ### 📐 2. Vertical Slice Architecture
 All business logic is grouped into self-contained domain slices inside `src/features/`:
+- `src/features/sync/`: Fast balance updates modal, tabular paste reviewer, inline account creation, manual fast entry.
+- `src/features/accounting/`: Double-entry reports, evidence traceability, ownership allocation, multi-currency conversion disclosures.
 - `src/features/assets/`: Asset CRUD, market price tracking, portfolio weighting.
 - `src/features/liabilities/`: Debt payoff calculator (Avalanche & Snowball strategies).
 - `src/features/dashboard/`: Net worth aggregation, customizable drag-and-drop widget layout.

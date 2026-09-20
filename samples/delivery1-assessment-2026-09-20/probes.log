@@ -1,0 +1,233 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+stderr | samples/delivery1-assessment-2026-09-20/probes.test.ts > P13 round-trips corrected observations and mapping through vault
+Vault POST Error: SqliteError: FOREIGN KEY constraint failed
+    at D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:1189:35
+    at sqliteTransaction (D:\LocalVersions\OpenNetWorth\node_modules\better-sqlite3\lib\methods\transaction.js:65:24)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:1368:13)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/samples/delivery1-assessment-2026-09-20/probes.test.ts:28:435
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  code: 'SQLITE_CONSTRAINT_FOREIGNKEY'
+}
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts (19 tests | 14 failed) 76ms
+   × P01 marks absent source date and ambiguous dollar currency unresolved 9ms
+   × P02 projected future value never enters wealth through parser and commit 5ms
+   × P03 rejects impossible calendar date at API boundary 5ms
+   × P04 normalises Australian hyphen date 2ms
+   × P05 honours Balance header rather than trailing account number 2ms
+   × P06 preserves negative liability or requires sign confirmation 2ms
+   × P07 incomplete coverage cannot produce a complete total 2ms
+   × P08 credit limit must not generate a ledger discrepancy 10ms
+   × P09 repeated identical source event is idempotent 4ms
+   × P10 same-account multi-kind batch accepts one reviewed revision atomically 3ms
+   × P11 ambiguous identical names across owners remain unmatched 3ms
+   × P12 rejects excessive JPY precision instead of silent rounding 2ms
+   × P13 round-trips corrected observations and mapping through vault 11ms
+   × P14 vault rejects observation whose currency differs from account 5ms
+   ✓ P15 ledger remains unchanged after balance observations 2ms
+   ✓ P16 batch with invalid second item rolls back first item 2ms
+   ✓ P17 later-date identical amount updates freshness and retains history 2ms
+   ✓ P18 importing older statement keeps newer current wealth 2ms
+   ✓ P19 plain observation and mapping backup restore succeeds 6ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P01 marks absent source date and ambiguous dollar currency unresolved
+AssertionError: expected 0 to be greater than 0
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:16:175
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P02 projected future value never enters wealth through parser and commit
+AssertionError: expected 120000000 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 120000000
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:17:319
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P03 rejects impossible calendar date at API boundary
+AssertionError: expected 200 to be 400 // Object.is equality
+
+- Expected
++ Received
+
+- 400
++ 200
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:18:150
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P04 normalises Australian hyphen date
+AssertionError: expected '19-09-2026' to be '2026-09-19' // Object.is equality
+
+Expected: "2026-09-19"
+Received: "19-09-2026"
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:19:150
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P05 honours Balance header rather than trailing account number
+AssertionError: expected 12345600 to be 10000 // Object.is equality
+
+- Expected
++ Received
+
+- 10000
++ 12345600
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:20:212
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P06 preserves negative liability or requires sign confirmation
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:21:225
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P07 incomplete coverage cannot produce a complete total
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:22:225
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P08 credit limit must not generate a ledger discrepancy
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:23:203
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P09 repeated identical source event is idempotent
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:24:339
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P10 same-account multi-kind batch accepts one reviewed revision atomically
+AssertionError: expected 409 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 409
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:25:257
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P11 ambiguous identical names across owners remain unmatched
+AssertionError: expected '529ea14d-5f7a-4a11-a389-ff10d0ede8c6' to be null
+
+- Expected: 
+null
+
++ Received: 
+"529ea14d-5f7a-4a11-a389-ff10d0ede8c6"
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:26:430
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P12 rejects excessive JPY precision instead of silent rounding
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:27:201
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P13 round-trips corrected observations and mapping through vault
+AssertionError: expected { status: 500, …(1) } to deeply equal { status: 200, error: undefined }
+
+- Expected
++ Received
+
+  {
+-   "error": undefined,
+-   "status": 200,
++   "error": "FOREIGN KEY constraint failed",
++   "status": 500,
+  }
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:28:583
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/14]⎯
+
+ FAIL  samples/delivery1-assessment-2026-09-20/probes.test.ts > P14 vault rejects observation whose currency differs from account
+AssertionError: expected 200 to be 400 // Object.is equality
+
+- Expected
++ Received
+
+- 400
++ 200
+
+ ❯ samples/delivery1-assessment-2026-09-20/probes.test.ts:29:362
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/14]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  14 failed | 5 passed (19)
+   Start at  17:24:45
+   Duration  476ms (transform 140ms, setup 0ms, import 218ms, tests 76ms, environment 0ms)
+

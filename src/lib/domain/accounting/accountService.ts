@@ -32,6 +32,7 @@ import {
     Entity,
     EntityType,
     Posting,
+    TrackingMode,
     Transaction,
     assertValidMoneyCents,
     validateTransactionBalance
@@ -56,6 +57,7 @@ export interface CreateAccountInput {
     account_number_mask?: string | null;
     opening_date?: string | null; // YYYY-MM-DD
     opening_balance_cents?: number | null; // Integer cents
+    tracking_mode?: TrackingMode;
 }
 
 export interface UpdateAccountInput {
@@ -64,6 +66,7 @@ export interface UpdateAccountInput {
     institution?: string | null;
     account_number_mask?: string | null;
     is_active?: boolean;
+    tracking_mode?: TrackingMode;
 }
 
 export class ConflictError extends Error {
@@ -237,23 +240,30 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
     // Atomic SQLite transaction enclosing account creation and opening balance posting
     const tx = db.transaction(() => {
         // 1. Insert Account
+        const trackingMode = input.tracking_mode || 'transactions';
+        const subType = input.sub_type || (
+            input.type === 'asset' ? 'checking' :
+            input.type === 'liability' ? 'credit_card' :
+            input.type === 'equity' ? 'opening_balance_equity' : 'other'
+        );
         db.prepare(`
             INSERT INTO m1_accounts (
                 id, entity_id, name, type, sub_type, currency, is_active,
                 institution, account_number_mask, opening_date, opening_balance_cents,
-                revision, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1, ?, ?)
+                tracking_mode, balance_revision, revision, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, 1, ?, ?)
         `).run(
             accountId,
             input.entity_id,
             input.name.trim(),
             input.type,
-            input.sub_type,
+            subType,
             currency,
             input.institution || null,
             input.account_number_mask || null,
             input.opening_date || null,
             hasOpeningBalance ? input.opening_balance_cents : null,
+            trackingMode,
             now,
             now
         );
@@ -270,6 +280,8 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             account_number_mask: input.account_number_mask || null,
             opening_date: input.opening_date || null,
             opening_balance_cents: hasOpeningBalance ? input.opening_balance_cents : null,
+            tracking_mode: trackingMode,
+            balance_revision: 1,
             revision: 1,
             created_at: now,
             updated_at: now
@@ -371,12 +383,13 @@ export function updateAccount(
     const newInst = updates.institution !== undefined ? updates.institution : existing.institution;
     const newMask = updates.account_number_mask !== undefined ? updates.account_number_mask : existing.account_number_mask;
     const newActive = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : existing.is_active;
+    const newTracking = updates.tracking_mode !== undefined ? updates.tracking_mode : (existing.tracking_mode || 'transactions');
 
     const res = db.prepare(`
         UPDATE m1_accounts
-        SET name = ?, sub_type = ?, institution = ?, account_number_mask = ?, is_active = ?, revision = revision + 1, updated_at = ?
+        SET name = ?, sub_type = ?, institution = ?, account_number_mask = ?, is_active = ?, tracking_mode = ?, revision = revision + 1, updated_at = ?
         WHERE id = ? AND revision = ?
-    `).run(newName, newSubType, newInst, newMask, newActive, now, accountId, expectedRevision);
+    `).run(newName, newSubType, newInst, newMask, newActive, newTracking, now, accountId, expectedRevision);
 
     if (res.changes === 0) {
         throw new ConflictError(`Account update failed due to stale revision (expected revision ${expectedRevision}). Another update has occurred.`);
@@ -394,9 +407,38 @@ export function updateAccount(
         account_number_mask: newMask,
         opening_date: existing.opening_date,
         opening_balance_cents: existing.opening_balance_cents,
+        tracking_mode: newTracking,
+        balance_revision: existing.balance_revision || 1,
         revision: expectedRevision + 1,
         created_at: existing.created_at,
         updated_at: now
+    };
+}
+
+/**
+ * Retrieves a single account by ID.
+ */
+export function getAccount(db: Database.Database, accountId: string): Account | null {
+    const r = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    if (!r) return null;
+
+    return {
+        id: r.id,
+        entity_id: r.entity_id,
+        name: r.name,
+        type: r.type,
+        sub_type: r.sub_type,
+        currency: r.currency,
+        is_active: Boolean(r.is_active),
+        institution: r.institution,
+        account_number_mask: r.account_number_mask,
+        opening_date: r.opening_date,
+        opening_balance_cents: r.opening_balance_cents,
+        tracking_mode: r.tracking_mode || 'transactions',
+        balance_revision: r.balance_revision || 1,
+        revision: r.revision,
+        created_at: r.created_at,
+        updated_at: r.updated_at
     };
 }
 
@@ -420,6 +462,8 @@ export function listAccounts(db: Database.Database, entityId?: string): Account[
         account_number_mask: r.account_number_mask,
         opening_date: r.opening_date,
         opening_balance_cents: r.opening_balance_cents,
+        tracking_mode: r.tracking_mode || 'transactions',
+        balance_revision: r.balance_revision || 1,
         revision: r.revision,
         created_at: r.created_at,
         updated_at: r.updated_at
