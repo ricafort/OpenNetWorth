@@ -81,6 +81,9 @@ Click the **Local AI** status chip in the top header at any time to test the con
 ## 📊 Dashboard Capabilities
 
 - **Net Worth Control Room**: Real-time aggregation of Total Assets, Total Liabilities, and Net Worth delta.
+- **Fast Balance Updates & Observation Ledger**: Paste raw tables or CSVs directly from banking, superannuation, or brokerage portals. Review live deltas, map accounts inline, and atomically persist dated observations with full supersession history.
+- **Strict Multi-Currency Holdings**: Native multi-currency tracking with zero-distortion currency subtotals (AUD, USD, JPY, EUR, GBP). Distinguishes base currency holdings from converted figures, requiring authoritative dated FX rates.
+- **Deterministic Offline Parsing**: Instant offline delimiter detection, Australian & ISO date normalization, currency scaling, and account candidate matching without needing an LLM.
 - **Wealth Momentum**: Velocity tracking based on monthly cash flow and savings rate.
 - **Asset Allocation & Growth**: Visual breakdowns across Cash, Equities, Real Estate, Crypto, and Alternative assets.
 - **Debt Elimination Engine**: Visual payoff milestones with interest tracking.

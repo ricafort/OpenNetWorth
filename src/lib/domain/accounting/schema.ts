@@ -44,6 +44,8 @@ export const ACCOUNTING_SCHEMA_DDL = `
         account_number_mask TEXT,
         opening_date TEXT,
         opening_balance_cents INTEGER,
+        tracking_mode TEXT NOT NULL DEFAULT 'transactions' CHECK (tracking_mode IN ('balance', 'transactions')),
+        balance_revision INTEGER NOT NULL DEFAULT 1,
         revision INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -170,6 +172,61 @@ export const ACCOUNTING_SCHEMA_DDL = `
     );
     CREATE INDEX IF NOT EXISTS idx_m1_drafts_entity ON m1_drafts(entity_id);
     CREATE INDEX IF NOT EXISTS idx_m1_drafts_payer ON m1_drafts(payer_entity_id);
+
+    -- Dated Balance Observations (Slice 1H / Delivery 1: Balance Updates & Account Reconciliation)
+    -- Why this table exists:
+    -- Records reported balances as evidence from statements, CSVs, manual entries, or APIs.
+    -- Bypasses legacy floating-point tables and preserves balance semantics (posted, available, limit, portfolio).
+    CREATE TABLE IF NOT EXISTS m1_balance_observations (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        balance_kind TEXT NOT NULL CHECK (balance_kind IN (
+            'posted_balance',
+            'current_balance',
+            'available_balance',
+            'statement_closing_balance',
+            'credit_limit',
+            'available_credit',
+            'outstanding_loan_principal',
+            'available_redraw',
+            'brokerage_cash',
+            'buying_power',
+            'securities_market_value',
+            'total_portfolio_value',
+            'projected_future_value',
+            'unresolved'
+        )),
+        effective_date TEXT NOT NULL, -- YYYY-MM-DD
+        effective_time TEXT,
+        imported_at TEXT NOT NULL,
+        source_type TEXT NOT NULL CHECK (source_type IN ('manual', 'table_paste', 'document', 'api')),
+        source_reference TEXT,
+        source_batch_id TEXT,
+        superseded_by_id TEXT,
+        review_status TEXT NOT NULL DEFAULT 'proposed' CHECK (review_status IN ('proposed', 'accepted', 'superseded', 'rejected')),
+        raw_label TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE,
+        FOREIGN KEY (superseded_by_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_obs_account_date ON m1_balance_observations(account_id, effective_date);
+    CREATE INDEX IF NOT EXISTS idx_obs_status ON m1_balance_observations(review_status);
+
+    -- Account Source Mappings (delivery 1: Confirmed mappings between external institutions and internal accounts)
+    CREATE TABLE IF NOT EXISTS m1_account_source_mappings (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        connection_id TEXT NOT NULL DEFAULT 'default',
+        source_account_id TEXT NOT NULL,
+        institution TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(provider, connection_id, source_account_id),
+        FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_asm_account ON m1_account_source_mappings(account_id);
 `;
 
 /**
@@ -275,6 +332,76 @@ export function migrateAccountingSchema(db: Database.Database): void {
             );
             CREATE INDEX IF NOT EXISTS idx_m1_drafts_entity ON m1_drafts(entity_id);
             CREATE INDEX IF NOT EXISTS idx_m1_drafts_payer ON m1_drafts(payer_entity_id);
+        `);
+
+        // 4. Check if m1_accounts table exists and needs tracking_mode or balance_revision columns
+        const accTableExists = (db.prepare(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_accounts'"
+        ).get() as any).cnt > 0;
+
+        if (accTableExists) {
+            const accColumns = db.prepare("PRAGMA table_info(m1_accounts)").all() as Array<{ name: string }>;
+            const hasTrackingMode = accColumns.some(c => c.name === 'tracking_mode');
+            if (!hasTrackingMode) {
+                db.prepare("ALTER TABLE m1_accounts ADD COLUMN tracking_mode TEXT NOT NULL DEFAULT 'transactions' CHECK (tracking_mode IN ('balance', 'transactions'))").run();
+            }
+            const hasBalanceRev = accColumns.some(c => c.name === 'balance_revision');
+            if (!hasBalanceRev) {
+                db.prepare("ALTER TABLE m1_accounts ADD COLUMN balance_revision INTEGER NOT NULL DEFAULT 1").run();
+            }
+        }
+
+        // 5. Ensure m1_balance_observations and m1_account_source_mappings tables exist
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS m1_balance_observations (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                amount_cents INTEGER NOT NULL,
+                currency TEXT NOT NULL,
+                balance_kind TEXT NOT NULL CHECK (balance_kind IN (
+                    'posted_balance',
+                    'current_balance',
+                    'available_balance',
+                    'statement_closing_balance',
+                    'credit_limit',
+                    'available_credit',
+                    'outstanding_loan_principal',
+                    'available_redraw',
+                    'brokerage_cash',
+                    'buying_power',
+                    'securities_market_value',
+                    'total_portfolio_value',
+                    'projected_future_value',
+                    'unresolved'
+                )),
+                effective_date TEXT NOT NULL,
+                effective_time TEXT,
+                imported_at TEXT NOT NULL,
+                source_type TEXT NOT NULL CHECK (source_type IN ('manual', 'table_paste', 'document', 'api')),
+                source_reference TEXT,
+                source_batch_id TEXT,
+                superseded_by_id TEXT,
+                review_status TEXT NOT NULL DEFAULT 'proposed' CHECK (review_status IN ('proposed', 'accepted', 'superseded', 'rejected')),
+                raw_label TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY (superseded_by_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_obs_account_date ON m1_balance_observations(account_id, effective_date);
+            CREATE INDEX IF NOT EXISTS idx_obs_status ON m1_balance_observations(review_status);
+
+            CREATE TABLE IF NOT EXISTS m1_account_source_mappings (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                connection_id TEXT NOT NULL DEFAULT 'default',
+                source_account_id TEXT NOT NULL,
+                institution TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(provider, connection_id, source_account_id),
+                FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_asm_account ON m1_account_source_mappings(account_id);
         `);
     });
 

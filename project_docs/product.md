@@ -57,6 +57,13 @@
 -   **Privacy Blur**: A **Toggle** state. Temporarily blurs values (`filter: blur(4px)`) without changing the entire theme.
 -   **Row-Level Security**: Data isolation via Supabase RLS is critical.
 
+### Fast Balance Updates & Observation Ledger (Delivery 1)
+-   **Observation-Based Ledger**: Non-destructive tracking of balance snapshots in `m1_balance_observations` without fabricating journal entries. Supports revision tracking and audit trails.
+-   **Deterministic Structured Table Parser**: Instantly parses pasted CSV, TSV, pipe-delimited, and whitespace tables offline without external LLM dependencies (`structuredBalanceParser.ts`).
+-   **Review & Confirmation Workflow**: Displays proposed balances alongside live deltas against current ledger state, allowing inline account mapping, account creation, currency toggles, and atomic commits.
+-   **Multi-Currency Sovereignty**: Tracks multi-currency assets and liabilities (AUD, USD, JPY, EUR, GBP) natively. Discloses currency subtotals and prevents misleading 1:1 synthetic conversions when FX rates are missing.
+-   **Unobserved Account Transparency**: Unrecorded accounts render as *`Needs balance`* rather than fabricating zero balances or false gains from zero.
+
 ### Cash Flow & Autopilot
 -   **History**: Track monthly Income vs Expenses manually.
 -   **Autopilot**: Define recurring transactions (Salary, Netflix) to automate projections.
@@ -66,12 +73,15 @@
 
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
+| **Observation Ledger** | 🟢 Implemented (D1) | `m1_balance_observations` with supersession and revision tracking. |
+| **Fast Balance Updates** | 🟢 Implemented (D1) | `UpdateBalancesModal` with live deltas, inline creation, and atomic save. |
+| **Structured Table Parser** | 🟢 Implemented (D1) | Deterministic CSV/TSV/table paste parsing with currency & date normalization. |
+| **Multi-Currency Ledger** | 🟢 Implemented (D1) | `sharedFinancialSummaryService` with strict currency subtotals & FX disclosure. |
 | **Bank Integration** | 🟢 Implemented | Plaid Link active (`ConnectBankButton`), Schema ready. |
 | **Debt Calculator** | 🟢 Implemented | Logic in `debtCalculator.ts`, UI in `DebtPayoffCalculator.tsx`. |
 | **Gamification** | 🟢 Implemented | Persistent badges via `user_badges` table, Triggers on Assets/NetWorth/Goals. |
 | **Time Machine** | 🟢 Implemented | Control UI exists, Vintage Overlay active on `/timemachine`. |
 | **Mentorship** | 🟢 Implemented | `ChatInterface` active with Context, Action Parsing, and Consensus Board. |
-| **Multi-Currency** | 🟢 Implemented | `CurrencySelector` and conversion logic active. |
 | **Cash Flow** | 🟢 Implemented | History tracking and Autopilot (Recurring) engine active. |
 | **Financial Freedom** | 🟢 Implemented | Projections in `src/features/freedom`. |
 

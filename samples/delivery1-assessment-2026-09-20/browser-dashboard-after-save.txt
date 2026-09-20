@@ -1,0 +1,186 @@
+Browser tab: 1, Title: "Dashboard | OpenNetWorth", URL: "http://localhost:4007/".
+0 AXWebArea Dashboard | OpenNetWorth, URL: localhost:4007/
+	1 container
+		2 text OpenNetWorth LOCAL
+		3 container
+			4 link Description: Dashboard, Value: localhost:4007/
+			5 link Description: Accounting My finances, Value: localhost:4007/accounting
+			6 link Description: Assets What I own, Value: localhost:4007/assets
+			7 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			8 link Description: Goals, Value: localhost:4007/goals
+			9 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			10 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			11 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			12 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			13 link Description: Privacy, Value: localhost:4007/privacy
+		14 text ON Local Vault Owner 🔒 100% On-Device
+		15 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		16 button Light Mode
+		17 button Stealth Mode
+		18 button System Theme
+		19 button Blur Values
+		20 text v 1.0.0
+	21 container
+		22 heading Financial Overview, Value: 2
+			23 text Financial Overview
+		24 text Welcome back. Here's your net worth today.
+		25 button Restart Tour
+		26 button App Settings
+		27 button Reset / Choose Demo Profile
+		28 button Update Balances, Help: Update Account Balances (Super, Trading, Bank)
+		29 button LM Studio, Help: Configure Local LLM Engine (LM Studio / Ollama)
+		30 text Currency:
+		31 pop up button (collapsed, settable) Value: A$ AUD - Australian Dollar, Secondary Actions: Expand
+			32 menu
+				33 $ USD - US Dollar
+				34 € EUR - Euro
+				35 £ GBP - British Pound
+				36 ¥ JPY - Japanese Yen
+				37 C$ CAD - Canadian Dollar
+				38 (selected) A$ AUD - Australian Dollar
+				39 Fr CHF - Swiss Franc
+				40 ¥ CNY - Chinese Yuan
+				41 ₹ INR - Indian Rupee
+				42 S$ SGD - Singapore Dollar
+				43 ₱ PHP - Philippine Peso
+				44 ₩ KRW - South Korean Won
+		45 button Customize, Help: Customize Dashboard Layout
+		46 button ON Local Vault Owner
+			47 text ON
+			48 text Local Vault Owner
+		49 heading Get Started, Value: 3
+			50 text Get Started
+		51 text Complete these steps to unlock full potential. 1  /  4  Steps
+		52 link Description: Add your first asset, Value: localhost:4007/assets
+		53 link Description: Track a liability, Value: localhost:4007/liabilities
+		54 link Description: Set a financial goal, Value: localhost:4007/goals
+		55 link Description: Chat with a mentor, Value: localhost:4007/mentors
+		56 heading Achievements 0 / 6, Value: 3
+			57 text Achievements 0  /  6
+		58 text 🎯
+		59 heading First Steps, Value: 4
+			60 text First Steps
+		61 text Add your first asset
+		62 text 🏆
+		63 heading Goal Setter, Value: 4
+			64 text Goal Setter
+		65 text Create a financial goal
+		66 text 📊
+		67 heading Wealth Tracker, Value: 4
+			68 text Wealth Tracker
+		69 text Achieve positive net worth
+		70 text ⚔️
+		71 heading Debt Slayer, Value: 4
+			72 text Debt Slayer
+		73 text Pay off a liability completely
+		74 text 🔥
+		75 heading Consistent, Value: 4
+			76 text Consistent
+		77 text 3-day check-in streak
+		78 text 💎
+		79 heading Millionaire, Value: 4
+			80 text Millionaire
+		81 text Reach $1M Net Worth
+		115 container
+			116 text Total Net Worth (AUD)
+			117 heading A$0, Value: 3
+				118 text A$0
+			119 text Not enough history
+		120 container
+			121 text Total Assets
+			122 heading A$0, Value: 3
+				123 text A$0
+			124 text Not enough history
+		125 container
+			126 text Total Liabilities
+			127 heading A$0, Value: 3
+				128 text A$0
+			129 text Not enough history
+		130 container
+			131 heading Net Worth History, Value: 3
+				132 text Net Worth History
+			133 container
+				134 link Description: Time Machine, Value: localhost:4007/timemachine
+				135 button Manage
+				136 pop up button (collapsed, settable) Value: Last 6 Months, Secondary Actions: Expand
+					137 menu
+						138 (selected) Last 6 Months
+						139 Last Year
+						140 All Time
+			141 heading Start your journey, Value: 3
+				142 text Start your journey
+			143 text Add your first asset to track your net worth.
+			144 link Description: Add Asset, Value: localhost:4007/assets
+		145 container
+			146 heading Asset Allocation, Value: 3
+				147 text Asset Allocation
+			148 text No assets to display.
+		149 container
+			150 heading Growth Engine, Value: 3
+				151 text Growth Engine
+			152 text Add investments to unlock portfolio analysis.
+			153 link Description: Go to Assets, Value: localhost:4007/assets
+		154 container
+			155 heading WISDOM BOARD, Value: 3
+				156 text WISDOM BOARD
+			157 container
+				158 button
+				323 container
+					324 text " Find freedom in simplicity and detachment from comparison. "
+				325 text STOIC MINIMALIST
+				162 button
+				163 button
+				164 button L, Help: Long-Term Thinker
+				165 button R, Help: Risk Guardian
+				166 button G, Help: Growth Optimist
+				167 button S, Help: Stoic Minimalist
+				168 button Pause
+				169 button Save Quote
+				170 button Share Quote
+			171 link Description: CONSULT THE BOARD, Value: localhost:4007/mentors
+		172 container
+			173 text INTEGRATION NOTICE
+			174 heading Incomplete View, Value: 3
+				175 text Incomplete View
+			176 text This view does not yet include all your recorded accounts.
+			177 link Description: See Accounts for your balances →, Value: localhost:4007/accounting
+		178 container
+			179 heading TRAVEL POWER, Value: 3
+				180 text TRAVEL POWER
+			181 text Bali
+			182 text Indonesia
+			183 text 0.0 months
+			184 text Freedom
+			185 text Tokyo
+			186 text Japan
+			187 text 0.0 months
+			188 text Freedom
+			189 text New York
+			190 text USA
+			191 text 0.0 months
+			192 text Freedom
+			193 text Based on avg. cost of living for digital nomads
+		194 container
+			195 heading WEALTH MOMENTUM™, Value: 3
+				196 text WEALTH MOMENTUM™
+			197 container
+				198 container
+					199 container
+						322 image
+				201 text 0 STALLED
+			202 container
+				203 text Autopilot Savings:  A$0 /mo
+			204 container
+				205 text Projected  A$0  / year
+			206 container
+				207 text 0.0 % Savings Rate
+		82 heading Account Freshness & Balances 100% On-Device, Value: 3
+			83 text Account Freshness & Balances 100% On-Device
+		84 text Real-time running totals across your Super, Trading, and Bank accounts.
+		85 button Update Balances
+		317 text No accounts tracked yet Start by pasting your account balances or spreadsheet to instantly establish your net worth.
+		318 button Paste Initial Balances
+	86 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		87 image
+
+The focused UI element is 31 pop up button (collapsed, settable) Value: A$ AUD - Australian Dollar, Secondary Actions: Expand

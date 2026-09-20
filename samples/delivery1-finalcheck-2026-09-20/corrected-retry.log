@@ -1,0 +1,36 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+stdout | samples/delivery1-finalcheck-2026-09-20/corrected-retry.test.ts > reimporting an already imported source must not undo its accepted correction
+{"status":200,"latest":10000,"observationCount":3}
+
+ ❯ samples/delivery1-finalcheck-2026-09-20/corrected-retry.test.ts (1 test | 1 failed) 14ms
+   × reimporting an already imported source must not undo its accepted correction 14ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  samples/delivery1-finalcheck-2026-09-20/corrected-retry.test.ts > reimporting an already imported source must not undo its accepted correction
+AssertionError: expected 10000 to be 11000 // Object.is equality
+
+- Expected
++ Received
+
+- 11000
++ 10000
+
+ ❯ samples/delivery1-finalcheck-2026-09-20/corrected-retry.test.ts:18:33
+     16|   const current=getLatestValuationObservation(db,account.id,'2026-09-2…
+     17|   console.log(JSON.stringify({status:response.status,latest:current?.a…
+     18|   expect(current?.amount_cents).toBe(11000);
+       |                                 ^
+     19|   expect((db.prepare('SELECT COUNT(*) n FROM m1_balance_observations')…
+     20|  } finally {setTestDb(null);db.close();}
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  18:48:26
+   Duration  401ms (transform 130ms, setup 0ms, import 209ms, tests 14ms, environment 0ms)
+

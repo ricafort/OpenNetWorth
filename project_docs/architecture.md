@@ -158,6 +158,46 @@ When a user clicks "Keep Data & Exit" in Demo Mode:
 - Data persists in browser `localStorage`.
 - **Time Machine**: Calculates historical states on the fly based on current snapshot and growth logic.
 
+## 3. Delivery 1: Sovereign Balance Updates & Observation Ledger Architecture
+
+Delivery 1 establishes a sovereign, double-entry and observation-based accounting core designed to track wealth without fabricating artificial cash-flow journal entries.
+
+### 1. Dual-Track Accounting Architecture
+- **Transaction Ledger**: `m1_transactions` and `m1_postings` enforce strict double-entry balance (`Sum(postings.amount_cents) === 0`) for cash flows, income, expenses, transfers, and debt repayments.
+- **Observation Ledger**: `m1_balance_observations` records point-in-time balance snapshots (e.g. quarterly superannuation statements, brokerage values, bank end-of-month statements) directly as historical evidence.
+- **Why this separation exists**: Periodic statement balance updates do not represent new income or expenses. Conflating balance revisions with cash-flow transactions distorts savings rates and taxable income.
+
+### 2. Non-Destructive Supersession & Concurrency Control
+```text
+[ Observation 1 (Accepted) ]  ── superseded by ──▶  [ Observation 2 (Accepted) ]
+(audit preserved)                                    (authoritative latest)
+```
+- When a user corrects or updates a balance observation for the same account and date, the previous observation is marked `review_status = 'superseded'` with `superseded_by_id` pointing to the new record.
+- **Optimistic Concurrency**: Every accepted observation increments `m1_accounts.balance_revision`. Mutations specify `expected_balance_revision`; stale updates return HTTP 409 Conflict.
+- **Retry & Idempotency**: Re-importing a previously imported source file is idempotent across both active and superseded records, preventing accidental resurrection of stale historical balances.
+
+### 3. Deterministic Structured Parsing Pipeline
+```text
+[ Raw CSV / TSV / Tabular Paste ]
+               │
+               ▼
+[ structuredBalanceParser.ts ] ──(Delimiter, Currency & Date Detection)
+               │
+               ▼
+[ Candidate Account Disambiguation ] (Strict Currency Match & Similarity)
+               │
+               ▼
+[ UpdateBalancesModal Review ] ──(Live Deltas, Inline Account Mapping)
+               │
+               ▼ (Atomic Batch POST)
+[ SQLite Database (better-sqlite3) ]
+```
+
+### 4. Shared Financial Summary & Multi-Currency Sovereignty
+- Single read service (`sharedFinancialSummaryService.ts`) powers Dashboard Widgets, Reports, and Assistant.
+- **Strict Multi-Currency**: Balances are calculated in native minor units per currency (AUD, USD, JPY, EUR, GBP). Subtotals are explicitly reported per currency. Converted totals are only produced if exact dated FX rates exist—no 1:1 synthetic conversions are ever assumed.
+- **Unrecorded Account Transparency**: Accounts without eligible valuation observations render as *`Needs balance`* rather than coercing `null` into `$0.00` or claiming a false delta from zero.
+
 ## 4. Coding Standards
 
 1.  **Strict Typing**: All domain entities must have Zod schemas and TypeScript interfaces.

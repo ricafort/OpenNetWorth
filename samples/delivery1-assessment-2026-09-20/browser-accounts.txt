@@ -1,0 +1,52 @@
+Browser tab: 1, Title: "Accounting Engine | OpenNetWorth", URL: "http://localhost:4007/accounting".
+1 AXWebArea Accounting Engine | OpenNetWorth, URL: localhost:4007/accounting
+	2 container
+		3 text OpenNetWorth LOCAL
+		4 container
+			5 link Description: Dashboard, Value: localhost:4007/
+			6 link Description: Accounting My finances, Value: localhost:4007/accounting
+			7 link Description: Assets What I own, Value: localhost:4007/assets
+			8 link Description: Liabilities What I owe, Value: localhost:4007/liabilities
+			9 link Description: Goals, Value: localhost:4007/goals
+			10 link Description: Cash Flow Money in & out, Value: localhost:4007/cashflow
+			11 link Description: Growth Engine Investments, Value: localhost:4007/portfolio
+			12 link Description: Freedom Debt payoff, Value: localhost:4007/freedom
+			13 link Description: Mentors AI Assistant, Value: localhost:4007/mentors
+			14 link Description: Privacy, Value: localhost:4007/privacy
+		15 text ON Local Vault Owner 🔒 100% On-Device
+		16 link Description: Backup / Restore Vault, Value: localhost:4007/privacy
+		17 button Light Mode
+		18 button Stealth Mode
+		19 button System Theme
+		20 button Blur Values
+		21 text v 1.0.0
+	22 container
+		89 heading Your finances, Value: 1
+			90 text Your finances
+		91 text See your personal and business finances together. Viewing:
+		92 pop up button (collapsed, settable) Value: All my finances, Secondary Actions: Expand
+			93 menu
+				94 (selected) All my finances
+				95 container Filtered Views
+					96 Assessor Business (Business)
+					97 Assessor Household (Household)
+		98 button Transactions
+		99 button Accounts
+		100 button Reports
+		101 button Documents
+		126 heading Accounts, Value: 1
+			127 text Accounts
+		128 text Track everything you own and owe in one place.
+		129 button Add account
+		130 button Refresh Balances
+		131 heading What you own, Value: 2
+			132 text What you own
+		133 text 5  accounts Assessor Everyday ASSESSOR HOUSEHOLD Checking A$0.00 As of  2026-09-20 Assessor Everyday ASSESSOR BUSINESS Checking A$0.00 As of  2026-09-20 Assessor Super ASSESSOR HOUSEHOLD Brokerage A$0.00 As of  2026-09-20 Awaiting Balance ASSESSOR HOUSEHOLD Savings A$0.00 As of  2026-09-20 Tokyo Savings ASSESSOR HOUSEHOLD Savings ¥0 As of  2026-09-20
+		134 heading What you owe, Value: 2
+			135 text What you owe
+		136 text 1  accounts Assessor Card ASSESSOR HOUSEHOLD Credit Card A$0.00 As of  2026-09-20
+	87 pop up button (collapsed) Description: Open Next.js Dev Tools, ID: next-logo, Secondary Actions: Expand
+		88 image
+	125 text Accounting Engine | OpenNetWorth
+
+The focused UI element is 99 button Accounts

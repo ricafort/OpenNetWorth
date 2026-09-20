@@ -1,0 +1,75 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+stderr | samples/delivery1-recheck-2026-09-20/remaining.test.ts > R02 rejects archive invalid correction target atomically
+Vault POST Error: SqliteError: FOREIGN KEY constraint failed
+    at D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:1234:46
+    at sqliteTransaction (D:\LocalVersions\OpenNetWorth\node_modules\better-sqlite3\lib\methods\transaction.js:65:24)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:1398:13)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/samples/delivery1-recheck-2026-09-20/remaining.test.ts:14:468
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  code: 'SQLITE_CONSTRAINT_FOREIGNKEY'
+}
+
+stdout | samples/delivery1-recheck-2026-09-20/remaining.test.ts > R03 reports and shared summary use same wealth basis
+REPORT_SHAPE {"entity_id":"de1b7b2f-49f7-415e-a545-6194a6a5bb9c","as_of_date":"2026-09-20","net_worth_cents_by_currency":{"AUD":0},"total_assets_cents_by_currency":{"AUD":0},"total_liabilities_cents_by_currency":{},"formatted_net_worth_by_currency":{"AUD":"A$0.00"},"calculation_version":"1.0.0","account_count":1}
+
+ ❯ samples/delivery1-recheck-2026-09-20/remaining.test.ts (5 tests | 4 failed) 43ms
+   ✓ R01 incomplete account coverage remains incomplete even when FX exists 8ms
+   × R02 rejects archive fractional amount atomically 11ms
+   × R02 rejects archive invalid date atomically 4ms
+   × R02 rejects archive invalid correction target atomically 7ms
+   × R03 reports and shared summary use same wealth basis 13ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  samples/delivery1-recheck-2026-09-20/remaining.test.ts > R02 rejects archive fractional amount atomically
+ FAIL  samples/delivery1-recheck-2026-09-20/remaining.test.ts > R02 rejects archive invalid date atomically
+AssertionError: expected 200 to be 400 // Object.is equality
+
+- Expected
++ Received
+
+- 400
++ 200
+
+ ❯ samples/delivery1-recheck-2026-09-20/remaining.test.ts:14:552
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  samples/delivery1-recheck-2026-09-20/remaining.test.ts > R02 rejects archive invalid correction target atomically
+AssertionError: expected 500 to be 400 // Object.is equality
+
+- Expected
++ Received
+
+- 400
++ 500
+
+ ❯ samples/delivery1-recheck-2026-09-20/remaining.test.ts:14:552
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  samples/delivery1-recheck-2026-09-20/remaining.test.ts > R03 reports and shared summary use same wealth basis
+AssertionError: expected +0 to be 10000 // Object.is equality
+
+- Expected
++ Received
+
+- 10000
++ 0
+
+ ❯ samples/delivery1-recheck-2026-09-20/remaining.test.ts:15:379
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+   Start at  18:22:42
+   Duration  451ms (transform 148ms, setup 0ms, import 226ms, tests 43ms, environment 0ms)
+

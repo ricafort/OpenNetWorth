@@ -1,0 +1,14 @@
+[
+  {
+    "Path": "D:\\LocalVersions\\OpenNetWorth\\data\\opennetworth.sqlite",
+    "Hash": "29-F6-02-0E-1C-96-AB-68-31-85-E4-21-1F-49-0F-36-4F-75-66-F4-E4-88-8E-50-53-16-D1-B9-3E-C2-8D-9E"
+  },
+  {
+    "Path": "D:\\LocalVersions\\OpenNetWorth\\data\\opennetworth.sqlite-shm",
+    "Hash": "64-57-5F-D3-82-4A-88-45-B7-B8-15-34-55-1D-FE-7F-CF-2D-EA-DE-4C-B9-3E-B8-1F-C8-4F-5E-0E-B6-B9-F8"
+  },
+  {
+    "Path": "D:\\LocalVersions\\OpenNetWorth\\data\\opennetworth.sqlite-wal",
+    "Hash": "AF-40-6C-5A-C0-1E-A6-5E-99-26-90-5E-3E-B1-2F-9B-1F-02-A5-B3-82-AE-33-D0-00-B9-4C-67-AF-50-C3-FA"
+  }
+]

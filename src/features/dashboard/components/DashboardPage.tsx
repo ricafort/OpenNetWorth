@@ -6,7 +6,7 @@ import OnboardingProgress from '@/features/onboarding/components/OnboardingProgr
 import DashboardModals from '@/features/dashboard/modals/DashboardModals';
 import WidgetDrawer from '@/features/dashboard/components/WidgetDrawer';
 import AchievementBadges from '@/features/gamification/components/AchievementBadges';
-import BankStatusCard from '@/components/bank/BankStatusCard';
+import AccountFreshnessCard from '@/features/sync/components/AccountFreshnessCard';
 import WelcomeScreen from '@/features/dashboard/components/WelcomeScreen';
 import { useFirstRun } from '@/hooks/useFirstRun';
 import { useProfile } from '@/contexts/ProfileContext';
@@ -43,8 +43,8 @@ export const DashboardPage = () => {
             {/* Main Draggable Grid */}
             <DashboardGrid />
 
-            <div className="mx-auto max-w-2xl transform transition-all duration-500 ease-in-out mt-8">
-                <BankStatusCard />
+            <div className="mx-auto max-w-4xl transform transition-all duration-500 ease-in-out mt-8">
+                <AccountFreshnessCard />
             </div>
 
             {/* Components for Edit Mode */}

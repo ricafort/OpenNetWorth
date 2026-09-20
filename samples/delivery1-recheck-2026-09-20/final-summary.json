@@ -1,0 +1,172 @@
+{
+  "success": true,
+  "summary": {
+    "as_of_date": "2026-09-20",
+    "reporting_currency": "JPY",
+    "total_assets_cents_by_currency": {
+      "AUD": 13050000,
+      "JPY": 160000
+    },
+    "total_liabilities_cents_by_currency": {
+      "AUD": -5000
+    },
+    "net_worth_cents_by_currency": {
+      "AUD": 13055000,
+      "JPY": 160000
+    },
+    "converted_net_worth": {
+      "amount_cents": 0,
+      "currency": "JPY",
+      "is_complete": false,
+      "missing_rates": [
+        "AUD -> JPY"
+      ]
+    },
+    "accounts_included": [
+      {
+        "account_id": "20d8dbd3-b5af-4e66-8eaa-006b14eeecf5",
+        "account_name": "Assessor Everyday",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "asset",
+        "account_sub_type": "checking",
+        "tracking_mode": "transactions",
+        "basis": "ledger",
+        "amount_cents": 0,
+        "currency": "AUD",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      },
+      {
+        "account_id": "a7010089-4499-404d-8cb9-79c93ef3ae13",
+        "account_name": "Assessor Everyday",
+        "entity_id": "cf5c3d78-a6d0-43aa-b4b5-15dd88d6d7d7",
+        "account_type": "asset",
+        "account_sub_type": "checking",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": 50000,
+        "currency": "AUD",
+        "effective_date": "2026-09-19",
+        "is_stale": false
+      },
+      {
+        "account_id": "20aecbfc-ba30-4c9f-8ec3-1ff30bd7838c",
+        "account_name": "Assessor Super",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "asset",
+        "account_sub_type": "brokerage",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": 13000000,
+        "currency": "AUD",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      },
+      {
+        "account_id": "efcf7c15-ccee-4ad0-8cb5-1566cd5211f9",
+        "account_name": "Tokyo Savings",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "asset",
+        "account_sub_type": "savings",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": 160000,
+        "currency": "JPY",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      },
+      {
+        "account_id": "bc8fd250-662f-4a83-8391-ecd14e3f6384",
+        "account_name": "Assessor Card",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "liability",
+        "account_sub_type": "credit_card",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": -5000,
+        "currency": "AUD",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      }
+    ],
+    "accounts": [
+      {
+        "account_id": "20d8dbd3-b5af-4e66-8eaa-006b14eeecf5",
+        "account_name": "Assessor Everyday",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "asset",
+        "account_sub_type": "checking",
+        "tracking_mode": "transactions",
+        "basis": "ledger",
+        "amount_cents": 0,
+        "currency": "AUD",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      },
+      {
+        "account_id": "a7010089-4499-404d-8cb9-79c93ef3ae13",
+        "account_name": "Assessor Everyday",
+        "entity_id": "cf5c3d78-a6d0-43aa-b4b5-15dd88d6d7d7",
+        "account_type": "asset",
+        "account_sub_type": "checking",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": 50000,
+        "currency": "AUD",
+        "effective_date": "2026-09-19",
+        "is_stale": false
+      },
+      {
+        "account_id": "20aecbfc-ba30-4c9f-8ec3-1ff30bd7838c",
+        "account_name": "Assessor Super",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "asset",
+        "account_sub_type": "brokerage",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": 13000000,
+        "currency": "AUD",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      },
+      {
+        "account_id": "efcf7c15-ccee-4ad0-8cb5-1566cd5211f9",
+        "account_name": "Tokyo Savings",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "asset",
+        "account_sub_type": "savings",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": 160000,
+        "currency": "JPY",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      },
+      {
+        "account_id": "bc8fd250-662f-4a83-8391-ecd14e3f6384",
+        "account_name": "Assessor Card",
+        "entity_id": "bbf71d08-0684-4cea-a1c6-f6086f1b6f31",
+        "account_type": "liability",
+        "account_sub_type": "credit_card",
+        "tracking_mode": "balance",
+        "basis": "observation",
+        "balance_kind": "current_balance",
+        "amount_cents": -5000,
+        "currency": "AUD",
+        "effective_date": "2026-09-20",
+        "is_stale": false
+      }
+    ],
+    "coverage_notes": [
+      "Account \"Awaiting Balance\" (AUD) tracks balances but has no accepted valuation observation on or before 2026-09-20.",
+      "Could not compute unified converted net worth in JPY due to missing dated exchange rates: AUD -> JPY."
+    ]
+  }
+}

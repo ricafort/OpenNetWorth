@@ -34,6 +34,7 @@ import {
     ScopeNetWorthItem,
     ScopeNetWorthResult,
     ScopeType,
+    VALUATION_BALANCE_KINDS,
     formatMoney
 } from './types';
 import { listEntityMembers, ValidationError } from './accountService';
@@ -141,6 +142,55 @@ export function getAccountBalance(
 }
 
 /**
+ * Resolves the gross balance in cents for an account as of an effective date.
+ * 
+ * Why this exists (R03):
+ * For accounts configured with `tracking_mode === 'balance'`, returns the latest accepted
+ * valuation observation on or before `effectiveDate` (falling back to opening balance).
+ * For double-entry accounts (`tracking_mode === 'transactions'`), returns the computed ledger balance.
+ * This guarantees reports, scope calculations, and shared summaries all calculate net worth
+ * using the exact same wealth basis.
+ * 
+ * Tricky logic:
+ * Querying m1_balance_observations directly avoids circular dependencies with balanceObservationService.
+ * Strictly uses VALUATION_BALANCE_KINDS so credit limits or buying power never affect net worth.
+ * 
+ * TODO: Support automated cross-rate currency conversion in report drilldowns in Slice 2.
+ */
+function resolveGrossAccountBalanceCents(
+    db: Database.Database,
+    acc: { id: string; tracking_mode?: string; opening_balance_cents?: number | null },
+    effectiveDate?: string
+): number {
+    if (acc.tracking_mode === 'balance') {
+        const targetDate = effectiveDate || new Date().toISOString().split('T')[0];
+        const tableExists = (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_balance_observations'").get() as any)?.cnt > 0;
+        if (tableExists) {
+            const placeholders = VALUATION_BALANCE_KINDS.map(() => '?').join(', ');
+            const row = db.prepare(`
+                SELECT amount_cents FROM m1_balance_observations
+                WHERE account_id = ?
+                  AND review_status = 'accepted'
+                  AND effective_date <= ?
+                  AND balance_kind IN (${placeholders})
+                ORDER BY effective_date DESC, created_at DESC, id DESC
+                LIMIT 1
+            `).get(acc.id, targetDate, ...VALUATION_BALANCE_KINDS) as any;
+
+            if (row && row.amount_cents !== undefined && row.amount_cents !== null) {
+                return row.amount_cents;
+            }
+        }
+        if (acc.opening_balance_cents !== undefined && acc.opening_balance_cents !== null) {
+            return acc.opening_balance_cents;
+        }
+        return 0;
+    }
+
+    return getAccountBalance(db, acc.id, effectiveDate).balance_cents;
+}
+
+/**
  * Calculates the exact net worth of an entity as of an optional date.
  * 
  * Why this exists:
@@ -157,10 +207,10 @@ export function getEntityNetWorth(
 
     // Fetch all active accounts for entity
     const accounts = db.prepare(`
-        SELECT id, name, type, currency
+        SELECT id, name, type, currency, tracking_mode, opening_balance_cents
         FROM m1_accounts
         WHERE entity_id = ? AND is_active = 1
-    `).all(entityId) as { id: string; name: string; type: string; currency: string }[];
+    `).all(entityId) as { id: string; name: string; type: string; currency: string; tracking_mode?: string; opening_balance_cents?: number | null }[];
 
     const totalAssets: Record<CurrencyCode, number> = {};
     const totalLiabilities: Record<CurrencyCode, number> = {};
@@ -170,13 +220,13 @@ export function getEntityNetWorth(
             continue; // Equity, Income, Expense accounts do not count as balance sheet balance items
         }
 
-        const bal = getAccountBalance(db, acc.id, effectiveDate);
+        const balanceCents = resolveGrossAccountBalanceCents(db, acc, effectiveDate);
         const curr = acc.currency.toUpperCase();
 
         if (acc.type === 'asset') {
-            totalAssets[curr] = (totalAssets[curr] || 0) + bal.balance_cents;
+            totalAssets[curr] = (totalAssets[curr] || 0) + balanceCents;
         } else if (acc.type === 'liability') {
-            totalLiabilities[curr] = (totalLiabilities[curr] || 0) + bal.balance_cents;
+            totalLiabilities[curr] = (totalLiabilities[curr] || 0) + balanceCents;
         }
     }
 
@@ -732,7 +782,7 @@ export function getScopeNetWorth(
         // 1. Accounts where entity_id = targetEntity.id
         // 2. Accounts where m1_account_ownership has entity_id = targetEntity.id
         const candidateAccounts = db.prepare(`
-            SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency
+            SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency, a.tracking_mode, a.opening_balance_cents
             FROM m1_accounts a
             LEFT JOIN m1_account_ownership o ON a.id = o.account_id
             WHERE (a.entity_id = ? OR o.entity_id = ?) AND a.is_active = 1
@@ -741,8 +791,7 @@ export function getScopeNetWorth(
         `).all(targetEntity.id, targetEntity.id) as any[];
 
         for (const acc of candidateAccounts) {
-            const balResult = getAccountBalance(db, acc.id, effectiveDate);
-            const grossBalance = balResult.balance_cents;
+            const grossBalance = resolveGrossAccountBalanceCents(db, acc, effectiveDate);
             const curr = acc.currency.toUpperCase();
 
             // Check ownership allocations using unified policy (Resubmission Item 6)
@@ -817,7 +866,7 @@ export function getScopeNetWorth(
 
         const placeholders = memberIds.map(() => '?').join(',');
         const accounts = db.prepare(`
-            SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency
+            SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency, a.tracking_mode, a.opening_balance_cents
             FROM m1_accounts a
             LEFT JOIN m1_account_ownership o ON a.id = o.account_id
             WHERE (a.entity_id IN (${placeholders}) OR o.entity_id IN (${placeholders}))
@@ -831,8 +880,7 @@ export function getScopeNetWorth(
             if (seenAccounts.has(acc.id)) continue;
             seenAccounts.add(acc.id);
 
-            const balResult = getAccountBalance(db, acc.id, effectiveDate);
-            const grossBalance = balResult.balance_cents;
+            const grossBalance = resolveGrossAccountBalanceCents(db, acc, effectiveDate);
             const curr = acc.currency.toUpperCase();
 
             // Resubmission Item 6: Household share is strictly the sum of the attributed shares

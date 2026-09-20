@@ -5,11 +5,12 @@ import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useOnboarding } from '@/features/onboarding/context/OnboardingContext';
 import { useProfile } from '@/contexts/ProfileContext';
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, User, Moon, Sun, ChevronDown, RotateCcw, Check, PlayCircle, Settings, Gamepad2, LayoutGrid, Globe, Cpu, ShieldCheck } from 'lucide-react';
+import { LogOut, User, Moon, Sun, ChevronDown, RotateCcw, Check, PlayCircle, Settings, Gamepad2, LayoutGrid, Globe, Cpu, ShieldCheck, Scale } from 'lucide-react';
 import Link from 'next/link';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import CurrencySelector from '@/components/ui/CurrencySelector';
 import LocalAiSettingsModal, { getSavedLocalAiConfig } from '@/components/ui/LocalAiSettingsModal';
+import UpdateBalancesModal from '@/features/sync/components/UpdateBalancesModal';
 import { createClient } from '@/utils/supabase/client';
 
 export default function DashboardHeader() {
@@ -19,6 +20,7 @@ export default function DashboardHeader() {
     const { updateCurrency, profile } = useProfile();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [isLocalAiOpen, setIsLocalAiOpen] = useState(false);
+    const [isBalancesModalOpen, setIsBalancesModalOpen] = useState(false);
     const [aiStatusText, setAiStatusText] = useState('Local AI');
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -117,6 +119,25 @@ export default function DashboardHeader() {
                             <Gamepad2 size={20} />
                         </button>
 
+                        {/* 
+                          * Fast Balance Updates Button
+                          * Why this exists:
+                          * Provides primary header access to the Delivery 1 fast balance update modal, allowing users
+                          * to paste tabular balances, review live deltas, or execute manual fast updates.
+                          * Tricky logic:
+                          * Operates against local SQLite observation ledger and triggers 'opennetworth_balances_updated'
+                          * event upon save, causing all stat cards to recompute without reloading.
+                          * TODO: Show unobserved account count badge directly on this button in future UX iteration.
+                          */}
+                        <button
+                            onClick={() => setIsBalancesModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl shadow-sm transition-all group"
+                            title="Update Account Balances (Super, Trading, Bank)"
+                        >
+                            <Scale size={14} className="group-hover:rotate-12 transition-transform" />
+                            <span className="hidden sm:inline">Update Balances</span>
+                        </button>
+
                         {/* Local AI Runner Pill */}
                         <button
                             onClick={() => setIsLocalAiOpen(true)}
@@ -207,6 +228,12 @@ export default function DashboardHeader() {
             <LocalAiSettingsModal
                 isOpen={isLocalAiOpen}
                 onClose={() => setIsLocalAiOpen(false)}
+            />
+
+            {/* Fast Balance Updates Modal */}
+            <UpdateBalancesModal
+                isOpen={isBalancesModalOpen}
+                onClose={() => setIsBalancesModalOpen(false)}
             />
         </div>
     );

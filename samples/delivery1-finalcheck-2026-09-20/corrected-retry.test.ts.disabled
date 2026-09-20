@@ -1,0 +1,21 @@
+import {it,expect} from 'vitest';
+import {createTestDb,setTestDb} from '../../src/infrastructure/sqlite/db';
+import {initAccountingSchema} from '../../src/lib/domain/accounting/schema';
+import {createEntity,createAccount} from '../../src/lib/domain/accounting/accountService';
+import {recordBalanceObservation,getLatestValuationObservation} from '../../src/lib/domain/accounting/balanceObservationService';
+import {POST} from '../../src/app/api/accounting/balances/route';
+it('reimporting an already imported source must not undo its accepted correction',async()=>{
+ const db=createTestDb(); initAccountingSchema(db);setTestDb(db);
+ try {
+  const owner=createEntity(db,{name:'Assessor',type:'person',currency:'AUD'});
+  const {account}=createAccount(db,{entity_id:owner.id,name:'Savings',type:'asset',sub_type:'savings',currency:'AUD',tracking_mode:'balance'});
+  const original={account_id:account.id,amount_cents:10000,currency:'AUD',balance_kind:'current_balance' as const,effective_date:'2026-09-20',source_type:'table_paste' as const,source_batch_id:'same-file',source_reference:'same-row'};
+  recordBalanceObservation(db,original);
+  recordBalanceObservation(db,{...original,amount_cents:11000,source_type:'manual',source_batch_id:undefined,source_reference:undefined});
+  const response=await POST(new Request('http://localhost/api/accounting/balances',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{...original,expected_balance_revision:3}]})}));
+  const current=getLatestValuationObservation(db,account.id,'2026-09-20');
+  console.log(JSON.stringify({status:response.status,latest:current?.amount_cents,observationCount:(db.prepare('SELECT COUNT(*) n FROM m1_balance_observations').get() as any).n}));
+  expect(current?.amount_cents).toBe(11000);
+  expect((db.prepare('SELECT COUNT(*) n FROM m1_balance_observations').get() as any).n).toBe(2);
+ } finally {setTestDb(null);db.close();}
+});

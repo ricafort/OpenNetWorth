@@ -1,0 +1,16 @@
+import {it,expect,beforeEach,afterEach} from 'vitest';
+import {createTestDb,setTestDb} from '../../src/infrastructure/sqlite/db';
+import {initAccountingSchema} from '../../src/lib/domain/accounting/schema';
+import {createEntity,createAccount} from '../../src/lib/domain/accounting/accountService';
+import {recordBalanceObservation} from '../../src/lib/domain/accounting/balanceObservationService';
+import {getSharedFinancialSummary} from '../../src/lib/domain/accounting/sharedFinancialSummaryService';
+import {GET as exportVault,POST as restoreVault} from '../../src/app/api/vault/route';
+import {GET as accounting} from '../../src/app/api/accounting/route';
+let db:ReturnType<typeof createTestDb>,account:string;
+const request=(body:any)=>new Request('http://localhost/api/vault',{method:'POST',body:JSON.stringify(body),headers:{'Content-Type':'application/json'}});
+beforeEach(()=>{db=createTestDb();initAccountingSchema(db);setTestDb(db);const owner=createEntity(db,{name:'Household',type:'household',currency:'AUD'});account=createAccount(db,{entity_id:owner.id,name:'Savings',type:'asset',sub_type:'savings',currency:'AUD',tracking_mode:'balance'}).account.id;recordBalanceObservation(db,{account_id:account,amount_cents:10000,currency:'AUD',balance_kind:'current_balance',effective_date:'2026-09-19',source_type:'manual'});});
+afterEach(()=>{setTestDb(null);db.close();});
+it('R01 incomplete account coverage remains incomplete even when FX exists',()=>{const owner=createEntity(db,{name:'Second owner',type:'person',currency:'AUD'});createAccount(db,{entity_id:owner.id,name:'Missing',type:'asset',sub_type:'savings',currency:'AUD',tracking_mode:'balance'});db.prepare('INSERT INTO m1_exchange_rates(id,from_currency,to_currency,rate,effective_date,created_at,source) VALUES(?,?,?,?,?,?,?)').run('rate','AUD','USD',0.7,'2026-09-19','2026-09-19T00:00:00Z','manual');expect(getSharedFinancialSummary(db,{reportingCurrency:'USD',asOfDate:'2026-09-20'}).converted_net_worth?.is_complete).toBe(false);});
+it.each([['fractional amount','amount_cents',100.5],['invalid date','effective_date','2026-02-31'],['invalid correction target','superseded_by_id','missing-observation']])('R02 rejects archive %s atomically',async(_,field,value)=>{const original=db.prepare('SELECT * FROM m1_balance_observations').all();const exported=await (await exportVault(new Request('http://localhost/api/vault'))).json();exported.vault.balance_observations[0][field as string]=value;const res=await restoreVault(request({action:'bulk_restore',...exported}));expect(res.status).toBe(400);expect(db.prepare('SELECT * FROM m1_balance_observations').all()).toEqual(original);});
+it('R03 reports and shared summary use same wealth basis',async()=>{const res=await accounting(new Request('http://localhost/api/accounting?view=reports&entity_id=all&as_of_date=2026-09-20'));const data=await res.json();console.log('REPORT_SHAPE',JSON.stringify(data.component_entities[0].net_worth));expect(data.component_entities[0].net_worth.net_worth_cents_by_currency.AUD).toBe(getSharedFinancialSummary(db,{asOfDate:'2026-09-20'}).net_worth_cents_by_currency.AUD);});
+

@@ -1,0 +1,55 @@
+
+ RUN  v4.0.18 D:/LocalVersions/OpenNetWorth
+
+stdout | samples/delivery1-signoff-2026-09-20/corrected-retry.test.ts > reimporting an already imported source must not undo its accepted correction
+{"status":200,"latest":11000,"observationCount":2}
+
+ ✓ samples/delivery1-signoff-2026-09-20/corrected-retry.test.ts (1 test) 12ms
+stderr | samples/delivery1-signoff-2026-09-20/remaining.test.ts > R02 rejects archive fractional amount atomically
+Vault POST Error: ValidationError: Balance observation "09952c14-45d2-4e36-b3a2-c67b9e0ee0b8" amount_cents must be a safe integer, received: 100.5
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:730:31)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/samples/delivery1-signoff-2026-09-20/remaining.test.ts:14:468
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | samples/delivery1-signoff-2026-09-20/remaining.test.ts > R02 rejects archive invalid date atomically
+Vault POST Error: ValidationError: Balance observation "b6690cde-274d-4768-b38f-49d00c8f7c6c" effective_date is not a valid calendar date: "2026-02-31".
+    at assertValidCalendarDateLocal (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:87:15)
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:732:21)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/samples/delivery1-signoff-2026-09-20/remaining.test.ts:14:468
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | samples/delivery1-signoff-2026-09-20/previous.test.ts > P14 vault rejects observation whose currency differs from account
+Vault POST Error: ValidationError: Balance observation "16eecadc-6058-4ffd-b5b1-4f2ad685384a" currency "JPY" does not match account currency "AUD"
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:790:31)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/samples/delivery1-signoff-2026-09-20/previous.test.ts:29:277
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stderr | samples/delivery1-signoff-2026-09-20/remaining.test.ts > R02 rejects archive invalid correction target atomically
+Vault POST Error: ValidationError: Balance observation "22fdef87-7da0-436b-81ed-17153730b175" references non-existent superseded_by_id "missing-observation"
+    at POST (D:/LocalVersions/OpenNetWorth/src/app/api/vault/route.ts:796:35)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at D:/LocalVersions/OpenNetWorth/samples/delivery1-signoff-2026-09-20/remaining.test.ts:14:468
+    at file:///D:/LocalVersions/OpenNetWorth/node_modules/@vitest/runner/dist/index.js:915:20 {
+  statusCode: 400
+}
+
+stdout | samples/delivery1-signoff-2026-09-20/remaining.test.ts > R03 reports and shared summary use same wealth basis
+REPORT_SHAPE {"entity_id":"ed739dcb-4b14-4f73-a9ba-0924417df217","as_of_date":"2026-09-20","net_worth_cents_by_currency":{"AUD":10000},"total_assets_cents_by_currency":{"AUD":10000},"total_liabilities_cents_by_currency":{},"formatted_net_worth_by_currency":{"AUD":"A$100.00"},"calculation_version":"1.0.0","account_count":1}
+
+ ✓ samples/delivery1-signoff-2026-09-20/remaining.test.ts (5 tests) 40ms
+ ✓ samples/delivery1-signoff-2026-09-20/previous.test.ts (19 tests) 77ms
+
+ Test Files  3 passed (3)
+      Tests  25 passed (25)
+   Start at  19:26:31
+   Duration  446ms (transform 461ms, setup 0ms, import 744ms, tests 129ms, environment 0ms)
+

@@ -60,6 +60,34 @@ function validateMonth(month: any): string {
     return month;
 }
 
+/**
+ * Validates real calendar date (YYYY-MM-DD) format and calendar boundary (R02, P03).
+ * 
+ * Why this exists:
+ * Rejects impossible dates (e.g. 2026-02-31, 2026-13-01) during archive pre-validation
+ * before any database modifications begin, guaranteeing atomic rejection with HTTP 400.
+ * 
+ * Tricky logic:
+ * Date parsing in UTC ensures timezone offsets do not cause off-by-one calendar shifts.
+ * 
+ * TODO: Support leap-second timestamp precision if sub-second observation imports are added.
+ */
+function assertValidCalendarDateLocal(dateStr: any, context: string): void {
+    if (!dateStr || typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        throw new ValidationError(`${context} must be a valid date in YYYY-MM-DD format, received: "${dateStr}".`);
+    }
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const parsed = new Date(Date.UTC(y, m - 1, d));
+    if (
+        isNaN(parsed.getTime()) ||
+        parsed.getUTCFullYear() !== y ||
+        parsed.getUTCMonth() + 1 !== m ||
+        parsed.getUTCDate() !== d
+    ) {
+        throw new ValidationError(`${context} is not a valid calendar date: "${dateStr}".`);
+    }
+}
+
 import { CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
 
 export async function GET(request: Request) {
@@ -117,6 +145,10 @@ export async function GET(request: Request) {
             const settingsRows = db.prepare('SELECT * FROM settings').all();
             const settings: Record<string, any> = {};
             for (const row of settingsRows as any[]) {
+                // Security: Filter out any external API tokens, credentials, or secrets from backup export
+                if (/token|secret|password|credential|apikey|api_key/i.test(row.key)) {
+                    continue;
+                }
                 try {
                     settings[row.key] = JSON.parse(row.value);
                 } catch {
@@ -133,7 +165,31 @@ export async function GET(request: Request) {
 
             // Modern accounting collections
             const entities = tableExists('m1_entities') ? db.prepare('SELECT * FROM m1_entities').all() : [];
-            const accounts = tableExists('m1_accounts') ? db.prepare('SELECT * FROM m1_accounts').all() : [];
+            const accounts = tableExists('m1_accounts') ? db.prepare('SELECT * FROM m1_accounts').all().map((a: any) => {
+                const acc: any = {
+                    id: a.id,
+                    entity_id: a.entity_id,
+                    name: a.name,
+                    type: a.type,
+                    sub_type: a.sub_type,
+                    currency: a.currency,
+                    is_active: a.is_active,
+                    institution: a.institution,
+                    account_number_mask: a.account_number_mask,
+                    opening_date: a.opening_date,
+                    opening_balance_cents: a.opening_balance_cents,
+                    revision: a.revision,
+                    created_at: a.created_at,
+                    updated_at: a.updated_at
+                };
+                if (a.tracking_mode && a.tracking_mode !== 'transactions') {
+                    acc.tracking_mode = a.tracking_mode;
+                }
+                if (a.balance_revision && a.balance_revision !== 1) {
+                    acc.balance_revision = a.balance_revision;
+                }
+                return acc;
+            }) : [];
             const account_ownership = tableExists('m1_account_ownership') ? db.prepare('SELECT * FROM m1_account_ownership').all() : [];
             const transactions = tableExists('m1_transactions') ? db.prepare('SELECT * FROM m1_transactions').all() : [];
             const journal_entries = tableExists('m1_journal_entries') ? db.prepare('SELECT * FROM m1_journal_entries').all() : [];
@@ -148,7 +204,11 @@ export async function GET(request: Request) {
             const document_jobs = tableExists('m1_document_jobs') ? db.prepare('SELECT * FROM m1_document_jobs').all() : [];
             const proposals = tableExists('m1_proposals') ? db.prepare('SELECT * FROM m1_proposals').all() : [];
 
-            return {
+            // Balance observations and account mappings (Delivery 1)
+            const balance_observations = tableExists('m1_balance_observations') ? db.prepare('SELECT * FROM m1_balance_observations').all() : [];
+            const account_source_mappings = tableExists('m1_account_source_mappings') ? db.prepare('SELECT * FROM m1_account_source_mappings').all() : [];
+
+            const snapshot: any = {
                 assets,
                 liabilities,
                 goals,
@@ -171,6 +231,14 @@ export async function GET(request: Request) {
                 document_jobs,
                 proposals
             };
+            if (balance_observations.length > 0) {
+                snapshot.balance_observations = balance_observations;
+            }
+            if (account_source_mappings.length > 0) {
+                snapshot.account_source_mappings = account_source_mappings;
+            }
+
+            return snapshot;
         })();
 
         return NextResponse.json({
@@ -620,6 +688,11 @@ export async function POST(request: Request) {
             for (const d of rawVault.drafts) {
                 if (d.currency) checkCurrency(d.currency, `draft "${d.id}"`);
             }
+            if (Array.isArray(rawVault.balance_observations)) {
+                for (const o of rawVault.balance_observations) {
+                    checkCurrency(o.currency || 'USD', `balance observation "${o.id}"`);
+                }
+            }
 
             // 2. Validate safe integer amounts across minor-unit fields
             for (const j of rawVault.journal_entries) {
@@ -645,6 +718,18 @@ export async function POST(request: Request) {
             for (const p of rawVault.proposals) {
                 if (!Number.isSafeInteger(p.amount_cents)) {
                     throw new ValidationError(`Proposal "${p.id}" amount_cents must be a safe integer, received: ${p.amount_cents}`);
+                }
+            }
+
+            // Validate safe integer amounts and calendar dates for balance observations (R02, P12)
+            // Why: Guarantees corrupt or fractional cents (e.g. 100.5) and impossible dates (2026-02-31)
+            // are rejected atomically with HTTP 400 before beginning the database restore transaction.
+            if (Array.isArray(rawVault.balance_observations)) {
+                for (const o of rawVault.balance_observations) {
+                    if (!Number.isSafeInteger(o.amount_cents)) {
+                        throw new ValidationError(`Balance observation "${o.id}" amount_cents must be a safe integer, received: ${o.amount_cents}`);
+                    }
+                    assertValidCalendarDateLocal(o.effective_date, `Balance observation "${o.id}" effective_date`);
                 }
             }
 
@@ -692,6 +777,28 @@ export async function POST(request: Request) {
                 }
                 if (!entityIds.has(o.entity_id)) {
                     throw new ValidationError(`Account ownership references non-existent entity_id "${o.entity_id}"`);
+                }
+            }
+            if (Array.isArray(rawVault.balance_observations)) {
+                const observationIds = new Set(rawVault.balance_observations.map((o: any) => o.id));
+                for (const o of rawVault.balance_observations) {
+                    if (!accountIds.has(o.account_id)) {
+                        throw new ValidationError(`Balance observation "${o.id}" references non-existent account_id "${o.account_id}"`);
+                    }
+                    const targetAccount = accountsById.get(o.account_id);
+                    if (targetAccount && targetAccount.currency !== o.currency) {
+                        throw new ValidationError(`Balance observation "${o.id}" currency "${o.currency}" does not match account currency "${targetAccount.currency}"`);
+                    }
+                    // Validate superseded_by_id foreign key target exists in archive (R02)
+                    // Why: Prevents dangling reference pointers if an archive contains incomplete supersession chains.
+                    if (o.superseded_by_id) {
+                        if (!observationIds.has(o.superseded_by_id)) {
+                            throw new ValidationError(`Balance observation "${o.id}" references non-existent superseded_by_id "${o.superseded_by_id}"`);
+                        }
+                        if (o.superseded_by_id === o.id) {
+                            throw new ValidationError(`Balance observation "${o.id}" cannot supersede itself`);
+                        }
+                    }
                 }
             }
             for (const t of rawVault.transactions) {
@@ -820,6 +927,8 @@ export async function POST(request: Request) {
                 if (tableExists('m1_journal_entries')) db.prepare('DELETE FROM m1_journal_entries').run();
                 if (tableExists('m1_transactions')) db.prepare('DELETE FROM m1_transactions').run();
                 if (tableExists('m1_account_ownership')) db.prepare('DELETE FROM m1_account_ownership').run();
+                if (tableExists('m1_account_source_mappings')) db.prepare('DELETE FROM m1_account_source_mappings').run();
+                if (tableExists('m1_balance_observations')) db.prepare('DELETE FROM m1_balance_observations').run();
                 if (tableExists('m1_accounts')) db.prepare('DELETE FROM m1_accounts').run();
                 if (tableExists('m1_entities')) db.prepare('DELETE FROM m1_entities').run();
 
@@ -853,10 +962,10 @@ export async function POST(request: Request) {
                 const insertAccount = db.prepare(`
                     INSERT INTO m1_accounts (
                         id, entity_id, name, type, sub_type, currency, is_active, institution,
-                        account_number_mask, opening_date, opening_balance_cents, revision, created_at, updated_at
+                        account_number_mask, opening_date, opening_balance_cents, tracking_mode, balance_revision, revision, created_at, updated_at
                     ) VALUES (
                         @id, @entity_id, @name, @type, @sub_type, @currency, @is_active, @institution,
-                        @account_number_mask, @opening_date, @opening_balance_cents, @revision, @created_at, @updated_at
+                        @account_number_mask, @opening_date, @opening_balance_cents, @tracking_mode, @balance_revision, @revision, @created_at, @updated_at
                     )
                 `);
                 for (const a of rawVault.accounts) {
@@ -872,6 +981,8 @@ export async function POST(request: Request) {
                         account_number_mask: a.account_number_mask || null,
                         opening_date: a.opening_date || null,
                         opening_balance_cents: a.opening_balance_cents !== undefined && a.opening_balance_cents !== null ? Number(a.opening_balance_cents) : null,
+                        tracking_mode: a.tracking_mode || 'transactions',
+                        balance_revision: a.balance_revision || 1,
                         revision: a.revision || 1,
                         created_at: a.created_at || new Date().toISOString(),
                         updated_at: a.updated_at || new Date().toISOString()
@@ -1126,6 +1237,76 @@ export async function POST(request: Request) {
                         created_at: p.created_at || new Date().toISOString(),
                         updated_at: p.updated_at || new Date().toISOString()
                     });
+                }
+
+                // Insert balance observations (Delivery 1) - Two-Pass Restore
+                // Why: Pass 1 inserts all observations with superseded_by_id = NULL so all observation IDs exist.
+                // Pass 2 updates superseded_by_id links, preventing foreign key violations when a superseded row
+                // appears before its superseding row in the backup payload (P13).
+                if (Array.isArray(rawVault.balance_observations) && tableExists('m1_balance_observations')) {
+                    const insertObs = db.prepare(`
+                        INSERT INTO m1_balance_observations (
+                            id, account_id, amount_cents, currency, balance_kind, effective_date,
+                            effective_time, imported_at, source_type, source_reference, source_batch_id,
+                            superseded_by_id, review_status, raw_label, created_at
+                        ) VALUES (
+                            @id, @account_id, @amount_cents, @currency, @balance_kind, @effective_date,
+                            @effective_time, @imported_at, @source_type, @source_reference, @source_batch_id,
+                            NULL, @review_status, @raw_label, @created_at
+                        )
+                    `);
+                    for (const o of rawVault.balance_observations) {
+                        insertObs.run({
+                            id: o.id || crypto.randomUUID(),
+                            account_id: o.account_id,
+                            amount_cents: Number(o.amount_cents),
+                            currency: o.currency || 'USD',
+                            balance_kind: o.balance_kind || 'current_balance',
+                            effective_date: o.effective_date,
+                            effective_time: o.effective_time || null,
+                            imported_at: o.imported_at || new Date().toISOString(),
+                            source_type: o.source_type || 'manual',
+                            source_reference: o.source_reference || null,
+                            source_batch_id: o.source_batch_id || null,
+                            review_status: o.review_status || 'accepted',
+                            raw_label: o.raw_label || null,
+                            created_at: o.created_at || new Date().toISOString()
+                        });
+                    }
+
+                    // Pass 2: Link superseded_by_id now that all IDs are present in the table
+                    const updateSuperseded = db.prepare(`
+                        UPDATE m1_balance_observations
+                        SET superseded_by_id = ?
+                        WHERE id = ?
+                    `);
+                    for (const o of rawVault.balance_observations) {
+                        if (o.superseded_by_id) {
+                            updateSuperseded.run(o.superseded_by_id, o.id);
+                        }
+                    }
+                }
+
+                // Insert account source mappings (Delivery 1)
+                if (Array.isArray(rawVault.account_source_mappings) && tableExists('m1_account_source_mappings')) {
+                    const insertMap = db.prepare(`
+                        INSERT INTO m1_account_source_mappings (
+                            id, account_id, provider, connection_id, source_account_id, institution, created_at
+                        ) VALUES (
+                            @id, @account_id, @provider, @connection_id, @source_account_id, @institution, @created_at
+                        )
+                    `);
+                    for (const m of rawVault.account_source_mappings) {
+                        insertMap.run({
+                            id: m.id || crypto.randomUUID(),
+                            account_id: m.account_id,
+                            provider: m.provider,
+                            connection_id: m.connection_id || 'default',
+                            source_account_id: m.source_account_id,
+                            institution: m.institution || null,
+                            created_at: m.created_at || new Date().toISOString()
+                        });
+                    }
                 }
 
                 // Insert legacy collections
@@ -1620,7 +1801,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: 'Vault saved to local SQLite successfully' });
     } catch (error: any) {
         console.error('Vault POST Error:', error);
-        const status = error instanceof ValidationError || error.statusCode === 400 ? 400 : 500;
+        const status = error instanceof ValidationError || error.name === 'ValidationError' || error.statusCode === 400 ? 400 : 500;
         return NextResponse.json({ error: error.message || 'Internal database error' }, { status });
     }
 }
