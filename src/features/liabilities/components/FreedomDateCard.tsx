@@ -13,9 +13,12 @@ import { useAccountingCheck } from '@/features/accounting/hooks/useAccountingChe
 
 import { generateDebtAdviceAction } from '@/app/actions';
 
+import { useWealthMomentum } from '@/features/cashflow/hooks/useWealthMomentum';
+
 export default function FreedomDateCard() {
     const { liabilities, isLoading: isLiabilitiesLoading } = useLiabilitiesQuery();
     const { hasModernLiabilities, isLoading: isAccountingLoading } = useAccountingCheck();
+    const { momentum } = useWealthMomentum();
     const [freedomDate, setFreedomDate] = useState<string | null>(null);
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
     const [hasDebt, setHasDebt] = useState(false);
@@ -33,22 +36,38 @@ export default function FreedomDateCard() {
             setFreedomDate(result.freedomDate);
             setDaysRemaining(result.daysUntilFreedom);
 
-            generateDebtAdviceAction(
-                "The Mentor",
-                "a wise, direct, and encouraging financial guide",
-                {
-                    totalDebt: liabilities.reduce((sum, l) => sum + l.balance, 0),
-                    highestInterestRate: Math.max(...liabilities.map(l => l.interest_rate)),
-                    monthlyIncome: 5000,
-                    monthlyExpenses: 3000,
-                    payoffStrategy: loadFreedomSettings().strategy
-                }
-            ).then(setAdvice);
+            // Truthful budget derivation:
+            // Why this exists:
+            // Prevents passing invented $5,000 income and $3,000 expenses as constants into debt advice.
+            // Tricky logic:
+            // Derives income and expenses from active recurring rules in Cash Flow if configured.
+            // If the user has not configured recurring income, we provide prompt guidance rather than
+            // claiming a fictitious $2,000/mo disposable surplus.
+            // TODO: Include minimum monthly debt servicing payments in the budget context.
+            const hasRecurringBudget = momentum && momentum.monthlyRecurringIncome > 0;
+            const income = hasRecurringBudget ? momentum.monthlyRecurringIncome : 0;
+            const expenses = hasRecurringBudget ? momentum.monthlyRecurringExpenses : 0;
+
+            if (hasRecurringBudget && (income - expenses) > 0) {
+                generateDebtAdviceAction(
+                    "The Mentor",
+                    "a wise, direct, and encouraging financial guide",
+                    {
+                        totalDebt: liabilities.reduce((sum, l) => sum + l.balance, 0),
+                        highestInterestRate: Math.max(...liabilities.map(l => l.interest_rate)),
+                        monthlyIncome: income,
+                        monthlyExpenses: expenses,
+                        payoffStrategy: loadFreedomSettings().strategy
+                    }
+                ).then(setAdvice);
+            } else {
+                setAdvice("Set your recurring income and bills in Cash Flow to receive personalized debt payoff strategy advice.");
+            }
 
         } else {
             setHasDebt(false);
         }
-    }, [liabilities]);
+    }, [liabilities, momentum]);
 
     if (isLoading) {
         return (
@@ -123,17 +142,22 @@ export default function FreedomDateCard() {
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
                         <Calendar size={14} className="text-indigo-200" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-50">Freedom Date</span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-50">Estimated Debt-Free Month</span>
                     </div>
                 </div>
 
-                <div className="mb-6">
+                <div className="mb-4">
                     <h3 className="text-3xl font-black tracking-tight">
-                        {freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '...'}
+                        {freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '...'}
                     </h3>
-                    <p className="text-indigo-200 font-medium mt-1">
-                        {daysRemaining !== null ? `${daysRemaining} days away` : 'Calculating...'}
+                    <p className="text-indigo-200 font-medium mt-1 text-sm">
+                        {daysRemaining !== null ? `Estimated ~${Math.max(1, Math.round(daysRemaining / 30))} months to payoff` : 'Calculating...'}
                     </p>
+                    {hasModernLiabilities && (
+                        <p className="text-[10px] text-indigo-200 mt-1.5 opacity-80">
+                            Calculation covers legacy debts. Modern liability accounts are tracked in Accounts.
+                        </p>
+                    )}
                 </div>
 
                 <div className="bg-white/10 rounded-xl p-4 backdrop-blur-md border border-white/10">

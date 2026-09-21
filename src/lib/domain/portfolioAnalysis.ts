@@ -8,6 +8,7 @@ export interface PortfolioAnalysis {
     totalCostBasis: number;
     totalGain: number;
     totalGainPercent: number;
+    hasCostBasis: boolean;
 
     holdings: {
         ticker: string;
@@ -162,12 +163,19 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
         }))
         .sort((a, b) => b.weight - a.weight);
 
+    // Why hasCostBasis exists:
+    // When investments lack cost basis records, assuming costBasis == value produces a misleading "0.0% Gain".
+    // Disclosing that cost basis is missing prevents fabricating performance figures.
+    // Tricky logic:
+    // Only considers cost basis present if at least one asset explicitly provides an investment_details.costBasis > 0.
+    const hasCostBasis = investments.some(inv => (inv.investment_details?.costBasis || 0) > 0);
 
     return {
         totalValue,
         totalCostBasis,
-        totalGain: totalValue - totalCostBasis,
-        totalGainPercent: totalCostBasis > 0 ? ((totalValue - totalCostBasis) / totalCostBasis) * 100 : 0,
+        totalGain: hasCostBasis ? totalValue - totalCostBasis : 0,
+        totalGainPercent: (hasCostBasis && totalCostBasis > 0) ? ((totalValue - totalCostBasis) / totalCostBasis) * 100 : 0,
+        hasCostBasis,
         holdings,
         concentrationWarnings,
         estimatedAnnualDividends,

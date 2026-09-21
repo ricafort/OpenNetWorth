@@ -43,9 +43,26 @@ export default function StatLiabilitiesWidget() {
     const hasMultipleCurrencies = currencyBuckets.length > 1;
     const isFxConverted = summary?.converted_net_worth?.is_complete === true;
 
-    const title = (hasMultipleCurrencies && !isFxConverted)
-        ? `Total Liabilities (${baseCurrency} Subtotal)`
-        : `Total Liabilities (${baseCurrency})`;
+    // Honest labeling: If there are unrecorded accounts or multiple currencies without complete FX conversion,
+    // explicitly qualify this as a known/partial figure rather than presenting it as complete "Total Liabilities".
+    // Why this exists:
+    // Prevents misleading claims of "Total Liabilities" when debt accounts have unknown balances or missing FX conversions.
+    // Tricky logic:
+    // Distinguishes between currency subtotal qualification and unrecorded account qualification.
+    // TODO: Display inline drawer linking to unrecorded liability accounts when clicking the widget title.
+    const hasUnrecorded = (summary?.unrecorded_count || 0) > 0;
+    const unrecordedText = summary?.unrecorded_count === 1
+        ? '1 account needs balance'
+        : `${summary?.unrecorded_count} accounts need balance`;
+
+    let title = `Total Liabilities (${baseCurrency})`;
+    if (hasUnrecorded && hasMultipleCurrencies && !isFxConverted) {
+        title = `Known Liabilities (${baseCurrency} Subtotal — ${unrecordedText})`;
+    } else if (hasUnrecorded) {
+        title = `Known Liabilities (${unrecordedText})`;
+    } else if (hasMultipleCurrencies && !isFxConverted) {
+        title = `Total Liabilities (${baseCurrency} Subtotal)`;
+    }
 
     // Calculate truthful historical comparison only when comparative history exists
     let change: string | undefined = undefined;

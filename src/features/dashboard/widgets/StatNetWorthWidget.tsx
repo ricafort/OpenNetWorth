@@ -36,17 +36,26 @@ export default function StatNetWorthWidget() {
     const hasMultipleCurrencies = currencyBuckets.length > 1;
     const isFxConverted = summary?.converted_net_worth?.is_complete === true;
 
-    // Honest labeling: If there are multiple currencies and no complete verified FX conversion,
-    // explicitly label this as a holdings subtotal rather than presenting it as complete converted wealth.
+    // Honest labeling: If there are unrecorded accounts or multiple currencies without complete FX conversion,
+    // explicitly qualify this as a known/partial figure rather than presenting it as complete "Total Net Worth".
     // Why this exists:
-    // Prevents misrepresenting a single-currency bucket as the user's entire multi-currency net worth.
+    // Prevents misleading claims of "Total Net Worth" when accounts have unknown balances or missing FX conversions.
     // Tricky logic:
-    // When isFxConverted is true, all holdings have been converted via authoritative dated FX rates.
-    // Otherwise, this card only represents holdings in baseCurrency.
-    // TODO: Display inline FX conversion status drawer when clicking the subtotal badge.
-    const title = (hasMultipleCurrencies && !isFxConverted)
-        ? `Net Worth (${baseCurrency} Holdings Subtotal)`
-        : `Total Net Worth (${baseCurrency})`;
+    // Distinguishes between currency subtotal qualification and unrecorded account qualification.
+    // TODO: Display inline drawer linking to unrecorded accounts when clicking the widget title.
+    const hasUnrecorded = (summary?.unrecorded_count || 0) > 0;
+    const unrecordedText = summary?.unrecorded_count === 1
+        ? '1 account needs balance'
+        : `${summary?.unrecorded_count} accounts need balance`;
+
+    let title = `Total Net Worth (${baseCurrency})`;
+    if (hasUnrecorded && hasMultipleCurrencies && !isFxConverted) {
+        title = `Known Net Worth (${baseCurrency} Subtotal — ${unrecordedText})`;
+    } else if (hasUnrecorded) {
+        title = `Known Net Worth (${unrecordedText})`;
+    } else if (hasMultipleCurrencies && !isFxConverted) {
+        title = `Net Worth (${baseCurrency} Holdings Subtotal)`;
+    }
 
     // Calculate historical comparison only when supporting history exists
     let change: string | undefined = undefined;

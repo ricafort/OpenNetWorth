@@ -602,4 +602,71 @@ Tesla Stock | USD 4,500.00 | 15/09/2026 | Market Value
             expect(summaryJson.summary.net_worth_cents_by_currency['AUD']).toBe(-437_500_00);
         });
     });
+
+    describe('9. Shared Financial Summary Completeness & Truthfulness Contract', () => {
+        // WHY: Guarantees that the dashboard knows exactly which accounts lack observations
+        // so UI widgets can qualify titles (e.g. "Known Net Worth (1 account needs balance)")
+        // rather than falsely asserting complete net worth.
+        // TRICKY: An account without any observations should not silently be treated as 0 without flagging.
+        // TODO: In future iterations, allow accounts with explicit zero balances to distinguish from unrecorded.
+        it('identifies unobserved accounts and sets is_complete to false', () => {
+            const entity = createEntity(db, { name: 'Danielle Person', type: 'person', currency: 'AUD' });
+
+            const { account: activeSavings } = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Active Savings',
+                type: 'asset',
+                sub_type: 'savings',
+                currency: 'AUD',
+                opening_date: '2026-09-01',
+                tracking_mode: 'balance'
+            });
+
+            const { account: unobservedBrokerage } = createAccount(db, {
+                entity_id: entity.id,
+                name: 'Pending Brokerage',
+                type: 'asset',
+                sub_type: 'brokerage',
+                currency: 'AUD',
+                opening_date: '2026-09-01',
+                tracking_mode: 'balance'
+            });
+
+            // Record observation only for activeSavings
+            recordBalanceObservation(db, {
+                account_id: activeSavings.id,
+                effective_date: '2026-09-18',
+                amount_cents: 50_000_00,
+                balance_kind: 'current_balance',
+                source_type: 'manual'
+            });
+
+            // WHY: Explicitly set reporting_currency to 'AUD' to match account currency without requiring synthetic FX rate rows.
+            // TRICKY: Default reporting currency is USD; if omitted without FX rates, converted_net_worth.is_complete will be false.
+            // TODO: Test multi-currency exchange rate resolution with explicit conversion rows in a separate test.
+            const summary = getSharedFinancialSummary(db, { as_of_date: '2026-09-20', reporting_currency: 'AUD' });
+
+            expect(summary.is_complete).toBe(false);
+            expect(summary.unrecorded_count).toBe(1);
+            expect(summary.unrecorded_accounts).toHaveLength(1);
+            expect(summary.unrecorded_accounts[0].id).toBe(unobservedBrokerage.id);
+            expect(summary.unrecorded_accounts[0].name).toBe('Pending Brokerage');
+            expect(summary.total_assets_cents_by_currency['AUD']).toBe(50_000_00);
+
+            // Now record observation for unobservedBrokerage
+            recordBalanceObservation(db, {
+                account_id: unobservedBrokerage.id,
+                effective_date: '2026-09-19',
+                amount_cents: 25_000_00,
+                balance_kind: 'total_portfolio_value',
+                source_type: 'manual'
+            });
+
+            const updatedSummary = getSharedFinancialSummary(db, { as_of_date: '2026-09-20', reporting_currency: 'AUD' });
+            expect(updatedSummary.is_complete).toBe(true);
+            expect(updatedSummary.unrecorded_count).toBe(0);
+            expect(updatedSummary.unrecorded_accounts).toHaveLength(0);
+            expect(updatedSummary.total_assets_cents_by_currency['AUD']).toBe(75_000_00);
+        });
+    });
 });

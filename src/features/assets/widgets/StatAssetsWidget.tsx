@@ -43,9 +43,26 @@ export default function StatAssetsWidget() {
     const hasMultipleCurrencies = currencyBuckets.length > 1;
     const isFxConverted = summary?.converted_net_worth?.is_complete === true;
 
-    const title = (hasMultipleCurrencies && !isFxConverted)
-        ? `Total Assets (${baseCurrency} Subtotal)`
-        : `Total Assets (${baseCurrency})`;
+    // Honest labeling: If there are unrecorded accounts or multiple currencies without complete FX conversion,
+    // explicitly qualify this as a known/partial figure rather than presenting it as complete "Total Assets".
+    // Why this exists:
+    // Prevents misleading claims of "Total Assets" when asset accounts have unknown balances or missing FX conversions.
+    // Tricky logic:
+    // Distinguishes between currency subtotal qualification and unrecorded account qualification.
+    // TODO: Display inline drawer linking to unrecorded asset accounts when clicking the widget title.
+    const hasUnrecorded = (summary?.unrecorded_count || 0) > 0;
+    const unrecordedText = summary?.unrecorded_count === 1
+        ? '1 account needs balance'
+        : `${summary?.unrecorded_count} accounts need balance`;
+
+    let title = `Total Assets (${baseCurrency})`;
+    if (hasUnrecorded && hasMultipleCurrencies && !isFxConverted) {
+        title = `Known Assets (${baseCurrency} Subtotal — ${unrecordedText})`;
+    } else if (hasUnrecorded) {
+        title = `Known Assets (${unrecordedText})`;
+    } else if (hasMultipleCurrencies && !isFxConverted) {
+        title = `Total Assets (${baseCurrency} Subtotal)`;
+    }
 
     // Calculate truthful historical comparison only when comparative history exists
     let change: string | undefined = undefined;

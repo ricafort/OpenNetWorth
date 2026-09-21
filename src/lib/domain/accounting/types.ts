@@ -345,6 +345,16 @@ export interface SharedFinancialSummary {
     accounts_included: SharedFinancialSummaryAccount[];
     accounts?: SharedFinancialSummaryAccount[];
     coverage_notes: string[];
+    // Why these exist:
+    // Enables the UI to truthfully qualify headline metrics (e.g., "Known Net Worth (1 account needs balance)")
+    // rather than claiming "Total Net Worth" when accounts have no recorded balances.
+    // Tricky logic:
+    // unrecorded_accounts only includes balance-mode accounts that have zero accepted valuation observations on or before asOfDate.
+    // is_complete is true only when unrecorded_count === 0 and all eligible accounts have valid balances.
+    // TODO: Include un-reconciled ledger discrepancy accounts in completeness criteria in Milestone 2.
+    unrecorded_accounts?: Array<{ id: string; name: string; currency: CurrencyCode }>;
+    unrecorded_count?: number;
+    is_complete?: boolean;
 }
 
 // --- TRANSACTIONS & POSTINGS (DOUBLE-ENTRY) ---

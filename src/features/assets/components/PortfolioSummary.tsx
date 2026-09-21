@@ -39,13 +39,26 @@ export default function PortfolioSummary({ analysis, privacyBlur = false, curren
                     </div>
                     <span className="text-sm font-medium text-muted-foreground">Total Return</span>
                 </div>
-                <div className={`text-2xl font-bold text-foreground flex items-baseline gap-2 ${blurClass}`}>
-                    {formatCurrency(analysis.totalGain, currencyCode)}
-                    <span className="text-sm text-emerald-600 font-medium">({analysis.totalGainPercent.toFixed(1)}%)</span>
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                    All-time performance
-                </div>
+                {analysis.hasCostBasis ? (
+                    <>
+                        <div className={`text-2xl font-bold text-foreground flex items-baseline gap-2 ${blurClass}`}>
+                            {formatCurrency(analysis.totalGain, currencyCode)}
+                            <span className="text-sm text-emerald-600 font-medium">({analysis.totalGainPercent.toFixed(1)}%)</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                            All-time performance
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="text-xl font-bold text-muted-foreground">
+                            Return unavailable
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                            Cost basis records required
+                        </div>
+                    </>
+                )}
             </div>
 
             {/* Projected Income Card */}
