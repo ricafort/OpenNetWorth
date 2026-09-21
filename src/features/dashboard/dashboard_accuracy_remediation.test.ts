@@ -338,7 +338,7 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
             {
                 id: 'legacy-usd-gold',
                 name: 'Vault Gold Bullion',
-                type: 'precious_metals',
+                type: 'other',
                 value: 25000,
                 currency: 'USD',
                 is_liquid: false,
@@ -358,7 +358,7 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
         expect(audTotal).toBe(1000);
         expect(audItems.length).toBe(1);
 
-        // 3. USD view strictly totals USD 25,000 with 100% precious metals allocation
+        // 3. USD view strictly totals USD 25,000 with 100% other/tangible asset allocation
         const usdItems = legacyAssets.filter(a => a.currency === 'USD');
         const usdTotal = usdItems.reduce((sum, a) => sum + a.value, 0);
         expect(usdTotal).toBe(25000);
