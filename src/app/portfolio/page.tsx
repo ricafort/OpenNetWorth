@@ -95,7 +95,7 @@ export default function PortfolioPage() {
                     "the Oracle of Omaha",
                     {
                         totalValue: totalValueUSD,
-                        totalGainPercent: result.totalGainPercent,
+                        totalGainPercent: result.totalGainPercent ?? 0,
                         topHoldings: result.holdings.slice(0, 3).map(h => ({ ticker: h.ticker, percentage: h.weight })),
                         sectorAllocation: result.sectorBreakdown.slice(0, 3).map(s => ({ sector: s.sector, percentage: s.weight })),
                         concentratedStock: result.holdings.find(h => h.isConcentrated)?.ticker

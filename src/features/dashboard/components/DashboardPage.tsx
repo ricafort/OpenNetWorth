@@ -11,6 +11,10 @@ import WelcomeScreen from '@/features/dashboard/components/WelcomeScreen';
 import { useFirstRun } from '@/hooks/useFirstRun';
 import { useProfile } from '@/contexts/ProfileContext';
 
+import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
+import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
+import { Info } from 'lucide-react';
+
 // Dynamic import for the heavy grid component
 const DashboardGrid = dynamic(() => import('@/features/dashboard/components/DashboardGrid'), {
     ssr: false,
@@ -24,6 +28,13 @@ const DashboardGrid = dynamic(() => import('@/features/dashboard/components/Dash
 export const DashboardPage = () => {
     const { isFirstRun, markInitialized } = useFirstRun();
     const { profile, isDemoMode } = useProfile();
+    const { baseCurrency } = useNetWorth();
+    const sourceState = useFinancialSourceSelection(baseCurrency);
+
+    // Why this exists:
+    // Resolves Issue 3: Prominently discloses when legacy holdings coexist with modern accounts,
+    // ensuring users know headline figures cover only double-entry accounting accounts.
+    const hasExcludedLegacy = (sourceState.mode === 'modern_usable' || sourceState.mode === 'modern_missing_balances') && sourceState.hasExcludedLegacy;
 
     // Don't show welcome screen if:
     // 1. We are in God Mode / Demo Mode (isDemoMode = true)
@@ -48,6 +59,14 @@ export const DashboardPage = () => {
             <div className="w-full transform transition-all duration-300 ease-in-out">
                 <AccountFreshnessCard />
             </div>
+
+            {/* Excluded Legacy Holdings Disclosure (Resolves Issue 3) */}
+            {hasExcludedLegacy && (
+                <div className="w-full p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2.5">
+                    <Info size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>These figures cover your accounting accounts. Separately recorded assets and debts are not included.</span>
+                </div>
+            )}
 
             {/* Main Draggable Grid */}
             <DashboardGrid />

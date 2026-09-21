@@ -22,8 +22,9 @@ export interface PortfolioAnalysis {
     totalValue: number;
     totalCostBasis: number;
     totalGain: number;
-    totalGainPercent: number;
+    totalGainPercent: number | null;
     hasCostBasis: boolean;
+    isZeroCostBasis: boolean;
     missingCostBasisCount: number;
     totalHoldingsCount: number;
 
@@ -99,10 +100,11 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
 
     const totalCostBasis = hasFullCostBasis ? totalCostBasisSum : 0;
     const totalGain = hasFullCostBasis ? totalValue - totalCostBasis : 0;
-    // Percentage return with zero denominator is mathematically undefined
+    // Percentage return with zero denominator is mathematically undefined (null)
     const totalGainPercent = (hasFullCostBasis && totalCostBasis > 0)
         ? ((totalValue - totalCostBasis) / totalCostBasis) * 100
-        : 0;
+        : null;
+    const isZeroCostBasis = hasFullCostBasis && totalCostBasis === 0;
 
     const holdings: PortfolioHolding[] = investments.map(inv => {
         let value = inv.value;
@@ -220,7 +222,8 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
         totalCostBasis,
         totalGain,
         totalGainPercent,
-        hasCostBasis: hasFullCostBasis && totalCostBasis > 0,
+        hasCostBasis: hasFullCostBasis,
+        isZeroCostBasis,
         missingCostBasisCount,
         totalHoldingsCount,
         holdings,

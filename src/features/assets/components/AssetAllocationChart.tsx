@@ -64,15 +64,26 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
         setIsMounted(true);
     }, []);
 
-    // 1. Determine available currencies for modern accounts
+    // 1. Determine available currencies for active holdings
     const modernAssetAccounts = useMemo(() => {
         if (sourceState.mode !== 'modern_usable') return [];
         return sourceState.accounts.filter(a => a.account_type === 'asset');
     }, [sourceState]);
 
+    const legacyAssetsList = useMemo(() => {
+        if (sourceState.mode !== 'legacy') return [];
+        return sourceState.assets || fallbackLegacyAssets;
+    }, [sourceState, fallbackLegacyAssets]);
+
     const availableCurrencies = useMemo(() => {
-        return Array.from(new Set(modernAssetAccounts.map(a => a.currency))) as CurrencyCode[];
-    }, [modernAssetAccounts]);
+        if (sourceState.mode === 'modern_usable') {
+            return Array.from(new Set(modernAssetAccounts.map(a => a.currency))) as CurrencyCode[];
+        }
+        if (sourceState.mode === 'legacy') {
+            return Array.from(new Set(legacyAssetsList.map(a => (a.currency || 'USD') as CurrencyCode))) as CurrencyCode[];
+        }
+        return [];
+    }, [sourceState.mode, modernAssetAccounts, legacyAssetsList]);
 
     // Active selected currency for unconverted native multi-currency view
     const activeCurrency = useMemo((): CurrencyCode => {
@@ -136,16 +147,45 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
                 }
             }
         } else if (sourceState.mode === 'legacy') {
-            // Scenario C: Pure legacy mode
-            const legacyList = sourceState.assets || fallbackLegacyAssets;
-            dispCurr = baseCurrency;
-            legacyList.forEach(asset => {
-                const cat = classifyCategory(undefined, asset.type);
-                const val = asset.value;
-                categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
-                total += val;
-                count++;
-            });
+            // Scenario C: Pure legacy mode (Resolves Issue 1: native currency grouping for legacy assets)
+            const legacyList = legacyAssetsList;
+
+            if (availableCurrencies.length === 1 && availableCurrencies[0] !== baseCurrency) {
+                // Single foreign currency (e.g. USD 25,000 with AUD display)
+                dispCurr = availableCurrencies[0];
+                converted = false;
+                notice = `Exchange rate to ${baseCurrency} unavailable — allocation displayed in native ${dispCurr}.`;
+                legacyList.forEach(asset => {
+                    const cat = classifyCategory(undefined, asset.type);
+                    const val = asset.value;
+                    categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
+                    total += val;
+                    count++;
+                });
+            } else if (availableCurrencies.length > 1) {
+                // Multi-currency legacy assets: filter by activeCurrency tab
+                dispCurr = activeCurrency;
+                converted = false;
+                notice = `Showing native ${activeCurrency} holdings. Switch tabs to view other currencies without fabricated exchange rates.`;
+                const filtered = legacyList.filter(a => ((a.currency || 'USD') as CurrencyCode) === activeCurrency);
+                filtered.forEach(asset => {
+                    const cat = classifyCategory(undefined, asset.type);
+                    const val = asset.value;
+                    categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
+                    total += val;
+                    count++;
+                });
+            } else {
+                // Standard single base currency
+                dispCurr = baseCurrency;
+                legacyList.forEach(asset => {
+                    const cat = classifyCategory(undefined, asset.type);
+                    const val = asset.value;
+                    categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
+                    total += val;
+                    count++;
+                });
+            }
         }
 
         const formattedData = Object.entries(categoryTotals)

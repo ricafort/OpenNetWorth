@@ -157,7 +157,7 @@ describe('analyzePortfolio', () => {
         expect(result.missingCostBasisCount).toBe(1);
         expect(result.totalHoldingsCount).toBe(2);
         expect(result.totalGain).toBe(0);
-        expect(result.totalGainPercent).toBe(0);
+        expect(result.totalGainPercent).toBeNull();
 
         // Individual holding checks
         const hA = result.holdings.find(h => h.ticker === 'HLDA')!;
@@ -194,8 +194,9 @@ describe('analyzePortfolio', () => {
         expect(result.totalValue).toBe(500);
         expect(result.totalCostBasis).toBe(0);
         expect(result.totalGain).toBe(500); // Dollar gain is 500
-        expect(result.totalGainPercent).toBe(0); // Percentage return unavailable with zero denominator
-        expect(result.hasCostBasis).toBe(false); // Flagged unavailable for percentage return
+        expect(result.totalGainPercent).toBeNull(); // Percentage return unavailable with zero denominator
+        expect(result.hasCostBasis).toBe(true); // Cost basis is present and recorded
+        expect(result.isZeroCostBasis).toBe(true);
 
         const hGift = result.holdings[0];
         expect(hGift.hasCostBasis).toBe(true);
