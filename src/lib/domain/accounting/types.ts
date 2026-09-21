@@ -313,6 +313,13 @@ export interface ReconciliationComparison {
     notes?: string;
 }
 
+export interface ConvertedMonetaryAmount {
+    amount_cents: number;
+    currency: CurrencyCode;
+    is_complete: boolean;
+    missing_rates: string[];
+}
+
 export interface SharedFinancialSummaryAccount {
     account_id: string;
     account_name: string;
@@ -327,6 +334,8 @@ export interface SharedFinancialSummaryAccount {
     effective_date: string;
     is_stale: boolean;
     reconciliation?: ReconciliationComparison;
+    // Converted balance in reporting currency if an authoritative dated exchange rate is available
+    converted_amount_cents?: number;
 }
 
 export interface SharedFinancialSummary {
@@ -336,12 +345,9 @@ export interface SharedFinancialSummary {
     total_assets_cents_by_currency: Record<CurrencyCode, number>;
     total_liabilities_cents_by_currency: Record<CurrencyCode, number>;
     net_worth_cents_by_currency: Record<CurrencyCode, number>;
-    converted_net_worth?: {
-        amount_cents: number;
-        currency: CurrencyCode;
-        is_complete: boolean;
-        missing_rates: string[];
-    };
+    converted_net_worth?: ConvertedMonetaryAmount;
+    converted_total_assets?: ConvertedMonetaryAmount;
+    converted_total_liabilities?: ConvertedMonetaryAmount;
     accounts_included: SharedFinancialSummaryAccount[];
     accounts?: SharedFinancialSummaryAccount[];
     coverage_notes: string[];
@@ -350,11 +356,11 @@ export interface SharedFinancialSummary {
     // rather than claiming "Total Net Worth" when accounts have no recorded balances.
     // Tricky logic:
     // unrecorded_accounts only includes balance-mode accounts that have zero accepted valuation observations on or before asOfDate.
-    // is_complete is true only when unrecorded_count === 0 and all eligible accounts have valid balances.
+    // is_complete is true only when unrecorded_count === 0 and all eligible accounts have valid balances and conversion rates.
     // TODO: Include un-reconciled ledger discrepancy accounts in completeness criteria in Milestone 2.
-    unrecorded_accounts?: Array<{ id: string; name: string; currency: CurrencyCode }>;
-    unrecorded_count?: number;
-    is_complete?: boolean;
+    unrecorded_accounts: Array<{ id: string; name: string; currency: CurrencyCode }>;
+    unrecorded_count: number;
+    is_complete: boolean;
 }
 
 // --- TRANSACTIONS & POSTINGS (DOUBLE-ENTRY) ---

@@ -60,16 +60,19 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
         const assetsBase = parseFloat(newAssets);
         const liabilitiesBase = parseFloat(newLiabilities || '0');
 
-        // Snapshots in DB are assumed USD base for normalization (or convert to USD)
-        const assetsUSD = convertAmount(assetsBase, baseCurrency, 'USD');
-        const liabilitiesUSD = convertAmount(liabilitiesBase, baseCurrency, 'USD');
-
+        // Why this exists:
+        // Resolves Finding 2 & Clarification 4: Store snapshot in the exact currency entered (baseCurrency)
+        // with explicit currency metadata rather than performing lossy mock USD conversion.
+        // Tricky logic:
+        // Snapshot retains currency: baseCurrency to prevent false currency equivalences in future views.
+        // TODO: Support selecting arbitrary currency for historical backfill in Milestone 2.
         const newEntry: NetWorthSnapshot = {
             id: crypto.randomUUID(), // Ensure ID exists for compatibility
             date: newDate,
-            totalAssets: Math.round(assetsUSD),
-            totalLiabilities: Math.round(liabilitiesUSD),
-            netWorth: Math.round(assetsUSD - liabilitiesUSD)
+            totalAssets: Math.round(assetsBase),
+            totalLiabilities: Math.round(liabilitiesBase),
+            netWorth: Math.round(assetsBase - liabilitiesBase),
+            currency: baseCurrency
         };
 
         try {
@@ -256,24 +259,32 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
                                 </thead>
                                 <tbody className="divide-y divide-border bg-card">
                                     {history.map((entry) => {
-                                        // Convert stored USD values to baseCurrency for display
-                                        const assetsBase = convertAmount(entry.totalAssets, 'USD', baseCurrency);
-                                        const liabilitiesBase = convertAmount(entry.totalLiabilities, 'USD', baseCurrency);
-                                        const netWorthBase = convertAmount(entry.netWorth, 'USD', baseCurrency);
+                                        // Why this exists:
+                                        // Resolves Finding 2 & Clarification 4: Truthfully formats historical amounts.
+                                        // If currency is recorded, format with that currency.
+                                        // If currency is undefined (legacy snapshot), display without false currency assumption.
+                                        const entryCurr = entry.currency;
+                                        const hasCurr = Boolean(entryCurr);
+                                        const assetsFormatted = hasCurr ? formatCurrency(entry.totalAssets, entryCurr!) : `${entry.totalAssets.toLocaleString()}`;
+                                        const liabFormatted = hasCurr ? formatCurrency(entry.totalLiabilities, entryCurr!) : `${entry.totalLiabilities.toLocaleString()}`;
+                                        const nwFormatted = hasCurr ? formatCurrency(entry.netWorth, entryCurr!) : `${entry.netWorth.toLocaleString()}`;
 
                                         return (
                                             <tr key={entry.date} className="hover:bg-muted/50 transition-colors group">
                                                 <td className="px-5 py-4 font-mono text-muted-foreground tracking-tight">
-                                                    {entry.date}
+                                                    <div>{entry.date}</div>
+                                                    {!hasCurr && (
+                                                        <div className="text-[10px] text-amber-600 font-medium">Currency unrecorded</div>
+                                                    )}
                                                 </td>
                                                 <td className="px-5 py-4 text-right font-black text-emerald-600">
-                                                    {formatCurrency(assetsBase, baseCurrency)}
+                                                    {assetsFormatted}
                                                 </td>
                                                 <td className="px-5 py-4 text-right font-black text-rose-500">
-                                                    {formatCurrency(liabilitiesBase, baseCurrency)}
+                                                    {liabFormatted}
                                                 </td>
                                                 <td className="px-5 py-4 text-right font-black text-foreground">
-                                                    {formatCurrency(netWorthBase, baseCurrency)}
+                                                    {nwFormatted}
                                                 </td>
                                                 <td className="px-5 py-4 text-right">
                                                     <button

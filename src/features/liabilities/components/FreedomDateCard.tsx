@@ -22,50 +22,49 @@ export default function FreedomDateCard() {
     const [freedomDate, setFreedomDate] = useState<string | null>(null);
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
     const [hasDebt, setHasDebt] = useState(false);
+    const [isMultiCurrencyUnsupported, setIsMultiCurrencyUnsupported] = useState(false);
+    const [unsupportedCurrencies, setUnsupportedCurrencies] = useState<string[]>([]);
     const [advice, setAdvice] = useState<string>('Analyzing your path to freedom...');
 
     const isLoading = isLiabilitiesLoading || isAccountingLoading;
 
     useEffect(() => {
-        const activeDebts = liabilities.filter(l => l.balance > 0);
+        const activeDebts = liabilities.filter(l => (l.balance || 0) > 0);
 
         if (activeDebts.length > 0) {
             setHasDebt(true);
             const settings = loadFreedomSettings();
             const result = calculatePayoff(liabilities, settings.extraMonthlyPayment, settings.strategy);
+
+            if (result.isMultiCurrencyUnsupported) {
+                setIsMultiCurrencyUnsupported(true);
+                setUnsupportedCurrencies(result.unsupportedCurrencies || []);
+                setFreedomDate(null);
+                setDaysRemaining(null);
+                setAdvice(`Debt payoff projection requires debts to be in a single currency. Mixed currencies found: ${(result.unsupportedCurrencies || []).join(', ')}.`);
+                return;
+            }
+
+            setIsMultiCurrencyUnsupported(false);
             setFreedomDate(result.freedomDate);
             setDaysRemaining(result.daysUntilFreedom);
 
-            // Truthful budget derivation:
-            // Why this exists:
-            // Prevents passing invented $5,000 income and $3,000 expenses as constants into debt advice.
+            // Why this deterministic explanation exists:
+            // Implements Clarification 6: Explains the user's configured repayment scenario (strategy and extra payment)
+            // without treating an incomplete planned cashflow surplus as verified repayment capacity.
             // Tricky logic:
-            // Derives income and expenses from active recurring rules in Cash Flow if configured.
-            // If the user has not configured recurring income, we provide prompt guidance rather than
-            // claiming a fictitious $2,000/mo disposable surplus.
-            // TODO: Include minimum monthly debt servicing payments in the budget context.
-            const hasRecurringBudget = momentum && momentum.monthlyRecurringIncome > 0;
-            const income = hasRecurringBudget ? momentum.monthlyRecurringIncome : 0;
-            const expenses = hasRecurringBudget ? momentum.monthlyRecurringExpenses : 0;
+            // Avoids calling LLM to manufacture advice suggesting users dump their entire cashflow surplus into debt.
+            // TODO: In Milestone 2, calculate independent multi-currency payoff timelines.
+            const monthYear = new Date(result.freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+            const debtCurrency = result.currency || 'USD';
+            const extraFormatted = settings.extraMonthlyPayment > 0
+                ? `with ${settings.extraMonthlyPayment.toLocaleString()} ${debtCurrency}/month extra`
+                : 'with minimum monthly payments';
 
-            if (hasRecurringBudget && (income - expenses) > 0) {
-                generateDebtAdviceAction(
-                    "The Mentor",
-                    "a wise, direct, and encouraging financial guide",
-                    {
-                        totalDebt: liabilities.reduce((sum, l) => sum + l.balance, 0),
-                        highestInterestRate: Math.max(...liabilities.map(l => l.interest_rate)),
-                        monthlyIncome: income,
-                        monthlyExpenses: expenses,
-                        payoffStrategy: loadFreedomSettings().strategy
-                    }
-                ).then(setAdvice);
-            } else {
-                setAdvice("Set your recurring income and bills in Cash Flow to receive personalized debt payoff strategy advice.");
-            }
-
+            setAdvice(`Configured payoff plan: Paying ${extraFormatted} using the ${settings.strategy.toUpperCase()} strategy leads to an estimated debt-free month of ${monthYear}. Note: Unscheduled spending and interest rate changes are not included.`);
         } else {
             setHasDebt(false);
+            setIsMultiCurrencyUnsupported(false);
         }
     }, [liabilities, momentum]);
 
@@ -147,11 +146,13 @@ export default function FreedomDateCard() {
                 </div>
 
                 <div className="mb-4">
-                    <h3 className="text-3xl font-black tracking-tight">
-                        {freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '...'}
+                    <h3 className="text-2xl md:text-3xl font-black tracking-tight">
+                        {isMultiCurrencyUnsupported ? 'Multi-Currency Debts' : (freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '...')}
                     </h3>
                     <p className="text-indigo-200 font-medium mt-1 text-sm">
-                        {daysRemaining !== null ? `Estimated ~${Math.max(1, Math.round(daysRemaining / 30))} months to payoff` : 'Calculating...'}
+                        {isMultiCurrencyUnsupported
+                            ? `Debts span ${unsupportedCurrencies.join(', ')}. Payoff projection requires debts in a single currency.`
+                            : (daysRemaining !== null ? `Estimated ~${Math.max(1, Math.round(daysRemaining / 30))} months to payoff` : 'Calculating...')}
                     </p>
                     {hasModernLiabilities && (
                         <p className="text-[10px] text-indigo-200 mt-1.5 opacity-80">
@@ -163,11 +164,11 @@ export default function FreedomDateCard() {
                 <div className="bg-white/10 rounded-xl p-4 backdrop-blur-md border border-white/10">
                     <div className="flex gap-3">
                         <div className="p-2 bg-indigo-500 rounded-lg shrink-0 h-fit">
-                            <TrendingUp size={18} />
+                            {isMultiCurrencyUnsupported ? <AlertCircle size={18} /> : <TrendingUp size={18} />}
                         </div>
                         <div>
-                            <p className="text-xs text-indigo-200 leading-relaxed italic mb-2">
-                                "{advice}"
+                            <p className="text-xs text-indigo-200 leading-relaxed mb-2">
+                                {advice}
                             </p>
                             <Link
                                 href="/freedom"

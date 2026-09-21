@@ -42,8 +42,17 @@ export function useHistory() {
 
     const addSnapshot = async (item: NetWorthSnapshot) => {
         try {
-            await service.create(item);
-            setHistory(prev => [...prev, item]);
+            // Why this exists:
+            // Resolves Finding 2 & Clarification 4: Ensures newly added snapshots retain currency metadata.
+            // Tricky logic:
+            // If item lacks currency, default to profile currency to ensure currency is never silently dropped.
+            // TODO: Expose explicit currency selector in snapshot creation flows.
+            const snapshotWithCurrency: NetWorthSnapshot = {
+                ...item,
+                currency: item.currency || (profile?.currency_code as any) || 'USD'
+            };
+            await service.create(snapshotWithCurrency);
+            setHistory(prev => [...prev, snapshotWithCurrency]);
         } catch (error) {
             console.error('Failed to add snapshot:', error);
             throw error;

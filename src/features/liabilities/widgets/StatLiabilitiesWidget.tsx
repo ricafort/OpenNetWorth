@@ -1,15 +1,3 @@
-/**
- * StatLiabilitiesWidget
- * 
- * Why this exists:
- * Displays total liabilities in the user's selected base currency.
- * 
- * Tricky logic:
- * - Compares with previous net worth snapshot ONLY if sufficient history snapshots exist.
- * - Otherwise leaves change undefined so StatCard truthfully displays "Not enough history" (TRUST-03, Finding 9).
- * - Never displays hardcoded percentage estimates.
- */
-
 import WidgetWrapper from '@/features/dashboard/widgets/WidgetWrapper';
 import StatCard from '@/features/dashboard/components/StatCard';
 import { TrendingDown } from 'lucide-react';
@@ -17,63 +5,92 @@ import { formatCurrency } from '@/lib/utils/currencyService';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useHistory } from '@/hooks/useHistory';
-import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
+import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
 
+/**
+ * StatLiabilitiesWidget
+ * 
+ * Displays total liabilities in the user's selected base currency.
+ * Consumes the unified financial source selection rule to maintain parity with Net Worth and Assets.
+ * Historical comparison is only calculated and displayed if comparable history snapshots exist with matching currency.
+ */
 export default function StatLiabilitiesWidget() {
-    const { baseCurrency, liabilities } = useNetWorth();
+    const { baseCurrency, liabilities: legacyLiabilities } = useNetWorth();
     const { isEditMode, hideWidget } = useDashboard();
     const { history } = useHistory();
-    const { summary } = useSharedFinancialSummary();
+    const sourceState = useFinancialSourceSelection(baseCurrency);
 
-    // Check if the shared financial summary has authoritative liabilities for baseCurrency.
     // Why this exists:
-    // Prevents contradictory zero display when user imports balance observations in non-AUD currencies (e.g. JPY).
+    // Resolves Finding 1 & Clarification 2: Consumes unified source selection rule.
     // Tricky logic:
-    // Divisor is 10^decimals, where decimals is 0 for JPY (divisor 1) and 2 for AUD/USD (divisor 100).
-    // TODO: Support automated FX conversion for consolidated multi-currency liability totals.
-    const trackedCents = summary?.total_liabilities_cents_by_currency?.[baseCurrency];
-    const decimals = (baseCurrency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[baseCurrency as CurrencyCode] : 2;
-    const divisor = Math.pow(10, decimals);
-    const finalLiabilities = (trackedCents !== undefined && (summary?.accounts?.length || 0) > 0)
-        ? (trackedCents / divisor)
-        : liabilities;
-
-    const currencyBuckets = summary?.net_worth_cents_by_currency ? Object.keys(summary.net_worth_cents_by_currency) : [];
-    const hasMultipleCurrencies = currencyBuckets.length > 1;
-    const isFxConverted = summary?.converted_net_worth?.is_complete === true;
-
-    // Honest labeling: If there are unrecorded accounts or multiple currencies without complete FX conversion,
-    // explicitly qualify this as a known/partial figure rather than presenting it as complete "Total Liabilities".
-    // Why this exists:
-    // Prevents misleading claims of "Total Liabilities" when debt accounts have unknown balances or missing FX conversions.
-    // Tricky logic:
-    // Distinguishes between currency subtotal qualification and unrecorded account qualification.
-    // TODO: Display inline drawer linking to unrecorded liability accounts when clicking the widget title.
-    const hasUnrecorded = (summary?.unrecorded_count || 0) > 0;
-    const unrecordedText = summary?.unrecorded_count === 1
-        ? '1 account needs balance'
-        : `${summary?.unrecorded_count} accounts need balance`;
-
+    // 1. If converted_total_liabilities is complete, displays the authoritatively converted liability total.
+    // 2. If unconverted and baseCurrency has debts, displays the native baseCurrency subtotal.
+    // 3. If unconverted and debts are in a single foreign currency, displays the native currency total.
+    // TODO: In Milestone 2, link directly to liability payoff planner.
     let title = `Total Liabilities (${baseCurrency})`;
-    if (hasUnrecorded && hasMultipleCurrencies && !isFxConverted) {
-        title = `Known Liabilities (${baseCurrency} Subtotal — ${unrecordedText})`;
-    } else if (hasUnrecorded) {
-        title = `Known Liabilities (${unrecordedText})`;
-    } else if (hasMultipleCurrencies && !isFxConverted) {
-        title = `Total Liabilities (${baseCurrency} Subtotal)`;
+    let displayValue = '...';
+    let numericValue = 0;
+    let isMissingBalances = false;
+
+    if (sourceState.mode === 'loading') {
+        displayValue = '...';
+    } else if (sourceState.mode === 'error') {
+        title = `Total Liabilities (${baseCurrency})`;
+        displayValue = 'Error loading';
+    } else if (sourceState.mode === 'modern_missing_balances') {
+        isMissingBalances = true;
+        title = `Known Liabilities (${sourceState.unrecordedCount} ${sourceState.unrecordedCount === 1 ? 'account needs balance' : 'accounts need balance'})`;
+        displayValue = 'Needs Balance';
+    } else if (sourceState.mode === 'modern_usable') {
+        const { summary, unrecordedCount } = sourceState;
+        const decimals = (baseCurrency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[baseCurrency as CurrencyCode] : 2;
+        const divisor = Math.pow(10, decimals);
+        const hasUnrecorded = unrecordedCount > 0;
+        const unrecordedText = unrecordedCount === 1 ? '1 account needs balance' : `${unrecordedCount} accounts need balance`;
+
+        if (summary.converted_total_liabilities?.is_complete) {
+            numericValue = summary.converted_total_liabilities.amount_cents / divisor;
+            displayValue = formatCurrency(numericValue, baseCurrency);
+            title = hasUnrecorded ? `Known Liabilities (${unrecordedText})` : `Total Liabilities (${baseCurrency})`;
+        } else {
+            const baseCents = summary.total_liabilities_cents_by_currency?.[baseCurrency];
+            const otherCurrencies = Object.keys(summary.total_liabilities_cents_by_currency || {}).filter(c => c !== baseCurrency) as CurrencyCode[];
+
+            if (baseCents !== undefined) {
+                numericValue = baseCents / divisor;
+                displayValue = formatCurrency(numericValue, baseCurrency);
+                title = hasUnrecorded
+                    ? `Known Liabilities (${baseCurrency} Subtotal — ${unrecordedText})`
+                    : (otherCurrencies.length > 0 ? `Liabilities (${baseCurrency} Holdings Subtotal)` : `Total Liabilities (${baseCurrency})`);
+            } else if (otherCurrencies.length === 1) {
+                const foreignCurr = otherCurrencies[0];
+                const foreignDecimals = (foreignCurr in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[foreignCurr] : 2;
+                const foreignVal = (summary.total_liabilities_cents_by_currency[foreignCurr] || 0) / Math.pow(10, foreignDecimals);
+                numericValue = foreignVal;
+                displayValue = formatCurrency(foreignVal, foreignCurr);
+                title = `Liabilities (${foreignCurr} Holding — Unconverted)`;
+            } else {
+                title = `Liabilities (Multi-Currency Holdings)`;
+                displayValue = otherCurrencies.map(c => `${c} ${(summary.total_liabilities_cents_by_currency[c] / Math.pow(10, CURRENCY_DECIMALS[c] ?? 2)).toLocaleString()}`).join(' + ');
+            }
+        }
+    } else {
+        // Legacy mode
+        numericValue = legacyLiabilities;
+        displayValue = formatCurrency(legacyLiabilities, baseCurrency);
+        title = `Total Liabilities (${baseCurrency})`;
     }
 
-    // Calculate truthful historical comparison only when comparative history exists
+    // Truthful historical comparison: Suppress if currency or coverage is non-comparable
     let change: string | undefined = undefined;
     let trend: 'up' | 'down' | 'neutral' = 'neutral';
 
-    if (history && history.length >= 2) {
+    if (!isMissingBalances && sourceState.mode !== 'error' && history && history.length >= 2) {
         const previous = history[history.length - 2];
-        const prevLiab = previous.totalLiabilities;
-        if (prevLiab && prevLiab !== 0) {
-            const diff = finalLiabilities - prevLiab;
-            const pct = ((diff / Math.abs(prevLiab)) * 100).toFixed(1);
+        if (previous && previous.currency === baseCurrency && previous.totalLiabilities && previous.totalLiabilities !== 0) {
+            const diff = numericValue - previous.totalLiabilities;
+            const pct = ((diff / Math.abs(previous.totalLiabilities)) * 100).toFixed(1);
             change = `${diff >= 0 ? '+' : ''}${pct}%`;
             // For liabilities, a decrease in debt is positive (up), increase is negative (down)
             trend = diff < 0 ? 'up' : diff > 0 ? 'down' : 'neutral';
@@ -88,7 +105,7 @@ export default function StatLiabilitiesWidget() {
         >
             <StatCard
                 title={title}
-                value={formatCurrency(finalLiabilities, baseCurrency)}
+                value={displayValue}
                 change={change}
                 trend={trend}
                 icon={<TrendingDown className="text-rose-600" size={24} />}

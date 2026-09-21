@@ -49,6 +49,9 @@ export interface DebtPayoffResult {
         monthsSaved: number;
         interestSaved: number;
     };
+    currency?: CurrencyCode;
+    isMultiCurrencyUnsupported?: boolean;
+    unsupportedCurrencies?: CurrencyCode[];
 }
 
 export interface FreedomDateSummary {

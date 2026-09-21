@@ -107,4 +107,99 @@ describe('analyzePortfolio', () => {
         expect(result.holdings[0].dayChange).toBe(100);
         expect(result.holdings[0].dayChangePercent).toBeCloseTo(7.14, 2); // 10/140 = 7.14%
     });
+
+    // Why this test exists:
+    // Implements Finding 4 regression prevention: an uncosted holding must NOT be treated as $0 cost basis,
+    // which would manufacture astronomical returns (e.g. 1020%).
+    // Tricky logic:
+    // Whole-portfolio return is unavailable if ANY included investment lacks cost basis.
+    // TODO: In Milestone 2, test covered-subset return when enabled.
+    it('sets whole-portfolio return unavailable when one of two holdings has missing cost basis', () => {
+        const holdingA: Asset = {
+            id: 'h-a',
+            user_id: 'u1',
+            name: 'Holding A',
+            type: 'investment',
+            value: 120,
+            is_liquid: true,
+            currency: 'AUD',
+            last_updated: new Date().toISOString(),
+            investment_details: {
+                ticker: 'HLDA',
+                shares: 1,
+                costBasis: 100, // Cost basis $100, gain $20 (+20%)
+                currentPrice: 120,
+                assetClass: 'stock'
+            }
+        };
+
+        const holdingB: Asset = {
+            id: 'h-b',
+            user_id: 'u1',
+            name: 'Holding B',
+            type: 'investment',
+            value: 1000,
+            is_liquid: true,
+            currency: 'AUD',
+            last_updated: new Date().toISOString(),
+            investment_details: {
+                ticker: 'HLDB',
+                shares: 10,
+                costBasis: undefined as any, // Missing cost basis
+                currentPrice: 100,
+                assetClass: 'stock'
+            }
+        };
+
+        const result = analyzePortfolio([holdingA, holdingB]);
+        expect(result.totalValue).toBe(1120);
+        expect(result.hasCostBasis).toBe(false);
+        expect(result.missingCostBasisCount).toBe(1);
+        expect(result.totalHoldingsCount).toBe(2);
+        expect(result.totalGain).toBe(0);
+        expect(result.totalGainPercent).toBe(0);
+
+        // Individual holding checks
+        const hA = result.holdings.find(h => h.ticker === 'HLDA')!;
+        expect(hA.hasCostBasis).toBe(true);
+        expect(hA.gain).toBe(20);
+        expect(hA.gainPercent).toBe(20);
+
+        const hB = result.holdings.find(h => h.ticker === 'HLDB')!;
+        expect(hB.hasCostBasis).toBe(false);
+        expect(hB.gain).toBeNull();
+        expect(hB.gainPercent).toBeNull();
+    });
+
+    it('handles explicit zero cost basis without division by zero', () => {
+        const giftedStock: Asset = {
+            id: 'gift-1',
+            user_id: 'u1',
+            name: 'Gifted Stock',
+            type: 'investment',
+            value: 500,
+            is_liquid: true,
+            currency: 'USD',
+            last_updated: new Date().toISOString(),
+            investment_details: {
+                ticker: 'GIFT',
+                shares: 5,
+                costBasis: 0, // Explicit zero cost basis
+                currentPrice: 100,
+                assetClass: 'stock'
+            }
+        };
+
+        const result = analyzePortfolio([giftedStock]);
+        expect(result.totalValue).toBe(500);
+        expect(result.totalCostBasis).toBe(0);
+        expect(result.totalGain).toBe(500); // Dollar gain is 500
+        expect(result.totalGainPercent).toBe(0); // Percentage return unavailable with zero denominator
+        expect(result.hasCostBasis).toBe(false); // Flagged unavailable for percentage return
+
+        const hGift = result.holdings[0];
+        expect(hGift.hasCostBasis).toBe(true);
+        expect(hGift.gain).toBe(500);
+        expect(hGift.gainPercent).toBeNull(); // Zero denominator
+    });
 });

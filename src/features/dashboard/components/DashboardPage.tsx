@@ -49,12 +49,12 @@ export const DashboardPage = () => {
                 <AccountFreshnessCard />
             </div>
 
+            {/* Main Draggable Grid */}
+            <DashboardGrid />
+
             <OnboardingProgress />
 
             <AchievementBadges />
-
-            {/* Main Draggable Grid */}
-            <DashboardGrid />
 
             {/* Components for Edit Mode */}
             <WidgetDrawer />

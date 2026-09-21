@@ -30,4 +30,5 @@ export interface WealthMomentum {
     monthlySavings: number;
     savingsRate: number;
     annualProjectedSavings: number;
+    activeRulesCount?: number;
 }

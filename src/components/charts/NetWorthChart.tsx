@@ -60,6 +60,23 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
         return sortedData.filter(d => new Date(d.date) >= cutoff);
     }, [sortedData, timeRange]);
 
+    // Check currency compatibility across snapshots
+    // Why this exists:
+    // Resolves Finding 2 & Clarification 4: Historical snapshots without established currency
+    // must display "Currency not recorded — unavailable for currency comparisons."
+    // Tricky logic:
+    // Never join different-currency observations into one monetary series without valid conversion.
+    // If snapshots have unrecorded currencies or mixed currencies without exchange rates,
+    // suppress misleading trajectory line.
+    // All hooks must be evaluated before early returns (React Rules of Hooks).
+    // TODO: In Milestone 2, apply historical dated exchange rates to backfilled snapshots.
+    const comparableData = useMemo(() => {
+        return filteredData.filter(d => d.currency === baseCurrency);
+    }, [filteredData, baseCurrency]);
+
+    const hasUnrecordedCurrency = filteredData.some(d => !d.currency);
+    const hasMismatchedCurrency = filteredData.some(d => d.currency && d.currency !== baseCurrency);
+
     const formatCurrencyAxis = (value: number) => {
         return formatCurrency(value, baseCurrency, { notation: 'compact', maximumFractionDigits: 1 } as any);
     };
@@ -94,21 +111,61 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
         );
     }
 
-    // When only 1 snapshot exists, display a clear milestone state rather than an awkward flat area line
+    // When only 1 snapshot exists, display an informative milestone state
     if (filteredData.length === 1) {
         const snap = filteredData[0];
+        const isRecorded = Boolean(snap.currency);
+
         return (
             <div className="h-64 flex flex-col items-center justify-center bg-muted/30 rounded-2xl p-6 text-center border border-dashed border-border">
                 <div className="p-3 bg-blue-500/10 text-blue-600 rounded-full mb-3">
                     <History size={24} />
                 </div>
                 <h4 className="font-bold text-sm text-foreground">One recorded snapshot so far</h4>
-                <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-                    Recorded on <span className="font-semibold text-foreground">{formatFullDate(snap.date)}</span>: Net Worth of{' '}
-                    <span className="font-bold text-blue-600">{formatCurrency(snap.netWorth, baseCurrency)}</span>.
-                </p>
+                {!isRecorded ? (
+                    <>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold mt-1">
+                            Currency not recorded — unavailable for currency comparisons.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                            Recorded on <span className="font-semibold text-foreground">{formatFullDate(snap.date)}</span>: Net Worth of{' '}
+                            <span className="font-bold text-foreground">{snap.netWorth.toLocaleString()}</span> (unrecorded currency).
+                        </p>
+                    </>
+                ) : (
+                    <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                        Recorded on <span className="font-semibold text-foreground">{formatFullDate(snap.date)}</span>: Net Worth of{' '}
+                        <span className="font-bold text-blue-600">{formatCurrency(snap.netWorth, snap.currency!)}</span>
+                        {snap.currency !== baseCurrency && (
+                            <span className="block text-[10px] text-amber-600 mt-0.5 font-medium">
+                                (Recorded in {snap.currency} — unconverted to {baseCurrency})
+                            </span>
+                        )}
+                    </p>
+                )}
                 <p className="text-[11px] text-muted-foreground mt-3 italic">
                     Your trajectory chart will automatically connect as new snapshots are recorded.
+                </p>
+            </div>
+        );
+    }
+
+    // When multiple snapshots exist, verify comparable currency before joining into a series
+    if (comparableData.length < 2) {
+        return (
+            <div className="h-64 flex flex-col items-center justify-center bg-muted/30 rounded-2xl p-6 text-center border border-dashed border-border">
+                <div className="p-3 bg-amber-500/10 text-amber-600 rounded-full mb-3">
+                    <History size={24} />
+                </div>
+                <h4 className="font-bold text-sm text-foreground">
+                    {hasUnrecordedCurrency
+                        ? 'Currency not recorded — unavailable for currency comparisons.'
+                        : `Historical snapshots recorded in different currencies.`}
+                </h4>
+                <p className="text-xs text-muted-foreground mt-1.5 max-w-md">
+                    {hasUnrecordedCurrency
+                        ? 'Historical snapshots lack recorded currency metadata. To prevent misleading trends, snapshots cannot be combined into a continuous monetary series without verified currency data.'
+                        : `Historical snapshots contain currencies differing from active display currency (${baseCurrency}) without dated conversion rates. A single monetary series cannot be accurately joined.`}
                 </p>
             </div>
         );
@@ -118,11 +175,13 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
         return <div className="h-72 w-full bg-slate-50/50 rounded-2xl animate-pulse" />;
     }
 
+    const plottableData = comparableData;
+
     return (
         <div className="w-full h-72">
             <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
-                    data={filteredData}
+                    data={plottableData}
                     margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
                     <defs>

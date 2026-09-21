@@ -1,15 +1,3 @@
-/**
- * StatAssetsWidget
- * 
- * Why this exists:
- * Displays total assets in the user's selected base currency.
- * 
- * Tricky logic:
- * - Compares with previous net worth snapshot ONLY if sufficient history snapshots exist.
- * - Otherwise leaves change undefined so StatCard truthfully displays "Not enough history" (TRUST-03, Finding 9).
- * - Never displays hardcoded percentage estimates.
- */
-
 import WidgetWrapper from '@/features/dashboard/widgets/WidgetWrapper';
 import StatCard from '@/features/dashboard/components/StatCard';
 import { DollarSign } from 'lucide-react';
@@ -17,63 +5,93 @@ import { formatCurrency } from '@/lib/utils/currencyService';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useHistory } from '@/hooks/useHistory';
-import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
+import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
 
+/**
+ * StatAssetsWidget
+ * 
+ * Displays total assets in the user's selected base currency.
+ * Consumes the unified financial source selection rule to maintain parity with Net Worth and Allocation.
+ * Historical comparison is only calculated and displayed if comparable history snapshots exist with matching currency.
+ */
 export default function StatAssetsWidget() {
-    const { baseCurrency, assets } = useNetWorth();
+    const { baseCurrency, assets: legacyAssets } = useNetWorth();
     const { isEditMode, hideWidget } = useDashboard();
     const { history } = useHistory();
-    const { summary } = useSharedFinancialSummary();
+    const sourceState = useFinancialSourceSelection(baseCurrency);
 
-    // Check if the shared financial summary has authoritative assets for baseCurrency.
     // Why this exists:
-    // Prevents contradictory zero display when user imports balance observations in non-AUD currencies (e.g. JPY).
+    // Resolves Finding 1 & Clarification 2: Consumes unified source selection rule.
     // Tricky logic:
-    // Divisor is 10^decimals, where decimals is 0 for JPY (divisor 1) and 2 for AUD/USD (divisor 100).
-    // TODO: Support automated FX conversion for consolidated multi-currency asset totals.
-    const trackedCents = summary?.total_assets_cents_by_currency?.[baseCurrency];
-    const decimals = (baseCurrency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[baseCurrency as CurrencyCode] : 2;
-    const divisor = Math.pow(10, decimals);
-    const finalAssets = (trackedCents !== undefined && (summary?.accounts?.length || 0) > 0)
-        ? (trackedCents / divisor)
-        : assets;
-
-    const currencyBuckets = summary?.net_worth_cents_by_currency ? Object.keys(summary.net_worth_cents_by_currency) : [];
-    const hasMultipleCurrencies = currencyBuckets.length > 1;
-    const isFxConverted = summary?.converted_net_worth?.is_complete === true;
-
-    // Honest labeling: If there are unrecorded accounts or multiple currencies without complete FX conversion,
-    // explicitly qualify this as a known/partial figure rather than presenting it as complete "Total Assets".
-    // Why this exists:
-    // Prevents misleading claims of "Total Assets" when asset accounts have unknown balances or missing FX conversions.
-    // Tricky logic:
-    // Distinguishes between currency subtotal qualification and unrecorded account qualification.
-    // TODO: Display inline drawer linking to unrecorded asset accounts when clicking the widget title.
-    const hasUnrecorded = (summary?.unrecorded_count || 0) > 0;
-    const unrecordedText = summary?.unrecorded_count === 1
-        ? '1 account needs balance'
-        : `${summary?.unrecorded_count} accounts need balance`;
-
+    // 1. If converted_total_assets is complete, displays the authoritatively converted asset total.
+    // 2. If unconverted and baseCurrency has assets, displays the native baseCurrency subtotal.
+    // 3. If unconverted and assets are in a single foreign currency (e.g. USD 25,000 with AUD display),
+    //    displays the explicit native amount (USD 25,000) rather than fabricating $0 AUD.
+    // TODO: In Milestone 2, provide 1-click rate insertion for unconverted foreign assets.
     let title = `Total Assets (${baseCurrency})`;
-    if (hasUnrecorded && hasMultipleCurrencies && !isFxConverted) {
-        title = `Known Assets (${baseCurrency} Subtotal — ${unrecordedText})`;
-    } else if (hasUnrecorded) {
-        title = `Known Assets (${unrecordedText})`;
-    } else if (hasMultipleCurrencies && !isFxConverted) {
-        title = `Total Assets (${baseCurrency} Subtotal)`;
+    let displayValue = '...';
+    let numericValue = 0;
+    let isMissingBalances = false;
+
+    if (sourceState.mode === 'loading') {
+        displayValue = '...';
+    } else if (sourceState.mode === 'error') {
+        title = `Total Assets (${baseCurrency})`;
+        displayValue = 'Error loading';
+    } else if (sourceState.mode === 'modern_missing_balances') {
+        isMissingBalances = true;
+        title = `Known Assets (${sourceState.unrecordedCount} ${sourceState.unrecordedCount === 1 ? 'account needs balance' : 'accounts need balance'})`;
+        displayValue = 'Needs Balance';
+    } else if (sourceState.mode === 'modern_usable') {
+        const { summary, unrecordedCount } = sourceState;
+        const decimals = (baseCurrency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[baseCurrency as CurrencyCode] : 2;
+        const divisor = Math.pow(10, decimals);
+        const hasUnrecorded = unrecordedCount > 0;
+        const unrecordedText = unrecordedCount === 1 ? '1 account needs balance' : `${unrecordedCount} accounts need balance`;
+
+        if (summary.converted_total_assets?.is_complete) {
+            numericValue = summary.converted_total_assets.amount_cents / divisor;
+            displayValue = formatCurrency(numericValue, baseCurrency);
+            title = hasUnrecorded ? `Known Assets (${unrecordedText})` : `Total Assets (${baseCurrency})`;
+        } else {
+            const baseCents = summary.total_assets_cents_by_currency?.[baseCurrency];
+            const otherCurrencies = Object.keys(summary.total_assets_cents_by_currency || {}).filter(c => c !== baseCurrency) as CurrencyCode[];
+
+            if (baseCents !== undefined) {
+                numericValue = baseCents / divisor;
+                displayValue = formatCurrency(numericValue, baseCurrency);
+                title = hasUnrecorded
+                    ? `Known Assets (${baseCurrency} Subtotal — ${unrecordedText})`
+                    : (otherCurrencies.length > 0 ? `Assets (${baseCurrency} Holdings Subtotal)` : `Total Assets (${baseCurrency})`);
+            } else if (otherCurrencies.length === 1) {
+                const foreignCurr = otherCurrencies[0];
+                const foreignDecimals = (foreignCurr in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[foreignCurr] : 2;
+                const foreignVal = (summary.total_assets_cents_by_currency[foreignCurr] || 0) / Math.pow(10, foreignDecimals);
+                numericValue = foreignVal;
+                displayValue = formatCurrency(foreignVal, foreignCurr);
+                title = `Assets (${foreignCurr} Holding — Unconverted)`;
+            } else {
+                title = `Assets (Multi-Currency Holdings)`;
+                displayValue = otherCurrencies.map(c => `${c} ${(summary.total_assets_cents_by_currency[c] / Math.pow(10, CURRENCY_DECIMALS[c] ?? 2)).toLocaleString()}`).join(' + ');
+            }
+        }
+    } else {
+        // Legacy mode
+        numericValue = legacyAssets;
+        displayValue = formatCurrency(legacyAssets, baseCurrency);
+        title = `Total Assets (${baseCurrency})`;
     }
 
-    // Calculate truthful historical comparison only when comparative history exists
+    // Truthful historical comparison: Suppress if currency or coverage is non-comparable
     let change: string | undefined = undefined;
     let trend: 'up' | 'down' | 'neutral' = 'neutral';
 
-    if (history && history.length >= 2) {
+    if (!isMissingBalances && sourceState.mode !== 'error' && history && history.length >= 2) {
         const previous = history[history.length - 2];
-        const prevAssets = previous.totalAssets;
-        if (prevAssets && prevAssets !== 0) {
-            const diff = finalAssets - prevAssets;
-            const pct = ((diff / Math.abs(prevAssets)) * 100).toFixed(1);
+        if (previous && previous.currency === baseCurrency && previous.totalAssets && previous.totalAssets !== 0) {
+            const diff = numericValue - previous.totalAssets;
+            const pct = ((diff / Math.abs(previous.totalAssets)) * 100).toFixed(1);
             change = `${diff >= 0 ? '+' : ''}${pct}%`;
             trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral';
         }
@@ -87,7 +105,7 @@ export default function StatAssetsWidget() {
         >
             <StatCard
                 title={title}
-                value={formatCurrency(finalAssets, baseCurrency)}
+                value={displayValue}
                 change={change}
                 trend={trend}
                 icon={<DollarSign className="text-emerald-600" size={24} />}

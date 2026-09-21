@@ -4,45 +4,78 @@ import { WealthMomentum } from '@/features/cashflow/types';
 import { PieChart, Pie, Cell } from 'recharts';
 import { Info } from 'lucide-react';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
-import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
+import { formatCurrency } from '@/lib/utils/currencyService';
 
 interface Props {
     momentum: WealthMomentum;
 }
 
+/**
+ * WealthMomentumGauge
+ * 
+ * Why this component exists:
+ * Displays planned monthly surplus, break-even, or deficit based on scheduled recurring rules.
+ * 
+ * Tricky logic:
+ * - Resolves Finding 5 & Clarification 7:
+ *   1. Determines "No recurring rules" from whether applicable rules exist (`activeRulesCount === 0`),
+ *      not merely whether both totals equal zero.
+ *   2. Bases Surplus / Break-even / Deficit strictly on the signed monetary difference
+ *      (`monthlyIncome - monthlyExpenses`), not a rounded percentage score.
+ *   3. Clearly distinguishes four distinct states:
+ *      - No rules configured
+ *      - Break-even ($0 net difference)
+ *      - Small / Planned surplus (positive difference)
+ *      - Planned deficit (negative difference)
+ * 
+ * TODO: In Milestone 2, connect gauge to actual double-entry postings for true realized cash flow.
+ */
 export default function WealthMomentumGauge({ momentum }: Props) {
     const { baseCurrency } = useNetWorth();
-    const { score, monthlySavings, annualProjectedSavings, monthlyRecurringIncome, monthlyRecurringExpenses } = momentum;
+    const {
+        score,
+        monthlySavings,
+        annualProjectedSavings,
+        monthlyRecurringIncome,
+        monthlyRecurringExpenses,
+        activeRulesCount
+    } = momentum;
 
-    // Momentum is ALREADY calculated in the base currency by DashboardContext.
-    // We should NOT convert it again.
     const monthlySavingsBase = monthlySavings;
     const annualProjectedBase = annualProjectedSavings;
+    const diff = monthlySavingsBase;
 
+    // Check if applicable recurring rules exist
+    const hasRules = activeRulesCount !== undefined
+        ? activeRulesCount > 0
+        : (monthlyRecurringIncome > 0 || monthlyRecurringExpenses > 0);
 
-    // Truthful status based on planned savings rate
-    // Why this exists:
-    // Avoids over-claiming "Thriving" financial health based solely on 2 recurring rules.
-    // Tricky logic:
-    // Score directly reflects the recurring savings rate percentage without artificial point bonuses.
-    // TODO: Connect to actual period cash flow statement from double-entry postings in Milestone 2.
-    let color = '#ef4444'; // Red (< 15%)
-    let status = 'Deficit';
+    let color = '#94a3b8'; // Neutral slate
+    let status = 'No Recurring Rules';
+    let isNoRules = false;
 
-    if (score >= 50) {
-        color = '#10b981'; // Emerald (>= 50%)
-        status = 'Strong Surplus';
-    } else if (score >= 20) {
-        color = '#3b82f6'; // Blue (20-49%)
-        status = 'Moderate Surplus';
-    } else if (score > 0) {
-        color = '#f59e0b'; // Amber (1-19%)
-        status = 'Modest Surplus';
+    if (!hasRules) {
+        isNoRules = true;
+        color = '#94a3b8';
+        status = 'No Recurring Rules';
+    } else if (Math.abs(diff) < 0.01) {
+        // Break-even: exact zero monetary difference
+        color = '#3b82f6'; // Blue
+        status = 'Break-Even';
+    } else if (diff > 0) {
+        color = '#10b981'; // Emerald
+        // Differentiate small surplus (< $200/mo or low rate) from strong surplus
+        status = (diff < 200 || momentum.savingsRate < 10) ? 'Small Surplus' : 'Planned Surplus';
+    } else {
+        // Deficit: expenses exceed income
+        color = '#ef4444'; // Red
+        status = 'Planned Deficit';
     }
 
+    const displayScore = isNoRules ? 0 : Math.max(0, Math.min(100, Math.round(momentum.savingsRate)));
     const data = [
-        { value: score },
-        { value: 100 - score }
+        { value: isNoRules ? 0 : displayScore },
+        { value: isNoRules ? 100 : (100 - displayScore) }
     ];
 
     return (
@@ -79,28 +112,47 @@ export default function WealthMomentumGauge({ momentum }: Props) {
                     </PieChart>
                     {/* Score Text */}
                     <div className="absolute inset-0 flex flex-col items-center justify-end pb-2">
-                        <span className="text-3xl font-black text-foreground leading-none">{score}%</span>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{status}</span>
+                        <span className="text-3xl font-black text-foreground leading-none">
+                            {isNoRules ? '--' : `${displayScore}%`}
+                        </span>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-0.5">
+                            {status}
+                        </span>
                     </div>
                 </div>
 
                 <div className="mt-4 text-center space-y-1">
-                    <p className="text-sm font-medium text-muted-foreground">
-                        Planned Savings: <span className="font-bold text-foreground privacy-value">{formatCurrency(monthlySavingsBase, baseCurrency)}/mo</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                        Annualized <span className="font-bold text-emerald-600 privacy-value">{formatCurrency(annualProjectedBase, baseCurrency)}</span> / year
-                    </p>
+                    {isNoRules ? (
+                        <p className="text-sm font-medium text-muted-foreground">
+                            No recurring rules configured
+                        </p>
+                    ) : (
+                        <>
+                            <p className="text-sm font-medium text-muted-foreground">
+                                Planned Difference:{' '}
+                                <span className={`font-bold privacy-value ${diff >= 0 ? 'text-foreground' : 'text-rose-600'}`}>
+                                    {diff > 0 ? '+' : ''}{formatCurrency(monthlySavingsBase, baseCurrency)}/mo
+                                </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Annualized <span className="font-bold text-foreground privacy-value">{formatCurrency(annualProjectedBase, baseCurrency)}</span> / year
+                            </p>
+                        </>
+                    )}
                 </div>
 
-                {/* Savings Rate Badge */}
+                {/* Savings Rate / Status Badge */}
                 <div className="mt-3 px-3 py-1 bg-muted rounded-full border border-border text-xs font-bold text-muted-foreground">
-                    {momentum.savingsRate.toFixed(1)}% Planned Savings Rate
+                    {isNoRules
+                        ? '0 Active Rules'
+                        : `${momentum.savingsRate.toFixed(1)}% Planned Savings Rate`}
                 </div>
 
                 {/* Honest Scope Disclosure */}
                 <p className="text-[10px] text-muted-foreground text-center mt-3 opacity-75 max-w-xs">
-                    Based on scheduled recurring rules. Discretionary spending and unscheduled debts are not included.
+                    {isNoRules
+                        ? 'Add recurring income and expenses in Cash Flow to calculate planned monthly surplus.'
+                        : 'Based on scheduled recurring rules. Discretionary spending and unscheduled debts are not included.'}
                 </p>
             </div>
         </div>
