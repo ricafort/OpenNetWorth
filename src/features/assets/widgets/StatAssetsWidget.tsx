@@ -125,25 +125,16 @@ export default function StatAssetsWidget() {
         }
     }
 
-    // Truthful historical comparison: Suppress if currency or coverage is non-comparable (Resolves Issue 2)
-    let change: string | undefined = undefined;
-    let trend: 'up' | 'down' | 'neutral' = 'neutral';
-
-    const hasCompleteCoverage = !isMissingBalances &&
-        sourceState.mode !== 'error' &&
-        sourceState.mode !== 'loading' &&
-        (sourceState.mode === 'legacy' || (sourceState.unrecordedCount === 0 && !sourceState.hasExcludedLegacy));
-
-    if (hasCompleteCoverage && displayedCurrency && history && history.length >= 2) {
-        const sortedHistory = history.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        const previous = sortedHistory[sortedHistory.length - 2];
-        if (previous && previous.currency === displayedCurrency && previous.totalAssets && previous.totalAssets !== 0) {
-            const diff = numericValue - previous.totalAssets;
-            const pct = ((diff / Math.abs(previous.totalAssets)) * 100).toFixed(1);
-            change = `${diff >= 0 ? '+' : ''}${pct}%`;
-            trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral';
-        }
-    }
+    // Historical comparison: Suppress whenever historical account coverage cannot be verified
+    // Why this exists:
+    // Resolves Assessor Finding: Historical snapshots in SQLite do not record account coverage metadata.
+    // Matching currency alone cannot establish comparable account coverage across reporting periods.
+    // We suppress headline percentage comparisons so StatCard displays "Not enough comparable history".
+    // Tricky logic:
+    // Percentage comparisons without verified identical account sets fabricate misleading growth/decay figures.
+    // TODO: In Milestone 2, store snapshot account IDs for automated coverage equivalence verification.
+    const change: string | undefined = undefined;
+    const trend: 'up' | 'down' | 'neutral' = 'neutral';
 
     return (
         <WidgetWrapper
