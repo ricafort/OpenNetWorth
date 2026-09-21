@@ -263,8 +263,8 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
 
     return (
         <div className="w-full h-full flex flex-col justify-between" style={{ minHeight: 260 }}>
-            {/* Multi-currency tabs when modern accounts contain multiple unconverted currencies */}
-            {sourceState.mode === 'modern_usable' && !isConverted && availableCurrencies.length > 1 && (
+            {/* Multi-currency tabs when accounts contain multiple unconverted currencies (modern or legacy) */}
+            {!isConverted && availableCurrencies.length > 1 && (
                 <div className="flex items-center gap-1.5 pb-2 px-1 border-b border-border/40 overflow-x-auto">
                     <span className="text-[10px] uppercase font-bold text-muted-foreground mr-1">Currency:</span>
                     {availableCurrencies.map(curr => (

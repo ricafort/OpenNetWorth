@@ -36,7 +36,7 @@ export default function StatCard({ title, value, change, trend, icon, privacySen
                     </div>
                 ) : (
                     <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-                        <span>Not enough history</span>
+                        <span>Not enough comparable history</span>
                     </div>
                 )}
             </div>
