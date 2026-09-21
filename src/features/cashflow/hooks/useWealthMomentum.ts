@@ -47,15 +47,18 @@ export function useWealthMomentum() {
         const monthlySavings = monthlyIncome - monthlyExpenses;
         const savingsRate = monthlyIncome > 0 ? (monthlySavings / monthlyIncome) * 100 : 0;
 
-        let score = savingsRate;
-        if (savingsRate > 50) score += 10;
-        else if (savingsRate > 30) score += 5;
-        else if (savingsRate > 20) score += 5;
-        if (savingsRate < 0) score -= 10;
-        score = Math.max(0, Math.min(100, score));
+        // Truthful planned savings rate:
+        // Why this exists:
+        // Reflects the planned savings rate derived strictly from active recurring income and expenses.
+        // Tricky logic:
+        // We do NOT add arbitrary bonus points (e.g. +10, +5) that previously produced an unsubstantiated "100 - Thriving" rating.
+        // The score represents the direct planned savings rate (clamped between 0 and 100).
+        // It is an estimate based on scheduled rules only; actual discretionary spending is excluded.
+        // TODO: Integrate actual period cash flow statement from accounting postings in Milestone 2.
+        const score = Math.max(0, Math.min(100, Math.round(savingsRate)));
 
         return {
-            score: Math.round(score),
+            score,
             monthlyRecurringIncome: monthlyIncome,
             monthlyRecurringExpenses: monthlyExpenses,
             monthlySavings,

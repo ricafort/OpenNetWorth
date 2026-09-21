@@ -15,15 +15,28 @@ export const SUPPORTED_CURRENCIES: { code: CurrencyCode; symbol: string; name: s
     { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
 ];
 
-// Mock Exchange Rates (Base: USD)
-// In a real app, fetch these from an API
-const EXCHANGE_RATES: Record<CurrencyCode, number> = {
+/**
+ * Mock / Synthetic Exchange Rates (Base: USD)
+ * 
+ * Why this exists:
+ * Provides a lightweight fallback for legacy preview components and demo mode when no database is present.
+ * 
+ * Tricky logic:
+ * NEVER use these mock rates for authoritative financial ledgers, net worth widgets, or accounting reports!
+ * In accordance with Delivery 1 audit rules, authoritative multi-currency conversions require verified,
+ * dated exchange rates from `m1_exchange_rates` via `sharedFinancialSummaryService.ts`.
+ * If no verified rate exists, the application must disclose the missing rate and report native-currency
+ * subtotals rather than silently converting with these hardcoded numbers.
+ * 
+ * TODO: Replace legacy UI dependencies on this mock table with the accounting domain's exchange rate service.
+ */
+const LEGACY_MOCK_EXCHANGE_RATES: Record<CurrencyCode, number> = {
     'USD': 1.00,
     'EUR': 0.92,  // 1 USD = 0.92 EUR
     'GBP': 0.79,  // 1 USD = 0.79 GBP
     'JPY': 151.5, // 1 USD = 151.5 JPY
     'CAD': 1.36,  // 1 USD = 1.36 CAD
-    'AUD': 1.54,  // 1 USD = 1.54 AUD
+    'AUD': 1.54,  // 1 USD = 1.54 AUD (Mock only - do not use for authoritative totals)
     'CHF': 0.91,  // 1 USD = 0.91 CHF
     'CNY': 7.24,  // 1 USD = 7.24 CNY
     'INR': 83.5,  // 1 USD = 83.5 INR
@@ -35,10 +48,11 @@ const EXCHANGE_RATES: Record<CurrencyCode, number> = {
 /**
  * Calculates the exchange rate between two currencies via USD as the base.
  * Formula: Target Rate / Source Rate
+ * NOTE: For demo / legacy preview only.
  */
 export const getExchangeRate = (from: CurrencyCode, to: CurrencyCode): number => {
-    const fromRate = EXCHANGE_RATES[from] || 1;
-    const toRate = EXCHANGE_RATES[to] || 1;
+    const fromRate = LEGACY_MOCK_EXCHANGE_RATES[from] || 1;
+    const toRate = LEGACY_MOCK_EXCHANGE_RATES[to] || 1;
 
     // Convert to USD first (From / Rate), then to Target (USD * Rate)
     // Formula: (1 / fromRate) * toRate

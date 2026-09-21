@@ -57,6 +57,10 @@ export function getSharedFinancialSummary(
 
     const coverageNotes: string[] = [];
     const accountsIncluded: SharedFinancialSummaryAccount[] = [];
+    // Why this exists:
+    // Tracks accounts that track balances but lack an accepted observation on or before asOfDate.
+    // Allows dashboard widgets to qualify incomplete headline totals honestly without assuming zero balances.
+    const unrecordedAccounts: Array<{ id: string; name: string; currency: CurrencyCode }> = [];
 
     const totalAssetsCentsByCurrency: Record<CurrencyCode, number> = {};
     const totalLiabilitiesCentsByCurrency: Record<CurrencyCode, number> = {};
@@ -123,6 +127,11 @@ export function getSharedFinancialSummary(
 
             if (!observation) {
                 // Incomplete coverage: do NOT assume zero wealth
+                unrecordedAccounts.push({
+                    id: account.id,
+                    name: account.name,
+                    currency: account.currency
+                });
                 coverageNotes.push(`Account "${account.name}" (${account.currency}) tracks balances but has no accepted valuation observation on or before ${asOfDate}.`);
                 continue;
             }
@@ -246,6 +255,9 @@ export function getSharedFinancialSummary(
         }
     }
 
+    // Overall completeness requires zero unrecorded balance accounts AND complete FX conversions
+    const overallIsComplete = unrecordedAccounts.length === 0 && (convertedNetWorth ? convertedNetWorth.is_complete : true);
+
     return {
         as_of_date: asOfDate,
         scope_entity_id: scopeEntityId,
@@ -256,6 +268,9 @@ export function getSharedFinancialSummary(
         converted_net_worth: convertedNetWorth,
         accounts_included: accountsIncluded,
         accounts: accountsIncluded,
-        coverage_notes: coverageNotes
+        coverage_notes: coverageNotes,
+        unrecorded_accounts: unrecordedAccounts,
+        unrecorded_count: unrecordedAccounts.length,
+        is_complete: overallIsComplete
     };
 }

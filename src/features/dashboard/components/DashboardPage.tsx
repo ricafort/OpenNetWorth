@@ -36,16 +36,25 @@ export const DashboardPage = () => {
 
             <DashboardHeader />
 
+            {/* 
+              * Account Freshness & Coverage Disclosure
+              * Why this exists:
+              * Positions data completeness and missing-balance disclosures prominently at the top,
+              * ensuring users understand whether totals are complete before interpreting widget figures.
+              * Tricky logic:
+              * AccountFreshnessCard automatically hides itself when zero accounts exist, keeping clean onboarding.
+              * TODO: Add 1-click filter to view only unobserved accounts in the accounts table.
+              */}
+            <div className="w-full transform transition-all duration-300 ease-in-out">
+                <AccountFreshnessCard />
+            </div>
+
             <OnboardingProgress />
 
             <AchievementBadges />
 
             {/* Main Draggable Grid */}
             <DashboardGrid />
-
-            <div className="mx-auto max-w-4xl transform transition-all duration-500 ease-in-out mt-8">
-                <AccountFreshnessCard />
-            </div>
 
             {/* Components for Edit Mode */}
             <WidgetDrawer />
