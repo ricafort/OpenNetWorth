@@ -1,6 +1,7 @@
 
 import { Liability } from '@/features/liabilities/types';
 import { PayoffStrategy, DebtPayoffResult, PayoffScheduleEntry, FreedomDateSummary } from '@/features/liabilities/types';
+import { CurrencyCode } from '@/types';
 
 // Helper to estimate minimum payments if not provided
 const estimateMinPayment = (balance: number, annualRate: number): number => {
@@ -28,9 +29,34 @@ const calculatePayoffPrecise = (
     extraMonthlyPayment: number,
     strategy: PayoffStrategy
 ): DebtPayoffResult => {
+    const activeDebts = liabilities.filter(l => (l.balance || 0) > 0);
+    const currencies = Array.from(new Set(activeDebts.map(l => (l.currency || 'USD') as CurrencyCode)));
+
+    // Why this check exists:
+    // Implements Finding 6: Combining debts in different currencies (e.g. JPY and AUD) in a single
+    // payoff schedule produces nonsensical math (rolling over JPY minimum payments to pay AUD debt).
+    // Tricky logic:
+    // When multiple currencies exist, we flag as unsupported rather than manufacturing fabricated totals.
+    // TODO: In Milestone 2, calculate independent schedules per currency.
+    if (currencies.length > 1) {
+        return {
+            strategy,
+            freedomDate: new Date().toISOString(),
+            daysUntilFreedom: 0,
+            totalInterestPaid: 0,
+            totalPayments: 0,
+            monthsToPayoff: 0,
+            schedule: [],
+            comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
+            isMultiCurrencyUnsupported: true,
+            unsupportedCurrencies: currencies
+        };
+    }
+
+    const debtCurrency = currencies[0] || 'USD';
+
     // Setup and Sanitize
-    let debts = liabilities
-        .filter(l => (l.balance || 0) > 0)
+    let debts = activeDebts
         .map(l => {
             const balance = Number(l.balance) || 0;
             const rate = Number(l.interest_rate) || 0;
@@ -151,6 +177,8 @@ const calculatePayoffPrecise = (
         totalPayments: totalPayments || 0,
         monthsToPayoff: monthsElapsed,
         schedule,
-        comparisonToMinimum: comparison
+        comparisonToMinimum: comparison,
+        currency: debtCurrency,
+        isMultiCurrencyUnsupported: false
     };
 };

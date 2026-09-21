@@ -63,7 +63,8 @@ export function useWealthMomentum() {
             monthlyRecurringExpenses: monthlyExpenses,
             monthlySavings,
             savingsRate,
-            annualProjectedSavings: monthlySavings * 12
+            annualProjectedSavings: monthlySavings * 12,
+            activeRulesCount: activeRecurring.length
         };
     }, [recurring, baseCurrency]);
 

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plane } from 'lucide-react';
-import { convertAmount, formatCurrency, getExchangeRate } from '@/lib/utils/currencyService';
+import { Plane, Compass, Globe } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/currencyService';
 import { UserSettings } from '@/types';
 import { loadSettings } from '@/infrastructure/local_driver';
 
@@ -11,21 +11,34 @@ interface CityCost {
     country: string;
     currency: 'USD' | 'EUR' | 'GBP' | 'JPY' | 'THB' | 'IDR' | 'VND' | 'MXN';
     monthlyCost: number; // In local currency
+    monthlyCostUSD: number;
 }
 
 const CITIES: CityCost[] = [
-    { city: 'Bali', country: 'Indonesia', currency: 'IDR', monthlyCost: 25000000 },
-    { city: 'Tokyo', country: 'Japan', currency: 'JPY', monthlyCost: 350000 },
-    { city: 'New York', country: 'USA', currency: 'USD', monthlyCost: 6000 },
-    { city: 'Chiang Mai', country: 'Thailand', currency: 'THB', monthlyCost: 45000 },
-    { city: 'Lisbon', country: 'Portugal', currency: 'EUR', monthlyCost: 2500 },
-    { city: 'Mexico City', country: 'Mexico', currency: 'MXN', monthlyCost: 35000 },
+    { city: 'Bali', country: 'Indonesia', currency: 'IDR', monthlyCost: 25000000, monthlyCostUSD: 1600 },
+    { city: 'Tokyo', country: 'Japan', currency: 'JPY', monthlyCost: 350000, monthlyCostUSD: 2300 },
+    { city: 'Chiang Mai', country: 'Thailand', currency: 'THB', monthlyCost: 45000, monthlyCostUSD: 1250 },
+    { city: 'Lisbon', country: 'Portugal', currency: 'EUR', monthlyCost: 2500, monthlyCostUSD: 2700 }
 ];
 
 interface Props {
-    netWorthUSD: number; // Always pass net worth in USD for calculation baseline
+    netWorthUSD: number;
 }
 
+/**
+ * TravelPowerCard
+ * 
+ * Why this component exists:
+ * Provides an exploratory benchmark of global living costs and travel runway scenarios.
+ * 
+ * Tricky logic:
+ * - Resolves Finding 6 & Clarification 7: Uses a neutral travel-budget prompt for both positive
+ *   and negative net worth until an actual dedicated travel fund is selected.
+ * - Avoids judgmental lecturing ("Debt Payoff Priority") for users with negative net worth
+ *   and avoids falsely dividing illiquid home equity/superannuation for users with positive net worth.
+ * 
+ * TODO: In Milestone 2, allow user to link a specific liquid travel savings goal or sub-account.
+ */
 export default function TravelPowerCard({ netWorthUSD }: Props) {
     const [settings, setSettings] = useState<UserSettings | null>(null);
 
@@ -33,89 +46,57 @@ export default function TravelPowerCard({ netWorthUSD }: Props) {
         setSettings(loadSettings());
     }, []);
 
-    // Helper to get rate (IDR, THB etc might not be in our main service yet, adding simple mocks here if needed)
-    // For MVP, if currency not in our main service, we need to mock it here or add to service but keep it hidden from main selector
-    // Simpler approach: Convert USD -> Local
-    const getRate = (target: string): number => {
-        const RATES: Record<string, number> = {
-            'IDR': 15800,
-            'THB': 36.5,
-            'MXN': 16.8,
-            'USD': 1,
-            'EUR': 0.92,
-            'GBP': 0.79,
-            'JPY': 151.5
-        };
-        return RATES[target] || 1;
-    };
-
-    // Negative / zero net worth guardrail:
-    // Why this exists:
-    // Dividing negative net worth by city costs produced nonsensical outputs like "-5.2 months Freedom".
-    // Travel runway is only meaningful when positive liquid funds exist.
-    // Tricky logic:
-    // Net worth can be negative due to mortgages or student loans even when cash flow is positive.
-    // We provide a constructive debt payoff priority notice rather than negative travel runway.
-    // TODO: Allow user to select a specific liquid cash account instead of defaulting to total net worth.
-    if (netWorthUSD <= 0) {
-        return (
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-lg relative overflow-hidden h-full flex flex-col justify-between">
-                <div className="absolute top-0 right-0 p-4 opacity-5">
-                    <Plane size={120} />
-                </div>
-                <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2 text-slate-300">
-                        <Plane size={14} /> Travel Runway Simulator
-                    </h3>
-                    <p className="text-sm font-semibold text-amber-400 mt-3">Debt Payoff Priority</p>
-                    <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                        Travel runway requires positive liquid wealth. Your current financial focus is debt elimination and building emergency reserves.
-                    </p>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-4 italic">
-                    Optional scenario tool. Illiquid property equity and superannuation are not adjusted.
-                </p>
-            </div>
-        );
-    }
+    const baseCurrency = settings?.baseCurrency || 'USD';
 
     return (
-        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 text-white shadow-lg relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
+        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 rounded-3xl p-6 text-white shadow-lg relative overflow-hidden h-full flex flex-col justify-between">
+            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                 <Plane size={120} />
             </div>
 
-            <h3 className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2 opacity-90">
-                <Plane size={14} /> Travel Runway Simulator
-            </h3>
+            <div>
+                <div className="flex items-center justify-between mb-3 z-10 relative">
+                    <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2 text-indigo-100">
+                        <Compass size={14} className="text-indigo-300" /> Travel Runway Simulator
+                    </h3>
+                    <span className="text-[10px] font-bold bg-white/10 text-indigo-200 px-2 py-0.5 rounded-full">
+                        Scenario Benchmark
+                    </span>
+                </div>
 
-            <div className="space-y-4 relative z-10">
-                {CITIES.slice(0, 3).map((city) => {
-                    const localNetWorth = netWorthUSD * getRate(city.currency);
-                    const months = Math.max(0, localNetWorth / city.monthlyCost);
-                    const years = months / 12;
+                {/* Neutral Prompt for both positive and negative net worth */}
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3.5 mb-4 border border-white/10">
+                    <p className="text-xs font-semibold text-white leading-relaxed">
+                        Choose a travel budget or dedicated travel fund to project global runway.
+                    </p>
+                    <p className="text-[11px] text-indigo-200 mt-1 leading-snug">
+                        Total net worth includes illiquid assets and debts not intended for travel. Living costs below show monthly reference benchmarks.
+                    </p>
+                </div>
 
-                    return (
-                        <div key={city.city} className="flex items-center justify-between">
+                {/* Benchmark City Living Costs */}
+                <div className="space-y-2.5 relative z-10">
+                    {CITIES.slice(0, 3).map((city) => (
+                        <div key={city.city} className="flex items-center justify-between bg-black/10 rounded-xl px-3 py-2 border border-white/5">
                             <div>
-                                <p className="font-bold text-sm">{city.city}</p>
-                                <p className="text-xs opacity-75">{city.country}</p>
+                                <p className="font-bold text-xs text-white">{city.city}</p>
+                                <p className="text-[10px] text-indigo-200">{city.country}</p>
                             </div>
                             <div className="text-right">
-                                <p className="font-bold text-lg">
-                                    {years > 1 ? `${years.toFixed(1)} years` : `${months.toFixed(1)} months`}
+                                <p className="font-bold text-xs text-white">
+                                    ~${city.monthlyCostUSD.toLocaleString()} USD
                                 </p>
-                                <p className="text-xs opacity-75">
-                                    Runway
+                                <p className="text-[10px] text-indigo-200">
+                                    per month
                                 </p>
                             </div>
                         </div>
-                    );
-                })}
+                    ))}
+                </div>
             </div>
 
-            <p className="text-[10px] text-center mt-4 opacity-75">
-                Optional scenario simulator. Assumes fully liquid savings; illiquid assets are not adjusted.
+            <p className="text-[10px] text-center mt-4 text-indigo-200/80">
+                Optional scenario simulator. Link a dedicated travel goal to calculate actual projected months.
             </p>
         </div>
     );

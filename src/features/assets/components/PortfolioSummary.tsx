@@ -55,7 +55,9 @@ export default function PortfolioSummary({ analysis, privacyBlur = false, curren
                             Return unavailable
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            Cost basis records required
+                            {analysis.missingCostBasisCount > 0
+                                ? `Cost basis missing for ${analysis.missingCostBasisCount} of ${analysis.totalHoldingsCount} holdings`
+                                : `Cost basis records required`}
                         </div>
                     </>
                 )}

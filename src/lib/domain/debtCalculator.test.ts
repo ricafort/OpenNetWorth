@@ -63,4 +63,43 @@ describe('DebtCalculator', () => {
         expect(result.monthsToPayoff).toBe(0);
         expect(result.totalPayments).toBe(0);
     });
+
+    // Why this test exists:
+    // Implements Finding 6: Combining debts in mixed currencies (AUD and JPY) in a single payoff calculation
+    // is mathematically invalid and must be rejected with isMultiCurrencyUnsupported: true.
+    // Tricky logic:
+    // Debts with zero balance do not trigger multi-currency rejection; only active debts (>0 balance) are evaluated.
+    // TODO: In Milestone 2, test independent per-currency payoff schedules.
+    it('flags mixed-currency active debts as unsupported rather than manufacturing combined totals', () => {
+        const audDebt: Liability = {
+            id: 'aud-debt',
+            user_id: 'user1',
+            name: 'AUD Card',
+            type: 'credit_card',
+            balance: 5000,
+            interest_rate: 18,
+            minimum_payment: 100,
+            is_good_debt: false,
+            currency: 'AUD',
+            last_updated: new Date().toISOString()
+        };
+
+        const jpyDebt: Liability = {
+            id: 'jpy-debt',
+            user_id: 'user1',
+            name: 'JPY Loan',
+            type: 'other',
+            balance: 500000,
+            interest_rate: 3.5,
+            minimum_payment: 15000,
+            is_good_debt: false,
+            currency: 'JPY',
+            last_updated: new Date().toISOString()
+        };
+
+        const result = calculatePayoff([audDebt, jpyDebt], 200, 'avalanche');
+        expect(result.isMultiCurrencyUnsupported).toBe(true);
+        expect(result.unsupportedCurrencies).toEqual(['AUD', 'JPY']);
+        expect(result.schedule).toHaveLength(0);
+    });
 });

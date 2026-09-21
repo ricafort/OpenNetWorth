@@ -9,8 +9,10 @@ interface HoldingCardProps {
         name: string;
         value: number;
         weight: number;
-        gain: number;
-        gainPercent: number;
+        gain: number | null;
+        gainPercent: number | null;
+        hasCostBasis?: boolean;
+        costBasis?: number | null;
         dayChange: number;
         dayChangePercent: number;
         shares: number;
@@ -22,9 +24,18 @@ interface HoldingCardProps {
 }
 
 export default function HoldingCard({ holding, privacySensitive = false, currencyCode = 'USD' }: HoldingCardProps) {
-    const isPositive = holding.gain >= 0;
+    const isPositive = (holding.gain ?? 0) >= 0;
     const isDayPositive = holding.dayChange >= 0;
     const blurClass = 'privacy-value';
+
+    // Why this check exists:
+    // When a holding has unrecorded cost basis or an explicit $0 cost basis (zero denominator),
+    // fabricating a return percentage or displaying infinity is misleading.
+    // Tricky logic:
+    // Cost basis of 0 means gain = value, but percentage return has 0 denominator (undefined).
+    // TODO: In Milestone 2, provide direct button to add/edit missing cost basis.
+    const hasRecordedReturn = holding.hasCostBasis && holding.gain !== null;
+    const hasValidPercent = holding.gainPercent !== null;
 
     return (
         <div className={clsx(
@@ -54,13 +65,21 @@ export default function HoldingCard({ holding, privacySensitive = false, currenc
             <div className="grid grid-cols-2 gap-4 pt-3 border-t border-border">
                 <div>
                     <p className="text-xs text-muted-foreground mb-1">Total Return</p>
-                    <div className={clsx("flex items-center gap-1 text-sm font-semibold", isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                        {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                        <span>{isPositive ? '+' : ''}{holding.gainPercent.toFixed(2)}%</span>
-                    </div>
-                    <p className={clsx("text-xs", isPositive ? "text-green-600/70" : "text-red-600/70", blurClass)}>
-                        {isPositive ? '+' : ''}{formatCurrency(holding.gain, currencyCode)}
-                    </p>
+                    {hasRecordedReturn ? (
+                        <>
+                            <div className={clsx("flex items-center gap-1 text-sm font-semibold", isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                                {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                                <span>{hasValidPercent ? `${isPositive ? '+' : ''}${holding.gainPercent!.toFixed(2)}%` : 'N/A (0 Cost Basis)'}</span>
+                            </div>
+                            <p className={clsx("text-xs", isPositive ? "text-green-600/70" : "text-red-600/70", blurClass)}>
+                                {isPositive ? '+' : ''}{formatCurrency(holding.gain!, currencyCode)}
+                            </p>
+                        </>
+                    ) : (
+                        <div className="text-xs text-muted-foreground italic mt-1">
+                            Cost basis unrecorded
+                        </div>
+                    )}
                 </div>
                 <div>
                     <p className="text-xs text-muted-foreground mb-1">Today</p>

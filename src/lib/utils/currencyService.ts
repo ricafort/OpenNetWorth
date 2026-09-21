@@ -77,7 +77,7 @@ export const convertAmount = (amount: number, from: CurrencyCode, to: CurrencyCo
  * @param currency The currency code (e.g., 'USD', 'PHP')
  * @param locale The locale string (default 'en-US')
  */
-export const formatCurrency = (amount: number, currency: CurrencyCode, locale: string = 'en-US'): string => {
+export const formatCurrency = (amount: number, currency: CurrencyCode | string, locale: string = 'en-US'): string => {
     return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currency,

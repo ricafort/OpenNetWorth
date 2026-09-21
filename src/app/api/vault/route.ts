@@ -137,7 +137,8 @@ export async function GET(request: Request) {
                 date: h.date,
                 totalAssets: h.total_assets,
                 totalLiabilities: h.total_liabilities,
-                netWorth: h.net_worth
+                netWorth: h.net_worth,
+                currency: h.currency || undefined
             }));
 
             const cashFlow = db.prepare('SELECT * FROM cash_flow_history ORDER BY month ASC').all();
@@ -481,14 +482,19 @@ export async function POST(request: Request) {
 
                 const existing = db.prepare("SELECT id FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as { id: string } | undefined;
                 const finalId = existing?.id || item.id || crypto.randomUUID();
+                // Why this exists:
+                // Resolves Finding 2 & Clarification 4: Retains snapshot currency in SQLite
+                // so comparisons across currencies are never fabricated.
+                const currency = (item.currency && typeof item.currency === 'string') ? item.currency : null;
 
                 const stmt = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
-                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
+                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                     ON CONFLICT(user_id, date) DO UPDATE SET
                         total_assets = excluded.total_assets,
                         total_liabilities = excluded.total_liabilities,
-                        net_worth = excluded.net_worth
+                        net_worth = excluded.net_worth,
+                        currency = excluded.currency
                 `);
                 stmt.run({
                     id: finalId,
@@ -496,7 +502,8 @@ export async function POST(request: Request) {
                     date,
                     total_assets,
                     total_liabilities,
-                    net_worth
+                    net_worth,
+                    currency
                 });
 
                 const persisted = db.prepare("SELECT * FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as any;
@@ -507,7 +514,8 @@ export async function POST(request: Request) {
                         date: persisted.date,
                         totalAssets: persisted.total_assets,
                         totalLiabilities: persisted.total_liabilities,
-                        netWorth: persisted.net_worth
+                        netWorth: persisted.net_worth,
+                        currency: persisted.currency || undefined
                     }
                 });
             }
@@ -1389,8 +1397,8 @@ export async function POST(request: Request) {
                 }
 
                 const insertHistory = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
-                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
+                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                 `);
                 for (const h of rawVault.history) {
                     insertHistory.run({
@@ -1399,7 +1407,8 @@ export async function POST(request: Request) {
                         date: h.date,
                         total_assets: Number(h.totalAssets ?? h.total_assets),
                         total_liabilities: Number(h.totalLiabilities ?? h.total_liabilities),
-                        net_worth: Number(h.netWorth ?? h.net_worth)
+                        net_worth: Number(h.netWorth ?? h.net_worth),
+                        currency: h.currency || null
                     });
                 }
 
@@ -1580,8 +1589,8 @@ export async function POST(request: Request) {
                 }
 
                 const insertHistory = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
-                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
+                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                 `);
                 for (const h of rawVault.history) {
                     insertHistory.run({
@@ -1590,7 +1599,8 @@ export async function POST(request: Request) {
                         date: h.date,
                         total_assets: Number(h.totalAssets ?? h.total_assets),
                         total_liabilities: Number(h.totalLiabilities ?? h.total_liabilities),
-                        net_worth: Number(h.netWorth ?? h.net_worth)
+                        net_worth: Number(h.netWorth ?? h.net_worth),
+                        currency: h.currency || null
                     });
                 }
 
@@ -1728,20 +1738,22 @@ export async function POST(request: Request) {
             if (Array.isArray(rawVault.history)) {
                 db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
                 const insertHistory = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth)
-                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth)
+                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                 `);
                 for (const h of rawVault.history) {
                     const total_assets = parseFiniteNumber(h.totalAssets ?? h.total_assets, `History record ${h.date} total assets`, { allowNegative: false, required: true });
                     const total_liabilities = parseFiniteNumber(h.totalLiabilities ?? h.total_liabilities, `History record ${h.date} total liabilities`, { allowNegative: false, required: true });
                     const net_worth = parseFiniteNumber(h.netWorth ?? h.net_worth, `History record ${h.date} net worth`, { allowNegative: true, required: true });
+                    const currency = (h.currency && typeof h.currency === 'string') ? h.currency : null;
                     insertHistory.run({
                         id: h.id || crypto.randomUUID(),
                         user_id: 'local_user',
                         date: h.date,
                         total_assets,
                         total_liabilities,
-                        net_worth
+                        net_worth,
+                        currency
                     });
                 }
             }

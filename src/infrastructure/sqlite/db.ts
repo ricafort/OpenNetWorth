@@ -272,6 +272,7 @@ export function initSchema(db: Database.Database) {
             total_assets REAL NOT NULL,
             total_liabilities REAL NOT NULL,
             net_worth REAL NOT NULL,
+            currency TEXT,
             UNIQUE(user_id, date)
         );
 
@@ -298,6 +299,22 @@ export function initSchema(db: Database.Database) {
     `;
 
     db.exec(schema);
+
+    // Why this exists:
+    // Resolves Finding 2 & Clarification 4: Net worth history snapshots must durably retain currency
+    // so historical snapshots recorded in USD/EUR are never masqueraded as AUD.
+    // Tricky logic:
+    // Existing SQLite databases already have net_worth_history created without currency.
+    // We safely query PRAGMA table_info and execute ALTER TABLE ADD COLUMN if missing.
+    // TODO: In Milestone 2, support retroactive batch currency attribution for legacy snapshots.
+    try {
+        const tableInfo = db.prepare("PRAGMA table_info(net_worth_history)").all() as { name: string }[];
+        if (tableInfo.length > 0 && !tableInfo.some(c => c.name === 'currency')) {
+            db.prepare("ALTER TABLE net_worth_history ADD COLUMN currency TEXT").run();
+        }
+    } catch {
+        // Ignored if table doesn't exist yet or already altered
+    }
 }
 
 export default getDb;

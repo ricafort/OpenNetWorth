@@ -32,22 +32,39 @@ export function useNetWorth() {
     }, [profile]);
 
     const metrics = useMemo(() => {
-        // Calculate Totals (USD) - Standardized Intermediate
-        const totalAssetsUSD = assets.reduce((sum: number, a: Asset) => {
-            return sum + convertAmount(a.value, a.currency || 'USD', 'USD');
-        }, 0);
+        // Why this exists:
+        // Calculates native base currency totals for legacy items without applying unverified mock exchange rates.
+        // Tricky logic:
+        // When legacy assets are in foreign currencies (e.g. USD when base is AUD), summing with fake rates (1.54)
+        // produces fabricated financial figures. We sum matching base currency items, and also track USD native items.
+        // TODO: In Milestone 2, deprecate legacy asset table completely in favour of double-entry ledger.
+        let totalAssetsBase = 0;
+        let totalLiabilitiesBase = 0;
+        let totalAssetsUSD = 0;
+        let totalLiabilitiesUSD = 0;
 
-        const totalLiabilitiesUSD = liabilities.reduce((sum: number, l: Liability) => {
-            const converted = convertAmount(l.balance, l.currency || 'USD', 'USD');
-            return sum + converted;
-        }, 0);
+        assets.forEach((a: Asset) => {
+            const curr = (a.currency || 'USD') as CurrencyCode;
+            if (curr === baseCurrency) {
+                totalAssetsBase += a.value;
+            }
+            if (curr === 'USD') {
+                totalAssetsUSD += a.value;
+            }
+        });
 
-        const netWorthUSD = totalAssetsUSD - totalLiabilitiesUSD;
+        liabilities.forEach((l: Liability) => {
+            const curr = (l.currency || 'USD') as CurrencyCode;
+            if (curr === baseCurrency) {
+                totalLiabilitiesBase += l.balance;
+            }
+            if (curr === 'USD') {
+                totalLiabilitiesUSD += l.balance;
+            }
+        });
 
-        // Calculate Totals (Base Currency) - Display
-        const totalAssetsBase = convertAmount(totalAssetsUSD, 'USD', baseCurrency);
-        const totalLiabilitiesBase = convertAmount(totalLiabilitiesUSD, 'USD', baseCurrency);
         const netWorthBase = totalAssetsBase - totalLiabilitiesBase;
+        const netWorthUSD = totalAssetsUSD - totalLiabilitiesUSD;
 
         return {
             assets: totalAssetsBase,
