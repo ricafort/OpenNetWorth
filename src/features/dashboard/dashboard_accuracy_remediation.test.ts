@@ -201,7 +201,7 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
         expect(perf.missingCostBasisCount).toBe(1);
         expect(perf.totalHoldingsCount).toBe(2);
         expect(perf.totalGain).toBe(0);
-        expect(perf.totalGainPercent).toBe(0);
+        expect(perf.totalGainPercent).toBeNull();
     });
 
     // Case 6: Mixed-currency debts -> Combined payoff calculation rejected
@@ -236,5 +236,84 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
         expect(result.unsupportedCurrencies).toContain('AUD');
         expect(result.unsupportedCurrencies).toContain('JPY');
         expect(result.monthsToPayoff).toBe(0);
+    });
+
+    // Case 7: Bottom-up rounding policy reconciles accounts and converted totals exactly (Finding 4)
+    it('Case 7: Two accounts of USD 0.01 with 1.50 AUD rate reconcile total assets with sum of account allocations', () => {
+        const acc1 = createAccount(db, {
+            id: 'acc-usd-1',
+            entity_id: entityId,
+            name: 'USD Micro 1',
+            type: 'asset',
+            sub_type: 'checking',
+            currency: 'USD',
+            tracking_mode: 'balance'
+        });
+        const acc2 = createAccount(db, {
+            id: 'acc-usd-2',
+            entity_id: entityId,
+            name: 'USD Micro 2',
+            type: 'asset',
+            sub_type: 'checking',
+            currency: 'USD',
+            tracking_mode: 'balance'
+        });
+
+        // 1 cent USD in each
+        db.prepare(`
+            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            VALUES ('obs-m1', ?, 1, 'USD', 'current_balance', '2026-09-20', datetime('now'), 'manual', 'accepted', datetime('now'))
+        `).run(acc1.account.id);
+        db.prepare(`
+            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            VALUES ('obs-m2', ?, 1, 'USD', 'current_balance', '2026-09-20', datetime('now'), 'manual', 'accepted', datetime('now'))
+        `).run(acc2.account.id);
+
+        // Dated rate: 1 USD = 1.50 AUD
+        db.prepare(`
+            INSERT INTO m1_exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
+            VALUES ('fx-micro', 'USD', 'AUD', 1.50, '2026-09-20', 'manual', datetime('now'))
+        `).run();
+
+        const summary = getSharedFinancialSummary(db, {
+            reporting_currency: 'AUD',
+            as_of_date: '2026-09-20'
+        });
+
+        expect(summary.converted_total_assets?.is_complete).toBe(true);
+
+        // Acc 1: 0.01 * 1.50 = 0.015 -> rounded to 2 cents AUD
+        // Acc 2: 0.01 * 1.50 = 0.015 -> rounded to 2 cents AUD
+        const acc1Converted = summary.accounts?.find(a => a.account_id === acc1.account.id)?.converted_amount_cents;
+        const acc2Converted = summary.accounts?.find(a => a.account_id === acc2.account.id)?.converted_amount_cents;
+        expect(acc1Converted).toBe(2);
+        expect(acc2Converted).toBe(2);
+
+        // Bottom-up converted total assets = 2 + 2 = 4 cents AUD
+        expect(summary.converted_total_assets?.amount_cents).toBe(4);
+        // Total assets equals the exact sum of accounts
+        expect(summary.converted_total_assets?.amount_cents).toBe(acc1Converted! + acc2Converted!);
+    });
+
+    // Case 8: Explicit zero cost basis preserves known gain and sets totalGainPercent to null (Finding 5)
+    it('Case 8: Investment worth A$120 with explicit zero cost basis preserves A$120 gain and reports isZeroCostBasis', () => {
+        const holdings: Asset[] = [
+            {
+                id: '1',
+                name: 'Gifted Stock',
+                type: 'investment',
+                value: 120,
+                is_liquid: true,
+                last_updated: '2026-09-20',
+                investment_details: { ticker: 'GIFT', shares: 1, costBasis: 0, assetClass: 'stock' }
+            }
+        ];
+
+        const perf = analyzePortfolio(holdings);
+        expect(perf.hasCostBasis).toBe(true);
+        expect(perf.isZeroCostBasis).toBe(true);
+        expect(perf.missingCostBasisCount).toBe(0);
+        expect(perf.totalGain).toBe(120);
+        expect(perf.totalGainPercent).toBeNull();
     });
 });

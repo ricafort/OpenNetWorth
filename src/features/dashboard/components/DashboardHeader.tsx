@@ -57,9 +57,9 @@ export default function DashboardHeader() {
                 </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 max-w-full">
                 {isEditMode ? (
-                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                         <button
                             onClick={resetLayout}
                             className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
@@ -93,12 +93,6 @@ export default function DashboardHeader() {
                             <Settings size={20} />
                         </button>
 
-                        {!updateCurrency && ( // updateCurrency is just a proxy for checking if we have a profile context loaded properly? No.
-                            // Actually useProfile returns { profile }. If profile is null/undefined = Guest.
-                            false // placeholder
-                        )}
-
-
                         <button
                             onClick={async () => {
                                 if (window.confirm('Reset and choose a new profile? This will clear your current local data and log you out.')) {
@@ -131,7 +125,7 @@ export default function DashboardHeader() {
                           */}
                         <button
                             onClick={() => setIsBalancesModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl shadow-sm transition-all group"
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl shadow-sm transition-all group"
                             title="Update Account Balances (Super, Trading, Bank)"
                         >
                             <Scale size={14} className="group-hover:rotate-12 transition-transform" />
@@ -141,7 +135,7 @@ export default function DashboardHeader() {
                         {/* Local AI Runner Pill */}
                         <button
                             onClick={() => setIsLocalAiOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800 rounded-xl transition-all shadow-sm group"
+                            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800 rounded-xl transition-all shadow-sm group"
                             title="Configure Local LLM Engine (LM Studio / Ollama)"
                         >
                             <Cpu size={14} className="text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
@@ -150,8 +144,8 @@ export default function DashboardHeader() {
                         </button>
 
                         {/* Currency Selector */}
-                        <div className="flex items-center gap-2 pl-2 border-l border-border ml-1">
-                            <span className="text-sm font-bold text-slate-500 flex items-center gap-1 hidden sm:flex">
+                        <div className="flex items-center gap-1.5 sm:pl-2 sm:border-l sm:border-border">
+                            <span className="text-xs sm:text-sm font-bold text-slate-500 items-center gap-1 hidden md:flex">
                                 <Globe size={14} /> Currency:
                             </span>
                             <CurrencySelector
@@ -164,7 +158,7 @@ export default function DashboardHeader() {
 
                         <button
                             onClick={() => setIsEditMode(true)}
-                            className="ml-2 flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-xl transition-all shadow-sm"
+                            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-xl transition-all shadow-sm"
                             title="Customize Dashboard Layout"
                         >
                             <LayoutGrid size={16} />
@@ -172,7 +166,7 @@ export default function DashboardHeader() {
                         </button>
 
                         {/* User Profile Menu */}
-                        <div className="relative ml-2" ref={menuRef}>
+                        <div className="relative" ref={menuRef}>
                             <button
                                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                                 className="flex items-center gap-2 p-1 pr-3 rounded-full bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all group"

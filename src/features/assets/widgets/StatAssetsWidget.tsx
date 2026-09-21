@@ -16,22 +16,20 @@ import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
  * Historical comparison is only calculated and displayed if comparable history snapshots exist with matching currency.
  */
 export default function StatAssetsWidget() {
-    const { baseCurrency, assets: legacyAssets } = useNetWorth();
+    const { baseCurrency, assetsByCurrency, assetCurrencies } = useNetWorth();
     const { isEditMode, hideWidget } = useDashboard();
     const { history } = useHistory();
     const sourceState = useFinancialSourceSelection(baseCurrency);
 
     // Why this exists:
-    // Resolves Finding 1 & Clarification 2: Consumes unified source selection rule.
-    // Tricky logic:
-    // 1. If converted_total_assets is complete, displays the authoritatively converted asset total.
-    // 2. If unconverted and baseCurrency has assets, displays the native baseCurrency subtotal.
-    // 3. If unconverted and assets are in a single foreign currency (e.g. USD 25,000 with AUD display),
-    //    displays the explicit native amount (USD 25,000) rather than fabricating $0 AUD.
-    // TODO: In Milestone 2, provide 1-click rate insertion for unconverted foreign assets.
+    // Resolves Issues 1, 2 & 3:
+    // 1. Groups legacy assets by native currency without fabricating $0 AUD when assets are in USD.
+    // 2. Suppresses historical comparison if displayed currency does not match snapshot currency or coverage is incomplete.
+    // 3. Discloses when legacy holdings are excluded from modern accounting figures.
     let title = `Total Assets (${baseCurrency})`;
     let displayValue = '...';
     let numericValue = 0;
+    let displayedCurrency: CurrencyCode | null = baseCurrency;
     let isMissingBalances = false;
 
     if (sourceState.mode === 'loading') {
@@ -41,10 +39,14 @@ export default function StatAssetsWidget() {
         displayValue = 'Error loading';
     } else if (sourceState.mode === 'modern_missing_balances') {
         isMissingBalances = true;
-        title = `Known Assets (${sourceState.unrecordedCount} ${sourceState.unrecordedCount === 1 ? 'account needs balance' : 'accounts need balance'})`;
+        displayedCurrency = null;
+        const unrecordedText = sourceState.unrecordedCount === 1 ? '1 account needs balance' : `${sourceState.unrecordedCount} accounts need balance`;
+        title = sourceState.hasExcludedLegacy
+            ? `Known Assets (Accounting Accounts Only — ${unrecordedText})`
+            : `Known Assets (${unrecordedText})`;
         displayValue = 'Needs Balance';
     } else if (sourceState.mode === 'modern_usable') {
-        const { summary, unrecordedCount } = sourceState;
+        const { summary, unrecordedCount, hasExcludedLegacy } = sourceState;
         const decimals = (baseCurrency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[baseCurrency as CurrencyCode] : 2;
         const divisor = Math.pow(10, decimals);
         const hasUnrecorded = unrecordedCount > 0;
@@ -52,44 +54,90 @@ export default function StatAssetsWidget() {
 
         if (summary.converted_total_assets?.is_complete) {
             numericValue = summary.converted_total_assets.amount_cents / divisor;
+            displayedCurrency = baseCurrency;
             displayValue = formatCurrency(numericValue, baseCurrency);
-            title = hasUnrecorded ? `Known Assets (${unrecordedText})` : `Total Assets (${baseCurrency})`;
+            if (hasExcludedLegacy) {
+                title = hasUnrecorded
+                    ? `Known Assets (Accounting Accounts Only — ${unrecordedText})`
+                    : `Total Assets (${baseCurrency} — Accounting Only)`;
+            } else {
+                title = hasUnrecorded ? `Known Assets (${unrecordedText})` : `Total Assets (${baseCurrency})`;
+            }
         } else {
             const baseCents = summary.total_assets_cents_by_currency?.[baseCurrency];
             const otherCurrencies = Object.keys(summary.total_assets_cents_by_currency || {}).filter(c => c !== baseCurrency) as CurrencyCode[];
 
             if (baseCents !== undefined) {
                 numericValue = baseCents / divisor;
+                displayedCurrency = baseCurrency;
                 displayValue = formatCurrency(numericValue, baseCurrency);
-                title = hasUnrecorded
-                    ? `Known Assets (${baseCurrency} Subtotal — ${unrecordedText})`
-                    : (otherCurrencies.length > 0 ? `Assets (${baseCurrency} Holdings Subtotal)` : `Total Assets (${baseCurrency})`);
+                if (hasExcludedLegacy) {
+                    title = `Assets (${baseCurrency} Subtotal — Accounting Only)`;
+                } else {
+                    title = hasUnrecorded
+                        ? `Known Assets (${baseCurrency} Subtotal — ${unrecordedText})`
+                        : (otherCurrencies.length > 0 ? `Assets (${baseCurrency} Holdings Subtotal)` : `Total Assets (${baseCurrency})`);
+                }
             } else if (otherCurrencies.length === 1) {
                 const foreignCurr = otherCurrencies[0];
                 const foreignDecimals = (foreignCurr in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[foreignCurr] : 2;
                 const foreignVal = (summary.total_assets_cents_by_currency[foreignCurr] || 0) / Math.pow(10, foreignDecimals);
                 numericValue = foreignVal;
+                displayedCurrency = foreignCurr;
                 displayValue = formatCurrency(foreignVal, foreignCurr);
-                title = `Assets (${foreignCurr} Holding — Unconverted)`;
+                title = hasExcludedLegacy
+                    ? `Assets (${foreignCurr} Holding — Accounting Only)`
+                    : `Assets (${foreignCurr} Holding — Unconverted)`;
             } else {
-                title = `Assets (Multi-Currency Holdings)`;
+                displayedCurrency = null;
+                title = hasExcludedLegacy ? `Assets (Multi-Currency — Accounting Only)` : `Assets (Multi-Currency Holdings)`;
                 displayValue = otherCurrencies.map(c => `${c} ${(summary.total_assets_cents_by_currency[c] / Math.pow(10, CURRENCY_DECIMALS[c] ?? 2)).toLocaleString()}`).join(' + ');
             }
         }
     } else {
-        // Legacy mode
-        numericValue = legacyAssets;
-        displayValue = formatCurrency(legacyAssets, baseCurrency);
-        title = `Total Assets (${baseCurrency})`;
+        // Legacy mode: group by native currency (Resolves Issue 1)
+        const assetsBase = assetsByCurrency?.[baseCurrency];
+        const otherAssetCurrs = (assetCurrencies || []).filter(c => c !== baseCurrency);
+
+        if (assetsBase !== undefined && (assetsBase > 0 || otherAssetCurrs.length === 0)) {
+            numericValue = assetsBase;
+            displayedCurrency = baseCurrency;
+            displayValue = formatCurrency(assetsBase, baseCurrency);
+            title = otherAssetCurrs.length > 0
+                ? `Assets (${baseCurrency} Holdings Subtotal)`
+                : `Total Assets (${baseCurrency})`;
+        } else if (otherAssetCurrs.length === 1) {
+            const foreignCurr = otherAssetCurrs[0];
+            const foreignVal = assetsByCurrency?.[foreignCurr] || 0;
+            numericValue = foreignVal;
+            displayedCurrency = foreignCurr;
+            displayValue = formatCurrency(foreignVal, foreignCurr);
+            title = `Assets (${foreignCurr} Holding — Unconverted)`;
+        } else if (otherAssetCurrs.length > 1) {
+            displayedCurrency = null;
+            title = `Assets (Multi-Currency Holdings — Unconverted)`;
+            displayValue = otherAssetCurrs.map(c => `${c} ${(assetsByCurrency?.[c] || 0).toLocaleString()}`).join(' + ');
+        } else {
+            numericValue = 0;
+            displayedCurrency = baseCurrency;
+            displayValue = formatCurrency(0, baseCurrency);
+            title = `Total Assets (${baseCurrency})`;
+        }
     }
 
-    // Truthful historical comparison: Suppress if currency or coverage is non-comparable
+    // Truthful historical comparison: Suppress if currency or coverage is non-comparable (Resolves Issue 2)
     let change: string | undefined = undefined;
     let trend: 'up' | 'down' | 'neutral' = 'neutral';
 
-    if (!isMissingBalances && sourceState.mode !== 'error' && history && history.length >= 2) {
-        const previous = history[history.length - 2];
-        if (previous && previous.currency === baseCurrency && previous.totalAssets && previous.totalAssets !== 0) {
+    const hasCompleteCoverage = !isMissingBalances &&
+        sourceState.mode !== 'error' &&
+        sourceState.mode !== 'loading' &&
+        (sourceState.mode === 'legacy' || (sourceState.unrecordedCount === 0 && !sourceState.hasExcludedLegacy));
+
+    if (hasCompleteCoverage && displayedCurrency && history && history.length >= 2) {
+        const sortedHistory = history.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const previous = sortedHistory[sortedHistory.length - 2];
+        if (previous && previous.currency === displayedCurrency && previous.totalAssets && previous.totalAssets !== 0) {
             const diff = numericValue - previous.totalAssets;
             const pct = ((diff / Math.abs(previous.totalAssets)) * 100).toFixed(1);
             change = `${diff >= 0 ? '+' : ''}${pct}%`;

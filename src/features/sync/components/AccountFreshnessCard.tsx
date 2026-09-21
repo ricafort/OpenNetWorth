@@ -27,7 +27,8 @@ import {
     Info,
     ShieldCheck,
     ArrowRight,
-    Sparkles,
+    ChevronDown,
+    ChevronUp,
     RefreshCw
 } from 'lucide-react';
 import { useSharedFinancialSummary } from '../hooks/useSharedFinancialSummary';
@@ -37,6 +38,7 @@ import UpdateBalancesModal from './UpdateBalancesModal';
 export default function AccountFreshnessCard() {
     const { summary, isLoading, refresh } = useSharedFinancialSummary();
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
     const accounts = summary?.accounts || [];
     const coverageNotes = summary?.coverage_notes || [];
@@ -94,13 +96,49 @@ export default function AccountFreshnessCard() {
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => setIsUpdateModalOpen(true)}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all group"
+                            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all group"
                         >
                             <RefreshCw size={13} className="group-hover:rotate-180 transition-transform duration-500" />
-                            Update Balances
+                            <span className="hidden sm:inline">Update Balances</span>
+                            <span className="sm:hidden">Update</span>
+                        </button>
+                        <button
+                            onClick={() => setIsCollapsed(!isCollapsed)}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl transition-colors border border-border/40"
+                            title={isCollapsed ? "Expand coverage panel" : "Collapse to compact notice"}
+                        >
+                            {isCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                         </button>
                     </div>
                 </CardHeader>
+
+                {isCollapsed ? (
+                    <div className="px-6 py-3 bg-muted/10 border-t border-border/30 flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-foreground">{accounts.length} accounts</span>
+                            <span>•</span>
+                            {missingBalanceCount > 0 ? (
+                                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                    {missingBalanceCount} awaiting initial balance
+                                </span>
+                            ) : staleAccounts.length > 0 ? (
+                                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                    {staleAccounts.length} older than 30d
+                                </span>
+                            ) : (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                    All accounts updated recently
+                                </span>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setIsCollapsed(false)}
+                            className="text-blue-600 dark:text-blue-400 font-semibold text-xs hover:underline"
+                        >
+                            Show Details
+                        </button>
+                    </div>
+                ) : (
 
                 <CardContent className="p-6 space-y-5">
                     {isLoading ? (
@@ -221,6 +259,7 @@ export default function AccountFreshnessCard() {
                         </div>
                     )}
                 </CardContent>
+            )}
             </Card>
 
             <UpdateBalancesModal

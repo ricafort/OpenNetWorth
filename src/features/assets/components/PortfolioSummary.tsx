@@ -43,10 +43,16 @@ export default function PortfolioSummary({ analysis, privacyBlur = false, curren
                     <>
                         <div className={`text-2xl font-bold text-foreground flex items-baseline gap-2 ${blurClass}`}>
                             {formatCurrency(analysis.totalGain, currencyCode)}
-                            <span className="text-sm text-emerald-600 font-medium">({analysis.totalGainPercent.toFixed(1)}%)</span>
+                            {analysis.totalGainPercent !== null ? (
+                                <span className={`text-sm font-medium ${analysis.totalGainPercent >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    ({analysis.totalGainPercent.toFixed(1)}%)
+                                </span>
+                            ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            All-time performance
+                            {analysis.totalGainPercent !== null
+                                ? 'All-time performance'
+                                : 'Percentage return unavailable — zero cost basis'}
                         </div>
                     </>
                 ) : (
@@ -55,9 +61,7 @@ export default function PortfolioSummary({ analysis, privacyBlur = false, curren
                             Return unavailable
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                            {analysis.missingCostBasisCount > 0
-                                ? `Cost basis missing for ${analysis.missingCostBasisCount} of ${analysis.totalHoldingsCount} holdings`
-                                : `Cost basis records required`}
+                            Cost basis missing for {analysis.missingCostBasisCount} of {analysis.totalHoldingsCount} holdings
                         </div>
                     </>
                 )}

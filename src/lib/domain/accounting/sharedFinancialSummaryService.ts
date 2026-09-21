@@ -192,83 +192,19 @@ export function getSharedFinancialSummary(
 
     // 2. Converted Totals calculation (Strictly requires explicit dated exchange rates)
     // Why this exists:
-    // Enables dashboard widgets (Assets, Liabilities, Net Worth, Allocation) to consume authoritatively
-    // converted figures in reportingCurrency using identical dated exchange rates and minor-unit rounding rules.
+    // Implements a single bottom-up rounding policy (Resolves Issue 4):
+    // Individual account balances are converted and rounded to minor units first.
+    // Converted total assets, total liabilities, and converted net worth are then computed as direct
+    // sums and differences of the converted account amounts. This guarantees 100% exact mathematical
+    // reconciliation between account breakdowns, headline totals, and net worth down to the single cent.
     // Tricky logic:
-    // A conversion is only complete if EVERY foreign currency in the set has an exchange rate on or before asOfDate.
-    // If any currency rate is missing, is_complete is false, and the raw currency amounts are retained for honest native display.
+    // A conversion is only complete if:
+    // 1. Zero unrecorded accounts exist (unrecordedAccounts.length === 0).
+    // 2. Every included account in a foreign currency has an explicit dated exchange rate on or before asOfDate.
+    // If any rate is missing, converted totals have is_complete = false and amount_cents = 0.
     // TODO: In Milestone 2, support multi-hop triangular rate conversion (e.g. JPY -> USD -> AUD).
-    const hasIncompleteCoverage = coverageNotes.length > 0;
+    const missingRatesSet = new Set<string>();
 
-    const convertCurrencyMap = (map: Record<CurrencyCode, number>): ConvertedMonetaryAmount => {
-        const currs = Object.keys(map) as CurrencyCode[];
-        if (currs.length === 0) {
-            return {
-                amount_cents: 0,
-                currency: reportingCurrency,
-                is_complete: !hasIncompleteCoverage,
-                missing_rates: []
-            };
-        }
-        if (currs.length === 1 && currs[0] === reportingCurrency) {
-            return {
-                amount_cents: map[reportingCurrency] || 0,
-                currency: reportingCurrency,
-                is_complete: !hasIncompleteCoverage,
-                missing_rates: []
-            };
-        }
-
-        let totalCents = 0;
-        const missing: string[] = [];
-        let isComplete = !hasIncompleteCoverage;
-
-        for (const curr of currs) {
-            const amountInCurr = map[curr] || 0;
-            if (curr === reportingCurrency) {
-                totalCents += amountInCurr;
-                continue;
-            }
-
-            // Lookup latest exchange rate on or before asOfDate
-            const rateRow = db.prepare(`
-                SELECT rate FROM m1_exchange_rates
-                WHERE from_currency = ? AND to_currency = ? AND effective_date <= ?
-                ORDER BY effective_date DESC
-                LIMIT 1
-            `).get(curr, reportingCurrency, asOfDate) as { rate: number } | undefined;
-
-            if (rateRow && rateRow.rate > 0) {
-                const fromDecimals = CURRENCY_DECIMALS[curr] ?? 2;
-                const toDecimals = CURRENCY_DECIMALS[reportingCurrency] ?? 2;
-                const majorAmount = amountInCurr / Math.pow(10, fromDecimals);
-                const convertedMajor = majorAmount * rateRow.rate;
-                const convertedCents = Math.round(convertedMajor * Math.pow(10, toDecimals));
-                totalCents += convertedCents;
-            } else {
-                isComplete = false;
-                missing.push(`${curr} -> ${reportingCurrency}`);
-            }
-        }
-
-        return {
-            amount_cents: isComplete ? totalCents : 0,
-            currency: reportingCurrency,
-            is_complete: isComplete,
-            missing_rates: missing
-        };
-    };
-
-    const convertedNetWorth = convertCurrencyMap(netWorthCentsByCurrency);
-    const convertedTotalAssets = convertCurrencyMap(totalAssetsCentsByCurrency);
-    const convertedTotalLiabilities = convertCurrencyMap(totalLiabilitiesCentsByCurrency);
-
-    if (!convertedNetWorth.is_complete && convertedNetWorth.missing_rates.length > 0) {
-        coverageNotes.push(`Could not compute unified converted net worth in ${reportingCurrency} due to missing dated exchange rates: ${convertedNetWorth.missing_rates.join(', ')}.`);
-    }
-
-    // 3. Attach converted_amount_cents to each account if rate is available
-    // Why: Allows allocation charts to render converted amounts per holding when verified rates exist.
     for (const acc of accountsIncluded) {
         if (acc.currency === reportingCurrency) {
             acc.converted_amount_cents = acc.amount_cents;
@@ -285,12 +221,57 @@ export function getSharedFinancialSummary(
                 const toDecimals = CURRENCY_DECIMALS[reportingCurrency] ?? 2;
                 const majorAmount = acc.amount_cents / Math.pow(10, fromDecimals);
                 acc.converted_amount_cents = Math.round((majorAmount * rateRow.rate) * Math.pow(10, toDecimals));
+            } else {
+                missingRatesSet.add(`${acc.currency} -> ${reportingCurrency}`);
             }
         }
     }
 
+    const missingRates = Array.from(missingRatesSet);
+    const hasMissingRates = missingRates.length > 0;
+    const isConversionComplete = unrecordedAccounts.length === 0 && !hasMissingRates;
+
+    let convertedAssetsCents = 0;
+    let convertedLiabilitiesCents = 0;
+
+    if (isConversionComplete) {
+        for (const acc of accountsIncluded) {
+            const val = acc.converted_amount_cents ?? 0;
+            if (acc.account_type === 'asset') {
+                convertedAssetsCents += val;
+            } else if (acc.account_type === 'liability') {
+                convertedLiabilitiesCents += val;
+            }
+        }
+    }
+
+    const convertedTotalAssets: ConvertedMonetaryAmount = {
+        amount_cents: isConversionComplete ? convertedAssetsCents : 0,
+        currency: reportingCurrency,
+        is_complete: isConversionComplete,
+        missing_rates: missingRates
+    };
+
+    const convertedTotalLiabilities: ConvertedMonetaryAmount = {
+        amount_cents: isConversionComplete ? convertedLiabilitiesCents : 0,
+        currency: reportingCurrency,
+        is_complete: isConversionComplete,
+        missing_rates: missingRates
+    };
+
+    const convertedNetWorth: ConvertedMonetaryAmount = {
+        amount_cents: isConversionComplete ? (convertedAssetsCents - convertedLiabilitiesCents) : 0,
+        currency: reportingCurrency,
+        is_complete: isConversionComplete,
+        missing_rates: missingRates
+    };
+
+    if (hasMissingRates) {
+        coverageNotes.push(`Could not compute unified converted net worth in ${reportingCurrency} due to missing dated exchange rates: ${missingRates.join(', ')}.`);
+    }
+
     // Overall completeness requires zero unrecorded balance accounts AND complete FX conversions
-    const overallIsComplete = unrecordedAccounts.length === 0 && convertedNetWorth.is_complete;
+    const overallIsComplete = isConversionComplete;
 
     return {
         as_of_date: asOfDate,

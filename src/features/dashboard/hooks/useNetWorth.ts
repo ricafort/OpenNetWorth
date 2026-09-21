@@ -37,34 +37,34 @@ export function useNetWorth() {
         // Tricky logic:
         // When legacy assets are in foreign currencies (e.g. USD when base is AUD), summing with fake rates (1.54)
         // produces fabricated financial figures. We sum matching base currency items, and also track USD native items.
-        // TODO: In Milestone 2, deprecate legacy asset table completely in favour of double-entry ledger.
-        let totalAssetsBase = 0;
-        let totalLiabilitiesBase = 0;
-        let totalAssetsUSD = 0;
-        let totalLiabilitiesUSD = 0;
+        // Group legacy holdings by native currency (Resolves Issue 1)
+        const assetsByCurrency: Partial<Record<CurrencyCode, number>> = {};
+        const liabilitiesByCurrency: Partial<Record<CurrencyCode, number>> = {};
+        const netWorthByCurrency: Partial<Record<CurrencyCode, number>> = {};
 
         assets.forEach((a: Asset) => {
             const curr = (a.currency || 'USD') as CurrencyCode;
-            if (curr === baseCurrency) {
-                totalAssetsBase += a.value;
-            }
-            if (curr === 'USD') {
-                totalAssetsUSD += a.value;
-            }
+            assetsByCurrency[curr] = (assetsByCurrency[curr] || 0) + a.value;
+            netWorthByCurrency[curr] = (netWorthByCurrency[curr] || 0) + a.value;
         });
 
         liabilities.forEach((l: Liability) => {
             const curr = (l.currency || 'USD') as CurrencyCode;
-            if (curr === baseCurrency) {
-                totalLiabilitiesBase += l.balance;
-            }
-            if (curr === 'USD') {
-                totalLiabilitiesUSD += l.balance;
-            }
+            liabilitiesByCurrency[curr] = (liabilitiesByCurrency[curr] || 0) + l.balance;
+            netWorthByCurrency[curr] = (netWorthByCurrency[curr] || 0) - l.balance;
         });
 
+        const totalAssetsBase = assetsByCurrency[baseCurrency] || 0;
+        const totalLiabilitiesBase = liabilitiesByCurrency[baseCurrency] || 0;
         const netWorthBase = totalAssetsBase - totalLiabilitiesBase;
+
+        const totalAssetsUSD = assetsByCurrency['USD'] || 0;
+        const totalLiabilitiesUSD = liabilitiesByCurrency['USD'] || 0;
         const netWorthUSD = totalAssetsUSD - totalLiabilitiesUSD;
+
+        const assetCurrencies = Object.keys(assetsByCurrency) as CurrencyCode[];
+        const liabilityCurrencies = Object.keys(liabilitiesByCurrency) as CurrencyCode[];
+        const netWorthCurrencies = Object.keys(netWorthByCurrency) as CurrencyCode[];
 
         return {
             assets: totalAssetsBase,
@@ -73,6 +73,12 @@ export function useNetWorth() {
             assetsUSD: totalAssetsUSD,
             liabilitiesUSD: totalLiabilitiesUSD,
             netWorthUSD: netWorthUSD,
+            assetsByCurrency,
+            liabilitiesByCurrency,
+            netWorthByCurrency,
+            assetCurrencies,
+            liabilityCurrencies,
+            netWorthCurrencies,
             baseCurrency
         };
     }, [assets, liabilities, baseCurrency]);
