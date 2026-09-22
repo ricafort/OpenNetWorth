@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Clock, CheckCircle2 } from 'lucide-react';
 import { loadSettings, saveSettings } from '@/infrastructure/local_driver';
 import { UserSettings } from '@/types';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface CheckInModalProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface CheckInModalProps {
 
 export default function CheckInModal({ isOpen, onClose, onUpdate }: CheckInModalProps) {
     const [isVisible, setIsVisible] = useState(false);
+    const modalRef = useFocusTrap<HTMLDivElement>({ isOpen, onClose });
 
     useEffect(() => {
         if (isOpen) {
@@ -29,7 +31,14 @@ export default function CheckInModal({ isOpen, onClose, onUpdate }: CheckInModal
         <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
-            <div className={`relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all duration-300 ${isOpen ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}>
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="wealth-checkin-title"
+                tabIndex={-1}
+                className={`relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all duration-300 focus:outline-none ${isOpen ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
+            >
                 {/* Header with Mentor Persona */}
                 <div className="bg-slate-900 p-6 text-white relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -42,7 +51,7 @@ export default function CheckInModal({ isOpen, onClose, onUpdate }: CheckInModal
                             <span className="text-2xl">👴🏼</span>
                         </div>
                         <div>
-                            <h3 className="text-xl font-bold">Wealth Check-In</h3>
+                            <h3 id="wealth-checkin-title" className="text-xl font-bold">Wealth Check-In</h3>
                             <p className="text-slate-400 text-sm mt-1">Message from Charlie Munger</p>
                         </div>
                     </div>

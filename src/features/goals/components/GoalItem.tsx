@@ -21,39 +21,48 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
     const [isEditing, setIsEditing] = useState(false);
     const [editError, setEditError] = useState<string | null>(null);
 
+    // Why this exists: Each financial goal has a native currency representing the actual purchasing power
+    // target (e.g., $10,000 USD holiday or $50,000 AUD mortgage offset). Defaults to USD for legacy records.
+    // Tricky logic: Storing and calculating in the goal's native currency prevents conversion drift and ensures
+    // the user's explicit target is never modified by changing the dashboard base currency (Handover Section 16).
+    // TODO: Support multi-currency split targets (e.g. dual AUD/USD goals) when international accounts expand.
+    const goalCurrency = (goal.currency || 'USD') as CurrencyCode;
+
     // --- FORM SETUP (for Edit Mode) ---
     const {
         register,
         handleSubmit,
+        watch,
         formState: { errors, isSubmitting }
     } = useForm<GoalFormData>({
         resolver: zodResolver(GoalSchema) as any,
         defaultValues: {
-            ...goal,
-            // Ensure inputs use the converted values or stored values?
-            // The existing page uses converted values for display in inputs.
-            // If we edit, we should probably edit in base currency OR store currency.
-            // GoalSchema has 'currency'. If we stick to stored currency, that's safest.
-            // But UI displays in baseCurrency.
-            // Let's stick to the pattern: Edit form shows values in Base Currency (if consistent with Page logic)
-            // Actually, best practice: Edit values as stored in `goal.currency`.
             name: goal.name,
             target_amount: goal.target_amount,
             current_amount: goal.current_amount || 0,
-            currency: goal.currency || baseCurrency,
+            currency: goalCurrency,
             category: goal.category,
-            deadline: goal.deadline || undefined // Fix: Goal uses null, Form uses undefined
+            deadline: goal.deadline || undefined // Goal uses null, Form uses undefined
         }
     });
+
+    const editCategory = watch('category');
+    const editCurrency = watch('currency') || goalCurrency;
 
     const onSubmit = async (data: GoalFormData) => {
         setEditError(null);
         try {
+            const selectedCurrency = (data.currency || goalCurrency) as CurrencyCode;
+            // If category is net_worth, calculate current amount in the chosen goal currency
+            const netWorthInSelectedCurrency = selectedCurrency === baseCurrency
+                ? netWorth
+                : convertAmount(netWorth, baseCurrency, selectedCurrency);
+
             await onUpdate({
                 ...goal,
                 ...data,
-                // Ensure we save with the currency we displayed/edited in
-                current_amount: data.category === 'net_worth' ? netWorth : data.current_amount
+                currency: selectedCurrency,
+                current_amount: data.category === 'net_worth' ? netWorthInSelectedCurrency : data.current_amount
             } as Goal);
             setIsEditing(false);
         } catch (err: any) {
@@ -64,33 +73,38 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
     };
 
     // --- DERIVED METRICS ---
-    const targetVal = convertAmount(goal.target_amount, goal.currency || 'USD', baseCurrency);
+    // Why this exists: Progress calculations are strictly performed in native goal currency to ensure that
+    // foreign exchange rate shifts do not artificially modify the progress percentage or completion status.
+    // Converted amounts in baseCurrency are computed for portfolio-level reference only.
+    const currentNativeAmount = goal.category === 'net_worth'
+        ? (goalCurrency === baseCurrency ? netWorth : convertAmount(netWorth, baseCurrency, goalCurrency))
+        : (goal.current_amount || 0);
 
-    let currentVal = 0;
-    if (goal.category === 'net_worth') {
-        currentVal = netWorth;
-    } else {
-        currentVal = convertAmount(goal.current_amount || 0, goal.currency || 'USD', baseCurrency);
-    }
+    const targetNativeAmount = goal.target_amount;
+    const startNativeAmount = goal.start_amount || 0;
 
     const isDebt = goal.category === 'debt_payoff';
-    const startVal = convertAmount(goal.start_amount || 0, goal.currency || 'USD', baseCurrency);
 
     let progress = 0;
     if (isDebt) {
-        const effectiveStart = startVal || Math.max(currentVal, targetVal);
-        const totalToPay = effectiveStart - targetVal;
-        const paidSoFar = effectiveStart - currentVal;
+        const effectiveStart = startNativeAmount || Math.max(currentNativeAmount, targetNativeAmount);
+        const totalToPay = effectiveStart - targetNativeAmount;
+        const paidSoFar = effectiveStart - currentNativeAmount;
         if (totalToPay > 0) {
             progress = (paidSoFar / totalToPay) * 100;
         }
     } else {
-        if (targetVal > 0) {
-            progress = (currentVal / targetVal) * 100;
+        if (targetNativeAmount > 0) {
+            progress = (currentNativeAmount / targetNativeAmount) * 100;
         }
     }
     progress = Math.min(100, Math.max(0, progress));
-    const isCompleted = isDebt ? currentVal <= targetVal : currentVal >= targetVal;
+    const isCompleted = isDebt ? currentNativeAmount <= targetNativeAmount : currentNativeAmount >= targetNativeAmount;
+
+    // Secondary reference conversions for when base currency differs from goal currency
+    const isDifferentCurrency = goalCurrency !== baseCurrency;
+    const currentValBase = convertAmount(currentNativeAmount, goalCurrency, baseCurrency);
+    const targetValBase = convertAmount(targetNativeAmount, goalCurrency, baseCurrency);
 
     let isWarning = false;
     if (goal.deadline && !isCompleted && progress < 90) {
@@ -101,12 +115,16 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
     const blurClass = 'privacy-value';
 
     // Quick Update Handler
+    // Why this exists: Users want to quickly update progress on savings/custom goals without opening the full edit form.
+    // Tricky logic: MUST preserve goal.currency and operate in native units. Previously it overwrote goal.currency
+    // with baseCurrency, corrupting the target amount purchasing power (Handover Section 16 & Batch B2).
+    // TODO: Add support for quick "+$500" / "-$500" increment buttons.
     const handleQuickUpdate = async (val: number) => {
         if (isNaN(val)) return;
         await onUpdate({
             ...goal,
             current_amount: val,
-            currency: baseCurrency // Update to current base since we're inputting in base
+            currency: goalCurrency // Preserves native currency intact
         });
     };
 
@@ -128,16 +146,6 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs font-bold text-muted-foreground">Target ({baseCurrency})</label>
-                            <input type="number" step="0.01" {...register('target_amount')} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-muted-foreground">Current ({baseCurrency})</label>
-                            <input type="number" step="0.01" {...register('current_amount')} disabled={goal.category === 'net_worth'} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm disabled:opacity-50" />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
                             <label className="text-xs font-bold text-muted-foreground">Category</label>
                             <select {...register('category')} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm">
                                 <option value="net_worth">Net Worth</option>
@@ -147,13 +155,32 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs font-bold text-muted-foreground">Deadline</label>
-                            <input type="date" {...register('deadline')} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm" />
+                            <label className="text-xs font-bold text-muted-foreground">Currency</label>
+                            <select {...register('currency')} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm">
+                                {['AUD', 'USD', 'EUR', 'GBP', 'CAD', 'JPY', 'CHF', 'CNY', 'INR', 'SGD', 'PHP', 'KRW'].map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-muted-foreground">Target ({editCurrency})</label>
+                            <input type="number" step="0.01" {...register('target_amount')} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm" />
+                            {errors.target_amount && <p className="text-xs text-red-500">{errors.target_amount.message}</p>}
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-muted-foreground">Current ({editCurrency})</label>
+                            <input type="number" step="0.01" {...register('current_amount')} disabled={editCategory === 'net_worth'} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm disabled:opacity-50" />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-muted-foreground">Deadline</label>
+                        <input type="date" {...register('deadline')} className="w-full bg-background text-foreground border border-input rounded px-2 py-1.5 text-sm" />
+                    </div>
                     <div className="flex gap-2 justify-end pt-2">
-                        <button type="button" onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-xs font-bold text-slate-500 bg-slate-100 rounded hover:bg-slate-200">Cancel</button>
-                        <button type="submit" disabled={isSubmitting} className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700">
+                        <button type="button" onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-xs font-bold text-slate-500 bg-slate-100 rounded hover:bg-slate-200 cursor-pointer">Cancel</button>
+                        <button type="submit" disabled={isSubmitting} className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 rounded hover:bg-blue-700 cursor-pointer">
                             {isSubmitting ? 'Saving...' : 'Save Changes'}
                         </button>
                     </div>
@@ -220,20 +247,35 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
 
                 <div className="flex justify-between items-baseline">
                     <div className="text-xs font-black text-muted-foreground uppercase tracking-wider">
-                        Target: <span className={`text-sm text-foreground ${blurClass}`}>{formatCurrency(targetVal, baseCurrency)}</span>
+                        Target: <span className={`text-sm text-foreground ${blurClass}`}>{formatCurrency(targetNativeAmount, goalCurrency)}</span>
+                        {isDifferentCurrency && (
+                            <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                                (≈ {formatCurrency(targetValBase, baseCurrency)})
+                            </span>
+                        )}
                     </div>
-                    <div className={`text-2xl font-black text-foreground tracking-tighter ${blurClass}`}>
-                        {formatCurrency(currentVal, baseCurrency)}
+                    <div className="text-right">
+                        <div className={`text-2xl font-black text-foreground tracking-tighter ${blurClass}`}>
+                            {formatCurrency(currentNativeAmount, goalCurrency)}
+                        </div>
+                        {isDifferentCurrency && (
+                            <div className="text-xs text-muted-foreground">
+                                ≈ {formatCurrency(currentValBase, baseCurrency)}
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {goal.category !== 'net_worth' && (
-                    <div className="pt-4 border-t border-slate-100">
-                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Update Progress</label>
+                    <div className="pt-4 border-t border-border">
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                            Update Progress ({goalCurrency})
+                        </label>
                         <div className="flex gap-2">
                             <input
                                 type="number"
-                                defaultValue={currentVal}
+                                step="0.01"
+                                defaultValue={goal.current_amount || 0}
                                 className={`w-full bg-card border border-border rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${blurClass}`}
                                 onBlur={(e) => handleQuickUpdate(parseFloat(e.target.value))}
                                 onKeyDown={(e) => {

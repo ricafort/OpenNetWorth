@@ -7,6 +7,7 @@ import { loadNetWorthHistory, saveNetWorthHistory, generateMockHistory, persistS
 import { NetWorthSnapshot } from '@/types';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface HistoryEditorProps {
     isOpen: boolean;
@@ -155,20 +156,33 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
         }
     };
 
+    const modalRef = useFocusTrap<HTMLDivElement>({ isOpen, onClose });
+
     if (!isOpen) return null;
 
     // Use a portal to render the modal at the body level to avoid z-index/stacking issues
     const modalContent = (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-            <div className="bg-card border border-border w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="manage-history-title"
+                tabIndex={-1}
+                className="bg-card border border-border w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden focus:outline-none"
+            >
 
                 {/* Header */}
                 <div className="p-6 border-b border-border flex justify-between items-center bg-card">
                     <div>
-                        <h2 className="text-xl font-black text-foreground tracking-tight">Manage History</h2>
+                        <h2 id="manage-history-title" className="text-xl font-black text-foreground tracking-tight">Manage History</h2>
                         <p className="text-sm text-muted-foreground">Backfill or correct your net worth snapshots.</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-muted rounded-xl transition-all">
+                    <button
+                        onClick={onClose}
+                        aria-label="Close history editor"
+                        className="p-2 hover:bg-muted rounded-xl transition-all cursor-pointer"
+                    >
                         <X size={20} className="text-muted-foreground" />
                     </button>
                 </div>

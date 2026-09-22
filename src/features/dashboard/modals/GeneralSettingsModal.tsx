@@ -7,6 +7,7 @@ import { UserSettings } from '@/types'; // Updated import
 import { FreedomSettings } from '@/features/liabilities/types';
 import CurrencySelector from '@/components/ui/CurrencySelector';
 import LocalAiSettingsModal from '@/components/ui/LocalAiSettingsModal';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface GeneralSettingsModalProps {
     isOpen: boolean;
@@ -71,14 +72,27 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
         }
     };
 
+    const modalRef = useFocusTrap<HTMLDivElement>({ isOpen, onClose });
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200 h-[80vh] flex flex-col">
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="general-settings-title"
+                tabIndex={-1}
+                className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200 h-[80vh] flex flex-col focus:outline-none"
+            >
                 <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
-                    <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">App Settings</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                    <h3 id="general-settings-title" className="text-xl font-black text-slate-800 uppercase tracking-tighter">App Settings</h3>
+                    <button
+                        onClick={onClose}
+                        aria-label="Close settings"
+                        className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                    >
                         <X size={20} className="text-slate-500" />
                     </button>
                 </div>

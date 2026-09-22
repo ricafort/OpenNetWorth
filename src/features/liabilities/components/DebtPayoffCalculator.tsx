@@ -46,14 +46,53 @@ export default function DebtPayoffCalculator() {
         return 'avalanche';
     });
 
+    // Why this exists: Previously, an auto-saving useEffect executed on every slider adjustment and on initial page render,
+    // silently creating and modifying recurring debt-accelerator transactions in the database without user consent (Handover Section 15 & 16).
+    // Now scenario exploration is kept purely in-memory until the user explicitly saves their plan.
+    // Tricky logic: Compare rounded extraPaymentUSD against saved extraMonthlyPayment to avoid floating-point precision differences triggering false unsaved indicators.
+    // TODO: Support multi-scenario profiles (e.g. Aggressive vs Conservative) once scenario metadata is supported in the SQLite schema.
+    const [savedSettings, setSavedSettings] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return loadFreedomSettings();
+        }
+        return { strategy: 'avalanche' as PayoffStrategy, extraMonthlyPayment: 500 };
+    });
+
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+    const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+
+    const hasUnsavedChanges = useMemo(() => {
+        return strategy !== savedSettings.strategy || Math.round(extraPaymentUSD) !== Math.round(savedSettings.extraMonthlyPayment);
+    }, [strategy, extraPaymentUSD, savedSettings]);
+
+    const handleSavePlan = async () => {
+        setIsSaving(true);
+        setSaveSuccessMessage(null);
+        setSaveErrorMessage(null);
+        try {
+            await saveFreedomSettings({ strategy, extraMonthlyPayment: extraPaymentUSD });
+            await updateDebtRecurringTransaction(strategy === 'minimum' ? 0 : extraPaymentUSD);
+            setSavedSettings({ strategy, extraMonthlyPayment: extraPaymentUSD });
+            setSaveSuccessMessage('Plan saved to your budget successfully.');
+            setTimeout(() => setSaveSuccessMessage(null), 4000);
+        } catch (err: any) {
+            console.error('Failed to save debt plan:', err);
+            setSaveErrorMessage(err?.message || 'Failed to save plan to budget.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleResetPlan = () => {
+        setStrategy(savedSettings.strategy);
+        setExtraPaymentUSD(savedSettings.extraMonthlyPayment);
+        setSaveSuccessMessage(null);
+        setSaveErrorMessage(null);
+    };
+
     const [result, setResult] = useState<DebtPayoffResult | null>(null);
     const [baselineResult, setBaselineResult] = useState<DebtPayoffResult | null>(null);
-
-    useEffect(() => {
-        // Save settings. converting stored USD value to what storage expects (USD) is default.
-        saveFreedomSettings({ strategy, extraMonthlyPayment: extraPaymentUSD });
-        updateDebtRecurringTransaction(extraPaymentUSD);
-    }, [strategy, extraPaymentUSD]);
 
     // Derived: Converted Liabilities for Calculation
     const calcLiabilities = useMemo(() => {
@@ -165,6 +204,58 @@ export default function DebtPayoffCalculator() {
                                 Extra payment is ignored in "Minimum" strategy.
                             </p>
                         )}
+                    </div>
+                </div>
+
+                {/* Plan Persistence & Scenario Action Bar (Handover Section 15 & 16) */}
+                <div className="mt-6 pt-4 border-t border-border flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {hasUnsavedChanges ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                Scenario preview (not saved to budget)
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                <ShieldCheck size={14} />
+                                Active plan saved
+                            </span>
+                        )}
+                        {saveSuccessMessage && (
+                            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 animate-in fade-in duration-200">
+                                {saveSuccessMessage}
+                            </span>
+                        )}
+                        {saveErrorMessage && (
+                            <span className="text-xs font-medium text-destructive animate-in fade-in duration-200">
+                                {saveErrorMessage}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {hasUnsavedChanges && (
+                            <button
+                                type="button"
+                                onClick={handleResetPlan}
+                                disabled={isSaving}
+                                className="px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer rounded-lg hover:bg-muted"
+                            >
+                                Reset
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={handleSavePlan}
+                            disabled={isSaving || !hasUnsavedChanges}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+                                hasUnsavedChanges
+                                    ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm cursor-pointer active:scale-95'
+                                    : 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
+                            }`}
+                        >
+                            {isSaving ? 'Saving...' : 'Save Plan to Budget'}
+                        </button>
                     </div>
                 </div>
             </ContentCard>
