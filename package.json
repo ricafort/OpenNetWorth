@@ -4,10 +4,10 @@
   "description": "100% Private, Local-First Personal Net Worth & Wealth Manager Powered by Local LLMs",
   "private": false,
   "scripts": {
-    "dev": "next dev -p 4000",
+    "dev": "next dev -p 4000 -H 127.0.0.1",
     "dev:test": "npx tsx scripts/launch-browser-test.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "lint": "eslint",
     "test": "vitest",
     "seed": "npx tsx scripts/seed-benchmarks.ts",
