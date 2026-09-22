@@ -102,4 +102,52 @@ describe('DebtCalculator', () => {
         expect(result.unsupportedCurrencies).toEqual(['AUD', 'JPY']);
         expect(result.schedule).toHaveLength(0);
     });
+
+    // Case 15: Test a loan with insufficient payments (Handover Case 15 & Finding)
+    it('Case 15: reports explicit insufficient-payment outcome and suppresses fabricated payoff date for non-amortising loan', () => {
+        // Why this test exists:
+        // Resolves Handover Case 15: A loan where minimum payment does not cover monthly interest charges
+        // cannot amortise. Previous versions simulated up to 600 months (50 years) and fabricated a misleading
+        // payoff date. The system must report isInsufficientPayment: true with freedomDate suppressed.
+        // Tricky logic:
+        // $10,000 at 24% APR accrues $200 in interest per month ($10,000 * 0.24 / 12).
+        // A minimum payment of $100 covers only half the interest. The balance increases by $100 each month.
+        // TODO: In Milestone 2, provide an interactive slider showing the required minimum payment to amortise within target years.
+        const nonAmortisingLoan: Liability = {
+            id: 'predatory-card',
+            user_id: 'user1',
+            name: 'High APR Card',
+            type: 'credit_card',
+            balance: 10000,
+            interest_rate: 24, // 24% APR -> $200/mo interest
+            minimum_payment: 100, // $100 payment < $200 interest
+            is_good_debt: false,
+            currency: 'AUD',
+            last_updated: new Date().toISOString()
+        };
+
+        // 1. In minimum strategy, fails immediately
+        const minResult = calculatePayoff([nonAmortisingLoan], 0, 'minimum');
+        expect(minResult.isInsufficientPayment).toBe(true);
+        expect(minResult.freedomDate).toBe('');
+        expect(minResult.monthsToPayoff).toBe(0);
+        expect(minResult.daysUntilFreedom).toBe(0);
+        expect(minResult.schedule).toHaveLength(0);
+        expect(minResult.insufficientDebts).toBeDefined();
+        expect(minResult.insufficientDebts?.[0].name).toBe('High APR Card');
+        expect(minResult.insufficientDebts?.[0].monthlyInterest).toBe(200);
+        expect(minResult.insufficientDebts?.[0].minimumPayment).toBe(100);
+
+        // 2. In avalanche strategy with underfunded extra payment ($50 extra -> $150 total < $200 interest)
+        const underfundedResult = calculatePayoff([nonAmortisingLoan], 50, 'avalanche');
+        expect(underfundedResult.isInsufficientPayment).toBe(true);
+        expect(underfundedResult.freedomDate).toBe('');
+
+        // 3. In avalanche strategy with sufficient extra payment ($150 extra -> $250 total > $200 interest)
+        const fundedResult = calculatePayoff([nonAmortisingLoan], 150, 'avalanche');
+        expect(fundedResult.isInsufficientPayment).toBe(false);
+        expect(fundedResult.monthsToPayoff).toBeGreaterThan(0);
+        expect(fundedResult.freedomDate).not.toBe('');
+    });
 });
+

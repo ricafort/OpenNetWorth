@@ -23,6 +23,7 @@ export default function FreedomDateCard() {
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
     const [hasDebt, setHasDebt] = useState(false);
     const [isMultiCurrencyUnsupported, setIsMultiCurrencyUnsupported] = useState(false);
+    const [isInsufficientPayment, setIsInsufficientPayment] = useState(false);
     const [unsupportedCurrencies, setUnsupportedCurrencies] = useState<string[]>([]);
     const [advice, setAdvice] = useState<string>('Analyzing your path to freedom...');
 
@@ -38,6 +39,7 @@ export default function FreedomDateCard() {
 
             if (result.isMultiCurrencyUnsupported) {
                 setIsMultiCurrencyUnsupported(true);
+                setIsInsufficientPayment(false);
                 setUnsupportedCurrencies(result.unsupportedCurrencies || []);
                 setFreedomDate(null);
                 setDaysRemaining(null);
@@ -45,7 +47,17 @@ export default function FreedomDateCard() {
                 return;
             }
 
+            if (result.isInsufficientPayment) {
+                setIsInsufficientPayment(true);
+                setIsMultiCurrencyUnsupported(false);
+                setFreedomDate(null);
+                setDaysRemaining(null);
+                setAdvice(result.insufficientPaymentReason || 'Monthly payments are insufficient to cover interest charges. Loans will not amortise without higher payments.');
+                return;
+            }
+
             setIsMultiCurrencyUnsupported(false);
+            setIsInsufficientPayment(false);
             setFreedomDate(result.freedomDate);
             setDaysRemaining(result.daysUntilFreedom);
 
@@ -147,12 +159,18 @@ export default function FreedomDateCard() {
 
                 <div className="mb-4">
                     <h3 className="text-2xl md:text-3xl font-black tracking-tight">
-                        {isMultiCurrencyUnsupported ? 'Multi-Currency Debts' : (freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '...')}
+                        {isMultiCurrencyUnsupported
+                            ? 'Multi-Currency Debts'
+                            : isInsufficientPayment
+                                ? 'Insufficient Payment'
+                                : (freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '...')}
                     </h3>
                     <p className="text-indigo-200 font-medium mt-1 text-sm">
                         {isMultiCurrencyUnsupported
                             ? `Debts span ${unsupportedCurrencies.join(', ')}. Payoff projection requires debts in a single currency.`
-                            : (daysRemaining !== null ? `Estimated ~${Math.max(1, Math.round(daysRemaining / 30))} months to payoff` : 'Calculating...')}
+                            : isInsufficientPayment
+                                ? 'Monthly payments do not cover interest charges. Loans will not amortise.'
+                                : (daysRemaining !== null ? `Estimated ~${Math.max(1, Math.round(daysRemaining / 30))} months to payoff` : 'Calculating...')}
                     </p>
                     {hasModernLiabilities && (
                         <p className="text-[10px] text-indigo-200 mt-1.5 opacity-80">
@@ -164,7 +182,7 @@ export default function FreedomDateCard() {
                 <div className="bg-white/10 rounded-xl p-4 backdrop-blur-md border border-white/10">
                     <div className="flex gap-3">
                         <div className="p-2 bg-indigo-500 rounded-lg shrink-0 h-fit">
-                            {isMultiCurrencyUnsupported ? <AlertCircle size={18} /> : <TrendingUp size={18} />}
+                            {isMultiCurrencyUnsupported || isInsufficientPayment ? <AlertCircle size={18} /> : <TrendingUp size={18} />}
                         </div>
                         <div>
                             <p className="text-xs text-indigo-200 leading-relaxed mb-2">

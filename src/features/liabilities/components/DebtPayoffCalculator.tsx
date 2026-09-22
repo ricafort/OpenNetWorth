@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Liability, DebtPayoffResult, PayoffStrategy } from '@/features/liabilities/types';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
 import { loadFreedomSettings, saveFreedomSettings, updateDebtRecurringTransaction } from '@/infrastructure/local_driver';
-import { TrendingDown, Calendar, DollarSign, ArrowRight, ShieldCheck } from 'lucide-react';
+import { TrendingDown, Calendar, DollarSign, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
@@ -169,8 +169,47 @@ export default function DebtPayoffCalculator() {
                 </div>
             </ContentCard>
 
+            {/* Multi-Currency Notice */}
+            {result?.isMultiCurrencyUnsupported && (
+                <ContentCard className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-6">
+                    <div className="flex items-start gap-4">
+                        <AlertCircle className="w-8 h-8 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                            <h3 className="font-bold text-lg">Multi-Currency Debts</h3>
+                            <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
+                                Debt payoff projection requires debts to be in a single currency. Mixed currencies found: {result.unsupportedCurrencies?.join(', ')}.
+                            </p>
+                        </div>
+                    </div>
+                </ContentCard>
+            )}
+
+            {/* Insufficient Payment Notice */}
+            {result?.isInsufficientPayment && (
+                <ContentCard className="bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200 p-6">
+                    <div className="flex items-start gap-4">
+                        <AlertCircle className="w-8 h-8 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                            <h3 className="font-bold text-lg">Insufficient Monthly Payments</h3>
+                            <p className="text-sm text-rose-800 dark:text-rose-300 mt-1">
+                                {result.insufficientPaymentReason || 'Monthly payments do not cover accrued interest charges. Loans will not amortise.'}
+                            </p>
+                            {result.insufficientDebts && result.insufficientDebts.length > 0 && (
+                                <ul className="mt-3 space-y-1 text-xs text-rose-700 dark:text-rose-400">
+                                    {result.insufficientDebts.map(d => (
+                                        <li key={d.id}>
+                                            • <span className="font-semibold">{d.name}</span>: Minimum payment ({formatCurrency(d.minimumPayment, baseCurrency)}) does not cover monthly interest ({formatCurrency(d.monthlyInterest, baseCurrency)}).
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    </div>
+                </ContentCard>
+            )}
+
             {/* Results */}
-            {result && (
+            {result && !result.isMultiCurrencyUnsupported && !result.isInsufficientPayment && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Main Freedom Card */}
                     <div className="lg:col-span-2 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
@@ -279,7 +318,7 @@ export default function DebtPayoffCalculator() {
             )}
 
             {/* Payoff Schedule Preview */}
-            {result && (
+            {result && !result.isMultiCurrencyUnsupported && !result.isInsufficientPayment && (
                 <ContentCard className="overflow-hidden p-0">
                     <div className="p-6 border-b border-border bg-muted/30">
                         <h3 className="font-bold text-foreground">Payoff Schedule</h3>

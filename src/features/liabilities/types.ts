@@ -37,9 +37,17 @@ export interface PayoffScheduleEntry {
     remainingBalance: number;
 }
 
+export interface InsufficientDebtDetail {
+    id: string;
+    name: string;
+    balance: number;
+    minimumPayment: number;
+    monthlyInterest: number;
+}
+
 export interface DebtPayoffResult {
     strategy: PayoffStrategy;
-    freedomDate: string;           // ISO date
+    freedomDate: string;           // ISO date (empty if insufficient payment)
     daysUntilFreedom: number;
     totalInterestPaid: number;
     totalPayments: number;
@@ -52,6 +60,9 @@ export interface DebtPayoffResult {
     currency?: CurrencyCode;
     isMultiCurrencyUnsupported?: boolean;
     unsupportedCurrencies?: CurrencyCode[];
+    isInsufficientPayment?: boolean;
+    insufficientPaymentReason?: string;
+    insufficientDebts?: InsufficientDebtDetail[];
 }
 
 export interface FreedomDateSummary {
