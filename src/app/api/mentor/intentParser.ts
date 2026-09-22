@@ -1,3 +1,30 @@
+/**
+ * Mentor Intent Parser
+ * 
+ * Why this file exists:
+ * Analyzes natural language user inquiries directed at the AI Mentor to extract:
+ * 1. Intent type (spending query vs general knowledge)
+ * 2. Financial entity scope (personal household vs corporate business)
+ * 3. Calendar date range (exact day, month, relative period, or explicit date range)
+ * 
+ * Tricky logic:
+ * - Uses the timezone-immune calendarDate domain service. Converting dates via Date.toISOString()
+ *   shifts dates across midnight boundaries in non-UTC regions (such as Sydney UTC+10).
+ * - Rejects non-existent calendar dates (e.g. 2026-02-31) explicitly rather than silently propagating invalid strings.
+ * - Explicit date ranges (e.g. 2026-08-01 to 2026-08-15) are strictly preserved and never collapsed to a single day.
+ * 
+ * TODO: In Milestone 2, add support for Australian tax quarter queries ("Q1", "BAS period").
+ */
+
+import {
+    isValidCalendarDate,
+    formatCalendarDate,
+    getCalendarMonthRange,
+    getLastMonthRange,
+    getCurrentMonthRange,
+    parseExplicitDateRange
+} from '@/lib/domain/calendarDate';
+
 export type SpendScope = {
     isSpendingQuery: boolean;
     needsClarification?: string;
@@ -9,7 +36,11 @@ export type SpendScope = {
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
-export function parseSpendingIntent(message: string, availableEntities: any[]): SpendScope {
+export function parseSpendingIntent(
+    message: string,
+    availableEntities: any[],
+    referenceDate?: Date | string
+): SpendScope {
     const msg = message.toLowerCase();
     
     // 1. Is it a spending query?
@@ -63,75 +94,99 @@ export function parseSpendingIntent(message: string, availableEntities: any[]): 
     }
 
     // 3. Determine Date Scope
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
     let startDate: string | undefined;
     let endDate: string | undefined;
     let periodLabel: string | undefined;
 
-    // Check for explicit YYYY-MM-DD
-    const isoDateMatch = msg.match(/\b(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/);
-    if (isoDateMatch) {
-        startDate = isoDateMatch[0];
-        endDate = isoDateMatch[0];
-        periodLabel = isoDateMatch[0];
-    } 
-    else if (msg.includes('last month')) {
-        const d = new Date(currentYear, currentMonth - 1, 1);
-        startDate = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
-        endDate = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
-        periodLabel = `${MONTHS[d.getMonth()].charAt(0).toUpperCase() + MONTHS[d.getMonth()].slice(1)} ${d.getFullYear()}`;
-    } 
-    else {
-        let foundMonthIndex = -1;
-        for (let i = 0; i < MONTHS.length; i++) {
-            if (msg.includes(MONTHS[i])) {
-                if (foundMonthIndex !== -1) {
-                    return { isSpendingQuery: true, needsClarification: "You mentioned multiple months. Please ask about one specific period." };
-                }
-                foundMonthIndex = i;
-            }
+    // A. Check for explicit date ranges first (e.g. "from 2026-08-01 to 2026-08-15" or "2026-08-01 - 2026-08-15")
+    const explicitRange = parseExplicitDateRange(message);
+    if (explicitRange) {
+        if (!explicitRange.isValid) {
+            return { isSpendingQuery: true, needsClarification: explicitRange.error };
         }
-
-        if (foundMonthIndex !== -1) {
-            let year = currentYear;
-            const yearMatch = msg.match(/\b(\d{4})\b/);
-            if (yearMatch) {
-                year = parseInt(yearMatch[1], 10);
+        startDate = explicitRange.startDate;
+        endDate = explicitRange.endDate;
+        periodLabel = `${explicitRange.startDate} to ${explicitRange.endDate}`;
+    } else {
+        // B. Check for single explicit ISO date YYYY-MM-DD
+        const isoDateMatch = message.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+        if (isoDateMatch) {
+            const matchedDate = isoDateMatch[1];
+            if (!isValidCalendarDate(matchedDate)) {
+                return {
+                    isSpendingQuery: true,
+                    needsClarification: `Invalid calendar date: '${matchedDate}' does not exist.`
+                };
             }
-            
-            if (year < 2000 || year > currentYear + 10) {
-                return { isSpendingQuery: true, needsClarification: `I cannot retrieve data for the year ${year}.` };
+            startDate = matchedDate;
+            endDate = matchedDate;
+            periodLabel = matchedDate;
+        } else if (msg.includes('last month')) {
+            // C. Relative period: "last month"
+            const range = getLastMonthRange(referenceDate);
+            startDate = range.startDate;
+            endDate = range.endDate;
+            periodLabel = range.label;
+        } else if (msg.includes('this month') || msg.includes('current month')) {
+            // D. Relative period: "this month"
+            const range = getCurrentMonthRange(referenceDate);
+            startDate = range.startDate;
+            endDate = range.endDate;
+            periodLabel = `Current Month (${range.label})`;
+        } else {
+            // E. Month name lookup (e.g. "July", "July 2026", "July 15")
+            let foundMonthIndex = -1;
+            for (let i = 0; i < MONTHS.length; i++) {
+                if (msg.includes(MONTHS[i])) {
+                    if (foundMonthIndex !== -1) {
+                        return { isSpendingQuery: true, needsClarification: "You mentioned multiple months. Please ask about one specific period." };
+                    }
+                    foundMonthIndex = i;
+                }
             }
 
-            // Check if there is a specific date number inside that month/year (e.g., "july 15")
-            // Simple heuristic: look for 1-31 near the month
-            const dayMatch = msg.match(new RegExp(`\\b${MONTHS[foundMonthIndex]}\\s+([1-9]|[12]\\d|3[01])\\b`));
-            if (dayMatch) {
-                const day = parseInt(dayMatch[1], 10);
-                const dateStr = `${year}-${String(foundMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                startDate = dateStr;
-                endDate = dateStr;
-                periodLabel = `${MONTHS[foundMonthIndex].charAt(0).toUpperCase() + MONTHS[foundMonthIndex].slice(1)} ${day}, ${year}`;
-            } else {
-                startDate = `${year}-${String(foundMonthIndex + 1).padStart(2, '0')}-01`;
-                // To get the last day of the month accurately:
-                const lastDay = new Date(year, foundMonthIndex + 1, 0).getDate();
-                endDate = `${year}-${String(foundMonthIndex + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-                periodLabel = `${MONTHS[foundMonthIndex].charAt(0).toUpperCase() + MONTHS[foundMonthIndex].slice(1)} ${year}`;
+            if (foundMonthIndex !== -1) {
+                const now = referenceDate ? (typeof referenceDate === 'string' ? new Date(referenceDate) : referenceDate) : new Date();
+                let year = now.getFullYear();
+                const yearMatch = msg.match(/\b(\d{4})\b/);
+                if (yearMatch) {
+                    year = parseInt(yearMatch[1], 10);
+                }
+
+                if (year < 2000 || year > now.getFullYear() + 10) {
+                    return { isSpendingQuery: true, needsClarification: `I cannot retrieve data for the year ${year}.` };
+                }
+
+                // Check if there is a specific day number inside that month (e.g., "july 15")
+                const dayMatch = msg.match(new RegExp(`\\b${MONTHS[foundMonthIndex]}\\s+([1-9]|[12]\\d|3[01])\\b`));
+                if (dayMatch) {
+                    const day = parseInt(dayMatch[1], 10);
+                    const dateStr = formatCalendarDate(year, foundMonthIndex + 1, day);
+                    if (!isValidCalendarDate(dateStr)) {
+                        return { isSpendingQuery: true, needsClarification: `Invalid calendar date: '${dateStr}' does not exist.` };
+                    }
+                    startDate = dateStr;
+                    endDate = dateStr;
+                    periodLabel = `${MONTHS[foundMonthIndex].charAt(0).toUpperCase() + MONTHS[foundMonthIndex].slice(1)} ${day}, ${year}`;
+                } else {
+                    const monthRange = getCalendarMonthRange(year, foundMonthIndex + 1);
+                    startDate = monthRange.startDate;
+                    endDate = monthRange.endDate;
+                    periodLabel = monthRange.label;
+                }
             }
         }
     }
 
+    // F. Fallback when no period specified
     if (!startDate) {
         if (msg.match(/\b(20\d{2})\b/)) {
-             return { isSpendingQuery: true, needsClarification: "You mentioned a year, but please specify a month or exact date for the spending lookup." };
+            return { isSpendingQuery: true, needsClarification: "You mentioned a year, but please specify a month or exact date for the spending lookup." };
         }
-        startDate = new Date(currentYear, currentMonth, 1).toISOString().split('T')[0];
-        endDate = new Date(currentYear, currentMonth + 1, 0).toISOString().split('T')[0];
-        periodLabel = `Current Month (${MONTHS[currentMonth].charAt(0).toUpperCase() + MONTHS[currentMonth].slice(1)} ${currentYear})`;
+        const currentRange = getCurrentMonthRange(referenceDate);
+        startDate = currentRange.startDate;
+        endDate = currentRange.endDate;
+        periodLabel = `Current Month (${currentRange.label})`;
     }
 
     return {

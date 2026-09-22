@@ -31,7 +31,7 @@ seedBrowserTestFixtures(TEST_VAULT_PATH);
 
 console.log(`[Server] Spawning Next.js test server on http://localhost:${port} (distDir: ${distDir}) ...`);
 
-const child = spawn('npx', ['next', 'dev', '-p', port], {
+const child = spawn('npx', ['next', 'dev', '-p', port, '-H', '127.0.0.1'], {
     shell: true,
     stdio: 'inherit',
     env: {
