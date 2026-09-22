@@ -30,6 +30,22 @@ const calculatePayoffPrecise = (
     strategy: PayoffStrategy
 ): DebtPayoffResult => {
     const activeDebts = liabilities.filter(l => (l.balance || 0) > 0);
+    if (activeDebts.length === 0) {
+        return {
+            strategy,
+            freedomDate: new Date().toISOString(),
+            daysUntilFreedom: 0,
+            totalInterestPaid: 0,
+            totalPayments: 0,
+            monthsToPayoff: 0,
+            schedule: [],
+            comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
+            currency: 'USD',
+            isMultiCurrencyUnsupported: false,
+            isInsufficientPayment: false
+        };
+    }
+
     const currencies = Array.from(new Set(activeDebts.map(l => (l.currency || 'USD') as CurrencyCode)));
 
     // Why this check exists:
@@ -41,7 +57,7 @@ const calculatePayoffPrecise = (
     if (currencies.length > 1) {
         return {
             strategy,
-            freedomDate: new Date().toISOString(),
+            freedomDate: '',
             daysUntilFreedom: 0,
             totalInterestPaid: 0,
             totalPayments: 0,
@@ -49,7 +65,8 @@ const calculatePayoffPrecise = (
             schedule: [],
             comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
             isMultiCurrencyUnsupported: true,
-            unsupportedCurrencies: currencies
+            unsupportedCurrencies: currencies,
+            isInsufficientPayment: false
         };
     }
 
@@ -78,6 +95,49 @@ const calculatePayoffPrecise = (
         });
 
     const safeExtra = Number(extraMonthlyPayment) || 0;
+
+    // Why this check exists:
+    // Resolves Handover Case 15 & Finding: Non-amortising loans receiving misleading payoff dates.
+    // When a debt's monthly interest exceeds or equals its payment, the balance never amortises.
+    // If the debt pool cannot amortise, we must return an explicit insufficient-payment status
+    // rather than simulating until MAX_MONTHS (50 years) and fabricating a false payoff date.
+    // Tricky logic:
+    // - In 'minimum' strategy: if ANY debt has minPayment <= monthlyInterest, it will never amortise (no rollover helps it).
+    // - In 'avalanche'/'snowball' with extra: if total monthly payment (sum(minPayment) + extra) <= total monthly interest,
+    //   the total debt pool grows indefinitely.
+    // TODO: In Milestone 2, suggest minimum viable payment amounts to achieve target payoff timeframes.
+    const nonAmortisingDebts = debts.filter(d => d.rate > 0 && d.minPayment <= (d.balance * d.rate) + 0.001);
+    const totalMonthlyInterest = debts.reduce((sum, d) => sum + (d.balance * d.rate), 0);
+    const totalAvailablePayment = debts.reduce((sum, d) => sum + d.minPayment, 0) + safeExtra;
+
+    const isMinimumStrategyStalled = strategy === 'minimum' && nonAmortisingDebts.length > 0;
+    const isPoolUnderfunded = totalAvailablePayment <= totalMonthlyInterest + 0.001;
+
+    if (isMinimumStrategyStalled || isPoolUnderfunded) {
+        return {
+            strategy,
+            freedomDate: '',
+            daysUntilFreedom: 0,
+            totalInterestPaid: 0,
+            totalPayments: 0,
+            monthsToPayoff: 0,
+            schedule: [],
+            comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
+            currency: debtCurrency,
+            isMultiCurrencyUnsupported: false,
+            isInsufficientPayment: true,
+            insufficientPaymentReason: isMinimumStrategyStalled
+                ? 'Minimum monthly payments do not cover accrued interest charges. Loans will not amortise without higher payments.'
+                : 'Total monthly payment (minimums plus extra) does not cover total accrued interest charges across your debts. Principal balance will grow over time.',
+            insufficientDebts: nonAmortisingDebts.map(d => ({
+                id: d.id,
+                name: d.name,
+                balance: d.balance,
+                minimumPayment: d.minPayment,
+                monthlyInterest: d.balance * d.rate
+            }))
+        };
+    }
 
     // Sort
     if (strategy === 'avalanche') debts.sort((a, b) => b.rate - a.rate);
@@ -153,9 +213,6 @@ const calculatePayoffPrecise = (
                 entry.payment += payment;
                 entry.principal += payment;
                 entry.remainingBalance = Math.max(0, target.balance);
-            } else {
-                // Creating a new entry if the minimum payment didn't exist (should happen only if min payment was 0?)
-                // Rarely happens unless min payment logic is zero.
             }
         }
 
@@ -163,22 +220,56 @@ const calculatePayoffPrecise = (
         monthsElapsed++;
     }
 
+    // If after 600 months debts are still not cleared, report insufficient payment
+    if (debts.some(d => d.balance > 0.01)) {
+        return {
+            strategy,
+            freedomDate: '',
+            daysUntilFreedom: 0,
+            totalInterestPaid: totalInterest,
+            totalPayments: totalPayments,
+            monthsToPayoff: 0,
+            schedule: [],
+            comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
+            currency: debtCurrency,
+            isMultiCurrencyUnsupported: false,
+            isInsufficientPayment: true,
+            insufficientPaymentReason: 'Debts could not be paid off within 50 years with the current payment schedule. Payments are insufficient to amortise the balance.',
+            insufficientDebts: debts.filter(d => d.balance > 0.01).map(d => ({
+                id: d.id,
+                name: d.name,
+                balance: d.balance,
+                minimumPayment: d.minPayment,
+                monthlyInterest: d.balance * d.rate
+            }))
+        };
+    }
+
     const freedomDate = currentDate.toISOString();
     const daysUntilFreedom = Math.ceil((currentDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
-    // Calculate comparison logic here if needed, or rely on separate calls
     let comparison = { monthsSaved: 0, interestSaved: 0 };
+    if (strategy !== 'minimum') {
+        const baseline = calculatePayoffPrecise(liabilities, 0, 'minimum');
+        if (!baseline.isInsufficientPayment && !baseline.isMultiCurrencyUnsupported && baseline.monthsToPayoff > 0) {
+            comparison = {
+                monthsSaved: Math.max(0, baseline.monthsToPayoff - monthsElapsed),
+                interestSaved: Math.max(0, baseline.totalInterestPaid - totalInterest)
+            };
+        }
+    }
 
     return {
         strategy,
         freedomDate,
         daysUntilFreedom,
-        totalInterestPaid: totalInterest || 0, // Ensure not NaN
+        totalInterestPaid: totalInterest || 0,
         totalPayments: totalPayments || 0,
         monthsToPayoff: monthsElapsed,
         schedule,
         comparisonToMinimum: comparison,
         currency: debtCurrency,
-        isMultiCurrencyUnsupported: false
+        isMultiCurrencyUnsupported: false,
+        isInsufficientPayment: false
     };
 };
