@@ -9,6 +9,7 @@ import { fetchViaFinnhub, fetchViaYahooFinance } from './providers';
 export interface PriceData {
     ticker: string;
     price: number;
+    currency: string; // ISO 4217 currency code (e.g. 'USD', 'AUD', 'GBP')
     previousClose: number;
     change: number;
     changePercent: number;
@@ -70,7 +71,7 @@ export const isAustralianTicker = (ticker: string): boolean => {
  * 4. US / Global tickers -> Finnhub API (primary) with Yahoo Finance fallback.
  * 5. Complete failure -> returns consistent mock price.
  */
-export const fetchStockPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData> => {
+export const fetchStockPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData | null> => {
     const symbol = ticker.toUpperCase().trim();
 
     // 0. Check Demo Mode
@@ -111,22 +112,29 @@ export const fetchStockPrice = async (ticker: string, options?: FetchOptions): P
             return fetchedData;
         }
 
-        // If both providers return null, fallback to mock with warning
-        console.warn(`All market data providers failed for ${symbol}. Falling back to mock price.`);
+        // Why this exists: Previously, provider failures silently generated synthetic random prices in production mode,
+        // misrepresenting actual user asset values and fabricating gains/losses (Handover Section 16 & Batch B3).
+        // Tricky logic: In production, return last cached quote if available; if completely unquoted and not in demo mode,
+        // return null so downstream portfolio components treat the asset as unpriced rather than generating fake valuation data.
+        // TODO: Support manual quote entry directly from the asset row when remote providers are unreachable.
         if (cached) return { ...cached.data, isMock: true };
-        return getMockPrice(symbol);
+        if (useDemo) return getMockPrice(symbol);
+
+        console.warn(`All market data providers failed for ${symbol}. Suppressing synthetic mock price in production mode.`);
+        return null;
 
     } catch (error) {
         console.error(`Error fetching stock price for ${symbol}:`, error);
         if (cached) return cached.data;
-        return getMockPrice(symbol);
+        if (useDemo) return getMockPrice(symbol);
+        return null;
     }
 };
 
 /**
  * Fetches cryptocurrency prices via CoinGecko free API (USDT / USD pairs).
  */
-export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData> => {
+export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): Promise<PriceData | null> => {
     const symbol = ticker.toUpperCase().trim();
     const useDemo = options?.isDemo ?? isDemoMode();
     if (useDemo) return getMockPrice(symbol);
@@ -158,7 +166,10 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
         const data = await res.json();
 
         if (!data[coinId]) {
-            return getMockPrice(symbol);
+            if (cached) return cached.data;
+            if (useDemo) return getMockPrice(symbol);
+            console.warn(`CoinGecko has no quote for ${symbol} (${coinId}). Suppressing synthetic mock price.`);
+            return null;
         }
 
         const price = data[coinId].usd;
@@ -169,6 +180,7 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
         const priceData: PriceData = {
             ticker: symbol,
             price,
+            currency: 'USD',
             previousClose: parseFloat(previousClose.toFixed(2)),
             change: parseFloat(change.toFixed(2)),
             changePercent: parseFloat(changePercent.toFixed(2)),
@@ -183,7 +195,8 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
     } catch (error) {
         console.error(`Error fetching crypto price for ${symbol}:`, error);
         if (cached) return cached.data;
-        return getMockPrice(symbol);
+        if (useDemo) return getMockPrice(symbol);
+        return null;
     }
 };
 
@@ -209,10 +222,12 @@ const DEMO_PRICES: Record<string, number> = {
 // Fallback Mock Generator
 export const getMockPrice = (ticker: string): PriceData => {
     const symbol = ticker.toUpperCase().trim();
+    const currency = isAustralianTicker(symbol) ? 'AUD' : 'USD';
     if (DEMO_PRICES[symbol]) {
         return {
             ticker: symbol,
             price: DEMO_PRICES[symbol],
+            currency,
             previousClose: parseFloat((DEMO_PRICES[symbol] * 0.995).toFixed(2)),
             change: parseFloat((DEMO_PRICES[symbol] * 0.005).toFixed(2)),
             changePercent: 0.5,
@@ -228,6 +243,7 @@ export const getMockPrice = (ticker: string): PriceData => {
     return {
         ticker: symbol,
         price: parseFloat(price.toFixed(2)),
+        currency,
         previousClose: basePrice,
         change: parseFloat(change.toFixed(2)),
         changePercent: parseFloat(((change / basePrice) * 100).toFixed(2)),
@@ -251,13 +267,15 @@ export const fetchAllPrices = async (
 
     // Parallel execution across all requested tickers
     const promises = uniqueRequests.map(async (r) => {
-        let data: PriceData;
+        let data: PriceData | null = null;
         if (r.type === 'crypto') {
             data = await fetchCryptoPrice(r.ticker, options);
         } else {
             data = await fetchStockPrice(r.ticker, options);
         }
-        results.set(r.ticker.toUpperCase().trim(), data);
+        if (data) {
+            results.set(r.ticker.toUpperCase().trim(), data);
+        }
     });
 
     await Promise.all(promises);

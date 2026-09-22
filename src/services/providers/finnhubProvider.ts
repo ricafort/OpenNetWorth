@@ -39,9 +39,13 @@ export async function fetchViaFinnhub(ticker: string): Promise<PriceData | null>
         const change = data.d ?? (currentPrice - previousClose);
         const changePercent = data.dp ?? (previousClose !== 0 ? (change / previousClose) * 100 : 0);
 
+        // Why this exists: Finnhub US/Global equity quotes are strictly denominated in USD.
+        // Tricky logic: Explicit currency tagging prevents portfolio aggregation from assuming arbitrary base currencies.
+        // TODO: Support Finnhub European multi-currency exchange extensions when premium API tier is configured.
         return {
             ticker: symbol,
             price: parseFloat(currentPrice.toFixed(2)),
+            currency: 'USD',
             previousClose: parseFloat(previousClose.toFixed(2)),
             change: parseFloat(change.toFixed(2)),
             changePercent: parseFloat(changePercent.toFixed(2)),

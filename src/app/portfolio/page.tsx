@@ -17,6 +17,7 @@ import { generateInvestmentAdviceAction } from '@/app/actions';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { convertAmount } from '@/lib/utils/currencyService';
+import { isAustralianTicker } from '@/services/marketData';
 
 export default function PortfolioPage() {
     const { assets, isLoading } = useAssetsQuery();
@@ -66,8 +67,13 @@ export default function PortfolioPage() {
                 if (newAsset.investment_details && newAsset.investment_details.ticker) {
                     const priceData = prices.get(newAsset.investment_details.ticker);
                     if (priceData) {
-                        const priceInBase = convertAmount(priceData.price, 'USD', baseCurrency);
-                        const prevCloseInBase = convertAmount(priceData.previousClose, 'USD', baseCurrency);
+                        // Why this exists: Price quotes come in native listing currency (AUD for ASX .AX, USD for US/Crypto).
+                        // Tricky logic: Converting from priceData.currency (rather than assuming USD) avoids severe 50%
+                        // double-conversion distortions when Australian assets are viewed with AUD base currency (Handover Section 16 & Batch B3).
+                        // TODO: Add support for LSE pence (GBp) to pound (GBP) conversion factor when UK assets are supported.
+                        const quoteCurrency = priceData.currency || (isAustralianTicker(newAsset.investment_details.ticker) ? 'AUD' : 'USD');
+                        const priceInBase = convertAmount(priceData.price, quoteCurrency, baseCurrency);
+                        const prevCloseInBase = convertAmount(priceData.previousClose, quoteCurrency, baseCurrency);
 
                         newAsset.investment_details = {
                             ...newAsset.investment_details,

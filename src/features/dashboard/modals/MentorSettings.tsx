@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface MentorSettingsProps {
     isOpen: boolean;
@@ -10,6 +11,7 @@ interface MentorSettingsProps {
 }
 
 export default function MentorSettings({ isOpen, onClose, onSave }: MentorSettingsProps) {
+    const modalRef = useFocusTrap<HTMLDivElement>({ isOpen, onClose });
     const [settings, setSettings] = useState({
         rotationSpeed: 15,
         quotesToGenerate: 20
@@ -43,10 +45,21 @@ export default function MentorSettings({ isOpen, onClose, onSave }: MentorSettin
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="mentor-controls-title"
+                tabIndex={-1}
+                className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200 focus:outline-none"
+            >
                 <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Mentor Controls</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                    <h3 id="mentor-controls-title" className="text-xl font-black text-slate-800 uppercase tracking-tighter">Mentor Controls</h3>
+                    <button
+                        onClick={onClose}
+                        aria-label="Close mentor controls"
+                        className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                    >
                         <X size={20} className="text-slate-500" />
                     </button>
                 </div>

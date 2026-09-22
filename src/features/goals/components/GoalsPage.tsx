@@ -10,6 +10,7 @@ import { useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoalSchema, GoalFormData } from '@/features/goals/data/schemas';
 import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
+import { CurrencyCode } from '@/types';
 import GoalItem from '@/features/goals/components/GoalItem';
 
 // Duplicate import removed
@@ -46,32 +47,52 @@ export const GoalsPage = () => {
     });
 
     const category = watch('category');
+    const selectedCurrency = watch('currency') || baseCurrency;
 
     useEffect(() => {
         if (category === 'net_worth') {
-            setValue('current_amount', netWorth);
+            const nwInGoalCurrency = selectedCurrency === baseCurrency
+                ? netWorth
+                : convertAmount(netWorth, baseCurrency, selectedCurrency);
+            setValue('current_amount', nwInGoalCurrency);
         }
-    }, [category, netWorth, setValue]);
+    }, [category, netWorth, selectedCurrency, baseCurrency, setValue]);
 
     const handleAddGoal = async (data: GoalFormData) => {
         setSaveError(null);
         try {
+            // Why this exists: Goals can be denominated in currencies different from the current workspace base currency
+            // (e.g. an Australian user saving for a $10,000 USD trip).
+            // Tricky logic: If category is 'net_worth', we convert the current net worth into the goal's target currency
+            // so baseline progress reflects the correct currency magnitude.
+            // TODO: Add support for tracking exchange rate benchmarks at the time goal was established.
+            const goalCurrency = (data.currency || baseCurrency) as CurrencyCode;
+            const netWorthInGoalCurrency = goalCurrency === baseCurrency
+                ? netWorth
+                : convertAmount(netWorth, baseCurrency, goalCurrency);
+
             const newGoal: Goal = {
                 id: crypto.randomUUID(),
                 name: data.name,
                 target_amount: data.target_amount,
-                current_amount: data.category === 'net_worth' ? netWorth : data.current_amount,
-                currency: baseCurrency,
+                current_amount: data.category === 'net_worth' ? netWorthInGoalCurrency : data.current_amount,
+                currency: goalCurrency,
                 deadline: data.deadline ? data.deadline : null, // Send null if empty string
                 category: data.category,
                 created_at: new Date().toISOString(),
-                start_amount: data.category === 'net_worth' ? netWorth : data.current_amount
+                start_amount: data.category === 'net_worth' ? netWorthInGoalCurrency : data.current_amount
             };
 
             // Durably commit to SQLite before resetting form inputs or closing (DATA-02)
             await addGoal(newGoal);
             setIsAdding(false);
-            reset();
+            reset({
+                name: '',
+                target_amount: 0,
+                current_amount: 0,
+                currency: baseCurrency,
+                category: 'savings'
+            });
         } catch (error: any) {
             // Retain user input in form and display actionable error message (DATA-03)
             console.error("Failed to add goal", error);
@@ -87,7 +108,7 @@ export const GoalsPage = () => {
                 action={
                     <button
                         onClick={() => setIsAdding(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold transition-all shadow-lg shadow-primary/10 active:scale-95 hover:opacity-90"
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold transition-all shadow-lg shadow-primary/10 active:scale-95 hover:opacity-90 cursor-pointer"
                     >
                         <Plus size={20} />
                         New Goal
@@ -128,16 +149,28 @@ export const GoalsPage = () => {
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-muted-foreground">Target Amount ({baseCurrency})</label>
+                            <label className="text-sm font-medium text-muted-foreground">Currency</label>
+                            <select
+                                {...register('currency')}
+                                className="w-full bg-card text-card-foreground border border-border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                                {['AUD', 'USD', 'EUR', 'GBP', 'CAD', 'JPY', 'CHF', 'CNY', 'INR', 'SGD', 'PHP', 'KRW'].map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-sm font-medium text-muted-foreground">Target Amount ({selectedCurrency})</label>
                             <input
                                 type="number"
+                                step="0.01"
                                 placeholder="100000"
                                 {...register('target_amount')}
                                 className={`w-full bg-card text-foreground border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary/20 ${errors.target_amount ? 'border-red-500' : 'border-border'}`}
                             />
                             {errors.target_amount && <p className="text-xs text-red-500">{errors.target_amount.message}</p>}
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1 md:col-span-2">
                             <label className="text-sm font-medium text-muted-foreground">Deadline (Optional)</label>
                             <input
                                 type="date"
@@ -149,8 +182,8 @@ export const GoalsPage = () => {
                         {/* Current amount is handled automatically for Net Worth */}
 
                         <div className="md:col-span-2 flex items-center justify-end gap-3 pt-2">
-                            <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-muted-foreground hover:text-foreground font-medium">Cancel</button>
-                            <button type="submit" disabled={isSubmitting} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-bold hover:opacity-90 transition-all">
+                            <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-muted-foreground hover:text-foreground font-medium cursor-pointer">Cancel</button>
+                            <button type="submit" disabled={isSubmitting} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-bold hover:opacity-90 transition-all cursor-pointer">
                                 {isSubmitting ? 'Creating...' : 'Create Goal'}
                             </button>
                         </div>
