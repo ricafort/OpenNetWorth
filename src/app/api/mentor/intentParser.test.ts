@@ -105,4 +105,25 @@ describe('Mentor intentParser', () => {
         expect(result.isSpendingQuery).toBe(true);
         expect(result.needsClarification).toBe("Invalid calendar date: '2026-02-31' does not exist.");
     });
+
+    // Why this test exists:
+    // Resolves Assessor Finding D: "until" was not recognized as a range separator.
+    it('Case 14c: parses ISO range with "until" keyword', () => {
+        const result = parseSpendingIntent('How much did I spend from 2026-08-01 until 2026-08-15?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2026-08-01');
+        expect(result.endDate).toBe('2026-08-15');
+        expect(result.needsClarification).toBeUndefined();
+    });
+
+    // Why this test exists:
+    // Resolves Assessor Finding D: Natural month ranges ("between July 1 and July 31") previously collapsed
+    // into single-day queries ("July 1st").
+    it('Case 14d: parses natural month range "between July 1 and July 31" without collapsing to single day', () => {
+        const result = parseSpendingIntent('What did I spend between July 1 and July 31?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2026-07-01');
+        expect(result.endDate).toBe('2026-07-31');
+        expect(result.needsClarification).toBeUndefined();
+    });
 });

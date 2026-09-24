@@ -203,6 +203,7 @@ export interface BatchApproveProposalsInput {
         transfer_account_id?: string; // If event_type is transfer
         payment_confirmed?: boolean; // Required when approving invoice/receipt expense proposals
         duplicate_confirmed?: boolean; // Required when approving proposals flagged as possible duplicates
+        save_categorization_rule?: boolean; // If true, saves the categorization choice for future imports
     }>;
 }
 

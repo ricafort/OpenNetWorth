@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Liability, DebtPayoffResult } from '@/features/liabilities/types';
+import { Liability, LiabilityType, DebtPayoffResult } from '@/features/liabilities/types';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
 import { loadFreedomSettings } from '@/infrastructure/local_driver';
 import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
@@ -11,38 +11,140 @@ import { useLiabilitiesQuery } from '@/features/liabilities/hooks/useLiabilities
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useAccountingCheck } from '@/features/accounting/hooks/useAccountingCheck';
 
+import { formatCurrency } from '@/lib/utils/currencyService';
+import { CurrencyCode } from '@/types';
+import { centsToMajorUnits } from '@/lib/domain/accounting/types';
+
 import { generateDebtAdviceAction } from '@/app/actions';
 
 import { useWealthMomentum } from '@/features/cashflow/hooks/useWealthMomentum';
+import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
 
 export default function FreedomDateCard() {
     const { liabilities, isLoading: isLiabilitiesLoading } = useLiabilitiesQuery();
-    const { hasModernLiabilities, isLoading: isAccountingLoading } = useAccountingCheck();
+    const { baseCurrency } = useNetWorth();
     const { momentum } = useWealthMomentum();
+    const { summary, isLoading: isSummaryLoading, error: summaryError } = useSharedFinancialSummary({ reportingCurrency: baseCurrency });
+    const { hasModernLiabilities, isError: isAccountingError, isLoading: isAccountingCheckLoading } = useAccountingCheck();
+    
+    const unrecordedLiabilities = summary?.unrecorded_accounts?.filter(a => a.account_type === 'liability') || [];
+    const isLoading = isLiabilitiesLoading || isAccountingCheckLoading || (hasModernLiabilities && isSummaryLoading && !summaryError);
     const [freedomDate, setFreedomDate] = useState<string | null>(null);
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
     const [hasDebt, setHasDebt] = useState(false);
     const [isMultiCurrencyUnsupported, setIsMultiCurrencyUnsupported] = useState(false);
     const [isInsufficientPayment, setIsInsufficientPayment] = useState(false);
+    const [isHorizonExceeded, setIsHorizonExceeded] = useState(false);
     const [unsupportedCurrencies, setUnsupportedCurrencies] = useState<string[]>([]);
+    const [monthsRemaining, setMonthsRemaining] = useState<number | null>(null);
+    const [isCurrencyMismatch, setIsCurrencyMismatch] = useState(false);
+    const [planCurrency, setPlanCurrency] = useState<CurrencyCode>('USD');
     const [advice, setAdvice] = useState<string>('Analyzing your path to freedom...');
+    const [hasDebtsLackingInputs, setHasDebtsLackingInputs] = useState(false);
 
-    const isLoading = isLiabilitiesLoading || isAccountingLoading;
+
 
     useEffect(() => {
-        const activeDebts = liabilities.filter(l => (l.balance || 0) > 0);
+        const modernDebts: Liability[] = summary?.accounts
+            ? summary.accounts
+                .filter(a => a.account_type === 'liability')
+                .map(a => ({
+                    id: a.account_id,
+                    name: a.account_name,
+                    type: (['mortgage', 'student_loan', 'auto_loan', 'credit_card'].includes(a.account_sub_type)
+                        ? a.account_sub_type
+                        : 'other') as LiabilityType,
+                    balance: centsToMajorUnits(a.amount_cents, a.currency),
+                    currency: (a.currency || 'USD') as CurrencyCode,
+                    interest_rate: (a as any).interest_rate,
+                    minimum_payment: (a as any).minimum_payment,
+                    is_good_debt: ['mortgage', 'student_loan'].includes(a.account_sub_type),
+                    last_updated: a.effective_date
+                }))
+            : [];
+
+        const allDebts = modernDebts.length > 0
+            ? [...modernDebts.map(md => {
+                const legacy = liabilities.find(l => l.account_id === md.id);
+                if (legacy) {
+                    return {
+                        ...md,
+                        interest_rate: legacy.interest_rate,
+                        minimum_payment: legacy.minimum_payment
+                    };
+                }
+                return md;
+            }), ...liabilities.filter(l => !l.account_id || !new Set(modernDebts.map(d => d.id)).has(l.account_id))]
+            : liabilities;
+
+        const activeDebts = allDebts.filter(l => (l.balance || 0) > 0);
+        const debtsLackingInputs = activeDebts.filter(d => 
+            d.interest_rate === undefined || d.interest_rate === null ||
+            d.minimum_payment === undefined || d.minimum_payment === null
+        );
+        
+        setHasDebtsLackingInputs(debtsLackingInputs.length > 0);
 
         if (activeDebts.length > 0) {
             setHasDebt(true);
+            const rawCurrencies = Array.from(new Set(activeDebts.map(l => (l.currency || 'USD') as CurrencyCode)));
+
+            // Why this check exists:
+            // Implements Assessor Finding A: Mixed-currency debt pools produce invalid rollover math.
+            // When debts span multiple native currencies, multi-currency payoff projection is unsupported.
+            // Tricky logic:
+            // Check raw currencies first before any conversion to avoid false single-currency calculation.
+            // TODO: In Milestone 2, calculate independent schedules per currency.
+            if (rawCurrencies.length > 1) {
+                setIsMultiCurrencyUnsupported(true);
+                setIsInsufficientPayment(false);
+                setIsHorizonExceeded(false);
+                setIsCurrencyMismatch(false);
+                setUnsupportedCurrencies(rawCurrencies);
+                setFreedomDate(null);
+                setDaysRemaining(null);
+                setMonthsRemaining(null);
+                setAdvice(`Debt payoff projection requires debts to be in a single currency. Mixed currencies found: ${rawCurrencies.join(', ')}.`);
+                return;
+            }
+
+            if (debtsLackingInputs.length > 0) {
+                setFreedomDate(null);
+                setDaysRemaining(null);
+                setMonthsRemaining(null);
+                setAdvice('Projection unavailable due to missing debt configurations.');
+                return;
+            }
+
+            const debtCurrency = (rawCurrencies[0] || baseCurrency || 'USD') as CurrencyCode;
             const settings = loadFreedomSettings();
-            const result = calculatePayoff(liabilities, settings.extraMonthlyPayment, settings.strategy);
+            const savedCurrency = settings.currency || 'USD';
+            setPlanCurrency(savedCurrency);
+
+            const mismatch = Boolean(debtCurrency && savedCurrency !== debtCurrency);
+            setIsCurrencyMismatch(mismatch);
+
+            // Why this calculation exists:
+            // Fulfills Item 5: Remove silent mock FX from real debt projections.
+            // Debts are calculated strictly in their native currency without synthetic mock conversion.
+            // Fulfills small correction: Uses result.monthsToPayoff rather than daysRemaining / 30.
+            // Tricky logic:
+            // A saved-plan/debt currency mismatch cannot silently change units.
+            // If the saved plan currency differs from the active debt currency (e.g. 500 USD vs AUD debts),
+            // do NOT silently apply 500 USD as 500 AUD. Calculate with 0 extra (minimum baseline)
+            // and prompt the user to review their plan.
+            // TODO: In Milestone 2, allow selecting target calculation currency with explicit dated FX rates.
+            const effectiveExtraPayment = mismatch ? 0 : settings.extraMonthlyPayment;
+            const result = calculatePayoff(activeDebts, effectiveExtraPayment, settings.strategy);
 
             if (result.isMultiCurrencyUnsupported) {
                 setIsMultiCurrencyUnsupported(true);
                 setIsInsufficientPayment(false);
+                setIsHorizonExceeded(false);
                 setUnsupportedCurrencies(result.unsupportedCurrencies || []);
                 setFreedomDate(null);
                 setDaysRemaining(null);
+                setMonthsRemaining(null);
                 setAdvice(`Debt payoff projection requires debts to be in a single currency. Mixed currencies found: ${(result.unsupportedCurrencies || []).join(', ')}.`);
                 return;
             }
@@ -50,35 +152,87 @@ export default function FreedomDateCard() {
             if (result.isInsufficientPayment) {
                 setIsInsufficientPayment(true);
                 setIsMultiCurrencyUnsupported(false);
+                setIsHorizonExceeded(false);
                 setFreedomDate(null);
                 setDaysRemaining(null);
+                setMonthsRemaining(null);
                 setAdvice(result.insufficientPaymentReason || 'Monthly payments are insufficient to cover interest charges. Loans will not amortise without higher payments.');
+                return;
+            }
+
+            if (result.isHorizonExceeded) {
+                setIsHorizonExceeded(true);
+                setIsInsufficientPayment(false);
+                setIsMultiCurrencyUnsupported(false);
+                setFreedomDate(null);
+                setDaysRemaining(null);
+                setMonthsRemaining(null);
+                setAdvice(result.horizonExceededReason || 'Debt payoff exceeds the 50-year projection horizon with current monthly payments.');
                 return;
             }
 
             setIsMultiCurrencyUnsupported(false);
             setIsInsufficientPayment(false);
+            setIsHorizonExceeded(false);
             setFreedomDate(result.freedomDate);
             setDaysRemaining(result.daysUntilFreedom);
+            setMonthsRemaining(result.monthsToPayoff);
 
             // Why this deterministic explanation exists:
-            // Implements Clarification 6: Explains the user's configured repayment scenario (strategy and extra payment)
-            // without treating an incomplete planned cashflow surplus as verified repayment capacity.
+            // Implements Clarification 6 & Item 5: Explains the user's configured repayment scenario (strategy and extra payment)
+            // without treating an incompatible currency setting as valid or cashflow surplus as verified repayment capacity.
             // Tricky logic:
-            // Avoids calling LLM to manufacture advice suggesting users dump their entire cashflow surplus into debt.
+            // When currency mismatch is present, prompt the user to review in Freedom Calculator rather than assuming the mismatched currency amount.
             // TODO: In Milestone 2, calculate independent multi-currency payoff timelines.
-            const monthYear = new Date(result.freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-            const debtCurrency = result.currency || 'USD';
-            const extraFormatted = settings.extraMonthlyPayment > 0
-                ? `with ${settings.extraMonthlyPayment.toLocaleString()} ${debtCurrency}/month extra`
-                : 'with minimum monthly payments';
+            if (mismatch) {
+                setAdvice(
+                    `Plan review required: Your saved payoff plan was configured in ${savedCurrency} (${formatCurrency(settings.extraMonthlyPayment, savedCurrency)}/month extra), but your active debts are in ${debtCurrency}. Review your plan in Freedom Calculator to update your extra payment in ${debtCurrency}.`
+                );
+            } else {
+                const monthYear = new Date(result.freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                const extraFormatted = settings.extraMonthlyPayment > 0
+                    ? `with ${formatCurrency(settings.extraMonthlyPayment, debtCurrency)}/month extra`
+                    : 'with minimum monthly payments';
 
-            setAdvice(`Configured payoff plan: Paying ${extraFormatted} using the ${settings.strategy.toUpperCase()} strategy leads to an estimated debt-free month of ${monthYear}. Note: Unscheduled spending and interest rate changes are not included.`);
+                setAdvice(`Configured payoff plan: Paying ${extraFormatted} using the ${settings.strategy.toUpperCase()} strategy leads to an estimated debt-free month of ${monthYear}. Note: Unscheduled spending and interest rate changes are not included.`);
+            }
         } else {
             setHasDebt(false);
             setIsMultiCurrencyUnsupported(false);
+            setIsInsufficientPayment(false);
+            setIsHorizonExceeded(false);
+            setIsCurrencyMismatch(false);
+            setMonthsRemaining(null);
+            setHasDebtsLackingInputs(false);
         }
-    }, [liabilities, momentum]);
+    }, [liabilities, baseCurrency, momentum, summary]);
+
+    if (isAccountingError || summaryError) {
+        return (
+            <div className="bg-slate-800 rounded-2xl p-6 text-slate-200 shadow-lg relative overflow-hidden h-full flex flex-col justify-between">
+                <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full backdrop-blur-sm w-fit">
+                    <AlertCircle size={14} className="text-red-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-300">Data Error</span>
+                </div>
+
+                <div className="mt-4">
+                    <h3 className="text-xl font-bold tracking-tight text-white mb-2">Balances Unavailable</h3>
+                    <p className="text-sm text-slate-400 font-medium">
+                        Unable to load authoritative account balances.
+                    </p>
+                </div>
+
+                <div className="mt-6">
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="text-xs font-bold bg-slate-700 text-slate-300 border border-slate-600 px-4 py-2 rounded-lg inline-block hover:bg-slate-600 transition-colors"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (
@@ -93,7 +247,7 @@ export default function FreedomDateCard() {
     }
 
     if (!hasDebt) {
-        if (hasModernLiabilities) {
+        if (unrecordedLiabilities.length > 0) {
             return (
                 <div className="bg-slate-800 rounded-2xl p-6 text-slate-200 shadow-lg relative overflow-hidden h-full flex flex-col justify-between">
                     <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1 rounded-full backdrop-blur-sm w-fit">
@@ -102,9 +256,9 @@ export default function FreedomDateCard() {
                     </div>
 
                     <div className="mt-4">
-                        <h3 className="text-xl font-bold tracking-tight text-white mb-2">Incomplete View</h3>
+                        <h3 className="text-xl font-bold tracking-tight text-white mb-2">Liability Balances Pending</h3>
                         <p className="text-sm text-slate-400 font-medium">
-                            This view does not yet include all your recorded accounts.
+                            You have unrecorded debt accounts. Complete your valuations in Accounts to calculate your freedom date.
                         </p>
                     </div>
 
@@ -153,7 +307,9 @@ export default function FreedomDateCard() {
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
                         <Calendar size={14} className="text-indigo-200" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-50">Estimated Debt-Free Month</span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-50">
+                            {unrecordedLiabilities.length > 0 ? "Estimated Payoff for Included Debts" : "Estimated Debt-Free Month"}
+                        </span>
                     </div>
                 </div>
 
@@ -161,20 +317,35 @@ export default function FreedomDateCard() {
                     <h3 className="text-2xl md:text-3xl font-black tracking-tight">
                         {isMultiCurrencyUnsupported
                             ? 'Multi-Currency Debts'
-                            : isInsufficientPayment
-                                ? 'Insufficient Payment'
-                                : (freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '...')}
+                            : hasDebtsLackingInputs
+                                ? 'Repayment details needed'
+                                : isInsufficientPayment
+                                    ? 'Insufficient Payment'
+                                    : isHorizonExceeded
+                                        ? '> 50-Year Horizon'
+                                        : (freedomDate ? new Date(freedomDate).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '...')}
                     </h3>
                     <p className="text-indigo-200 font-medium mt-1 text-sm">
                         {isMultiCurrencyUnsupported
                             ? `Debts span ${unsupportedCurrencies.join(', ')}. Payoff projection requires debts in a single currency.`
-                            : isInsufficientPayment
-                                ? 'Monthly payments do not cover interest charges. Loans will not amortise.'
-                                : (daysRemaining !== null ? `Estimated ~${Math.max(1, Math.round(daysRemaining / 30))} months to payoff` : 'Calculating...')}
+                            : hasDebtsLackingInputs
+                                ? 'Projection unavailable due to missing debt configurations.'
+                                : isInsufficientPayment
+                                    ? 'Monthly payments do not cover interest charges. Loans will not amortise.'
+                                        : isHorizonExceeded
+                                            ? 'Current payments amortise principal, but payoff takes longer than 50 years.'
+                                            : isCurrencyMismatch
+                                                ? `Plan currency review required (${planCurrency} saved vs active debt currency).`
+                                                : (monthsRemaining !== null ? `Estimated ${monthsRemaining} ${monthsRemaining === 1 ? 'month' : 'months'} to payoff` : 'Calculating...')}
                     </p>
-                    {hasModernLiabilities && (
+                    {unrecordedLiabilities.length > 0 && (
                         <p className="text-[10px] text-indigo-200 mt-1.5 opacity-80">
-                            Calculation covers legacy debts. Modern liability accounts are tracked in Accounts.
+                            Calculation covers recorded debts. Some modern accounts lack balances.
+                        </p>
+                    )}
+                    {hasModernLiabilities && unrecordedLiabilities.length === 0 && (
+                        <p className="text-[10px] text-indigo-200 mt-1.5 opacity-80">
+                            Calculation covers legacy debts and modern liability accounts.
                         </p>
                     )}
                 </div>
@@ -182,7 +353,7 @@ export default function FreedomDateCard() {
                 <div className="bg-white/10 rounded-xl p-4 backdrop-blur-md border border-white/10">
                     <div className="flex gap-3">
                         <div className="p-2 bg-indigo-500 rounded-lg shrink-0 h-fit">
-                            {isMultiCurrencyUnsupported || isInsufficientPayment ? <AlertCircle size={18} /> : <TrendingUp size={18} />}
+                            {isMultiCurrencyUnsupported || isInsufficientPayment || isHorizonExceeded || isCurrencyMismatch ? <AlertCircle size={18} /> : <TrendingUp size={18} />}
                         </div>
                         <div>
                             <p className="text-xs text-indigo-200 leading-relaxed mb-2">
@@ -192,7 +363,7 @@ export default function FreedomDateCard() {
                                 href="/freedom"
                                 className="text-xs font-bold bg-white text-indigo-600 px-3 py-1.5 rounded-lg inline-block hover:bg-indigo-50 transition-colors"
                             >
-                                Optimize Payoff →
+                                {isCurrencyMismatch ? 'Review Plan in Freedom →' : 'Optimize Payoff →'}
                             </Link>
                         </div>
                     </div>

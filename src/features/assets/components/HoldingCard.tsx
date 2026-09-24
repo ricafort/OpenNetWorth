@@ -18,12 +18,14 @@ interface HoldingCardProps {
         shares: number;
         price: number;
         isConcentrated: boolean;
+        isExcluded?: boolean;
     };
     privacySensitive?: boolean;
     currencyCode?: CurrencyCode;
 }
 
 export default function HoldingCard({ holding, privacySensitive = false, currencyCode = 'USD' }: HoldingCardProps) {
+    const displayCurrency = (holding as any).currency || currencyCode;
     const isPositive = (holding.gain ?? 0) >= 0;
     const isDayPositive = holding.dayChange >= 0;
     const blurClass = 'privacy-value';
@@ -54,10 +56,10 @@ export default function HoldingCard({ holding, privacySensitive = false, currenc
                 </div>
                 <div className="text-right">
                     <div className={clsx("text-lg font-bold text-foreground", blurClass)}>
-                        {formatCurrency(holding.value, currencyCode)}
+                        {formatCurrency(holding.value, displayCurrency)}
                     </div>
                     <div className="text-xs font-medium text-muted-foreground">
-                        {holding.weight.toFixed(1)}% of Portfolio
+                        {holding.isExcluded ? 'Excluded from total' : `${holding.weight.toFixed(1)}% of tracked holdings`}
                     </div>
                 </div>
             </div>
@@ -72,7 +74,7 @@ export default function HoldingCard({ holding, privacySensitive = false, currenc
                                 <span>{hasValidPercent ? `${isPositive ? '+' : ''}${holding.gainPercent!.toFixed(2)}%` : 'N/A (0 Cost Basis)'}</span>
                             </div>
                             <p className={clsx("text-xs", isPositive ? "text-green-600/70" : "text-red-600/70", blurClass)}>
-                                {isPositive ? '+' : ''}{formatCurrency(holding.gain!, currencyCode)}
+                                {isPositive ? '+' : ''}{formatCurrency(holding.gain!, displayCurrency)}
                             </p>
                         </>
                     ) : (
@@ -88,14 +90,14 @@ export default function HoldingCard({ holding, privacySensitive = false, currenc
                         <span>{isDayPositive ? '+' : ''}{holding.dayChangePercent.toFixed(2)}%</span>
                     </div>
                     <p className={clsx("text-xs", isDayPositive ? "text-green-600/70" : "text-red-600/70", blurClass)}>
-                        {isDayPositive ? '+' : ''}{formatCurrency(Math.abs(holding.dayChange), currencyCode)}
+                        {isDayPositive ? '+' : ''}{formatCurrency(Math.abs(holding.dayChange), displayCurrency)}
                     </p>
                 </div>
             </div>
 
             <div className={clsx("mt-3 flex justify-between items-center text-xs text-muted-foreground bg-secondary/50 p-2 rounded-lg", blurClass)}>
                 {holding.ticker !== 'Manual' && holding.shares > 0 ? (
-                    <span>{holding.shares} shares @ {formatCurrency(holding.price, currencyCode)}</span>
+                    <span>{holding.shares} shares @ {formatCurrency(holding.price, displayCurrency)}</span>
                 ) : (
                     <span>Manual Valuation</span>
                 )}

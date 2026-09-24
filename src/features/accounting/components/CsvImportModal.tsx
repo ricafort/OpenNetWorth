@@ -48,6 +48,8 @@ interface CsvImportModalProps {
     onClose: () => void;
     accounts: Account[];
     entities: Array<{ id: string; name: string }>;
+    initialEntityId?: string;
+    initialAccountId?: string;
     onImportSuccess: (documentId: string) => void;
 }
 
@@ -56,13 +58,15 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
     onClose,
     accounts,
     entities,
+    initialEntityId,
+    initialAccountId,
     onImportSuccess
 }) => {
     const [step, setStep] = useState<'upload' | 'mapping'>('upload');
     const [filename, setFilename] = useState<string>('');
     const [rawContent, setRawContent] = useState<string>('');
     const [targetAccountId, setTargetAccountId] = useState<string>('');
-    const [selectedEntityId, setSelectedEntityId] = useState<string>('');
+    const [selectedEntityId, setSelectedEntityId] = useState<string>(initialEntityId || '');
 
     // Mapping configurations
     const [savedMappings, setSavedMappings] = useState<CsvMappingProfile[]>([]);
@@ -87,13 +91,48 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
         return accounts.filter(a => a.type === 'asset');
     }, [accounts]);
 
-    // Set initial account and entity
+    // Set initial account and entity based on context
     useEffect(() => {
-        if (liquidAccounts.length > 0 && !targetAccountId) {
-            setTargetAccountId(liquidAccounts[0].id);
-            setSelectedEntityId(liquidAccounts[0].entity_id);
+        if (!isOpen) return;
+
+        let currentAccount = liquidAccounts.find(a => a.id === targetAccountId);
+        
+        if (initialAccountId && !currentAccount) {
+            currentAccount = liquidAccounts.find(a => a.id === initialAccountId);
+            if (currentAccount) {
+                setTargetAccountId(currentAccount.id);
+            }
         }
-    }, [liquidAccounts, targetAccountId]);
+
+        const isConstrainedOwner = initialEntityId && initialEntityId !== 'all';
+        
+        // If the selected owner changed, and the current account belongs to a different owner, clear it
+        if (isConstrainedOwner && currentAccount && currentAccount.entity_id !== initialEntityId) {
+            currentAccount = undefined;
+        }
+
+        if (!currentAccount && liquidAccounts.length > 0) {
+            let defaultAcc = liquidAccounts[0];
+            if (isConstrainedOwner) {
+                const entityAcc = liquidAccounts.find(a => a.entity_id === initialEntityId);
+                if (entityAcc) {
+                    defaultAcc = entityAcc;
+                } else {
+                    // The selected owner has no eligible accounts
+                    setTargetAccountId('');
+                    setSelectedEntityId(initialEntityId);
+                    return;
+                }
+            }
+            // Only update if targetAccountId was invalid/cleared
+            if (!targetAccountId || currentAccount === undefined) {
+                setTargetAccountId(defaultAcc.id);
+                setSelectedEntityId(defaultAcc.entity_id);
+            }
+        } else if (currentAccount) {
+            setSelectedEntityId(currentAccount.entity_id);
+        }
+    }, [liquidAccounts, targetAccountId, initialEntityId, isOpen]);
 
     // Fetch saved mappings on mount
     useEffect(() => {

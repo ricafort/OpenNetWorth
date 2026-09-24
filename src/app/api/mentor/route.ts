@@ -19,23 +19,41 @@ import { NextRequest, NextResponse } from 'next/server';
 import { queryLocalLlm, LocalLlmMessage } from '@/lib/api/localLlm';
 import { parseSpendingIntent } from './intentParser';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { listEntities } from '@/lib/domain/accounting/accountService';
+import { listEntities, listAccounts } from '@/lib/domain/accounting/accountService';
 import { getPeriodIncomeAndExpenses } from '@/lib/domain/accounting/balanceService';
+import { getSharedFinancialSummary } from '@/lib/domain/accounting/sharedFinancialSummaryService';
+import { CurrencyCode, CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
+import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
+
+function secureJson(data: any, init?: ResponseInit): NextResponse {
+    return applySensitiveHeaders(NextResponse.json(data, init));
+}
 
 export async function POST(req: NextRequest) {
+    const securityCheck = validateLocalSecurity(req);
+    if (securityCheck) return securityCheck;
     try {
-        const { mentor, mode, userContext, message, localConfig } = await req.json();
+        const { mentor, mode, userContext, message, pendingContext, resolvedEntityId, localConfig } = await req.json();
 
         if (!message) {
-            return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+            return secureJson({ error: 'Message is required' }, { status: 400 });
         }
 
         const db = getDb();
         const availableEntities = listEntities(db);
-        const intent = parseSpendingIntent(message, availableEntities);
+        const intent = parseSpendingIntent(message, availableEntities, undefined, pendingContext, resolvedEntityId);
 
         if (intent.isSpendingQuery && intent.needsClarification) {
-            return NextResponse.json({ response: intent.needsClarification });
+            return secureJson({ 
+                response: intent.needsClarification,
+                pending_intent: {
+                    type: 'spending_clarification',
+                    originalMessage: message,
+                    startDate: intent.startDate,
+                    endDate: intent.endDate,
+                    periodLabel: intent.periodLabel
+                }
+            });
         }
 
         let facts: any = null;
@@ -45,18 +63,19 @@ export async function POST(req: NextRequest) {
             const entity = availableEntities.find(e => e.id === intent.entityId);
             const entityName = entity ? entity.name : (intent.entityId === 'all' ? 'All Accounts' : 'Personal');
             
-            const incomeExpenses = getPeriodIncomeAndExpenses(db, intent.entityId === 'all' ? availableEntities[0]?.id : (intent.entityId || 'local_user'), intent.startDate, intent.endDate);
+            const incomeExpenses = getPeriodIncomeAndExpenses(db, intent.entityId || 'local_user', intent.startDate, intent.endDate);
             
             const txQuery = `
                 SELECT DISTINCT t.id 
                 FROM m1_journal_entries j
                 JOIN m1_accounts a ON j.account_id = a.id
                 JOIN m1_transactions t ON j.transaction_id = t.id
-                WHERE a.entity_id = ? AND a.type IN ('income', 'expense') AND t.status = 'posted'
+                ${intent.entityId === 'all' ? 'WHERE a.type = \'expense\'' : 'WHERE a.entity_id = ? AND a.type = \'expense\''} AND t.status = 'posted'
                 ${intent.startDate ? 'AND t.date >= ?' : ''}
                 ${intent.endDate ? 'AND t.date <= ?' : ''}
             `;
-            const params = [intent.entityId === 'all' ? availableEntities[0]?.id : (intent.entityId || 'local_user')];
+            const params: any[] = [];
+            if (intent.entityId !== 'all') params.push(intent.entityId || 'local_user');
             if (intent.startDate) params.push(intent.startDate);
             if (intent.endDate) params.push(intent.endDate);
             
@@ -67,6 +86,9 @@ export async function POST(req: NextRequest) {
                 type: 'spending',
                 periodLabel: intent.periodLabel,
                 entityName: entityName,
+                entityId: intent.entityId || 'local_user',
+                startDate: intent.startDate,
+                endDate: intent.endDate,
                 totals: incomeExpenses.total_expenses_cents_by_currency, 
                 formattedTotals: incomeExpenses.formatted_expenses_by_currency,
                 transactionIds: transactionIds,
@@ -84,10 +106,93 @@ Note: Transfers and cancelled transactions are excluded. Mixed currencies are ke
 `;
         }
 
-        const currency = userContext?.currency || 'USD';
-        const netWorth = userContext?.netWorth ?? 0;
-        const totalAssets = userContext?.totalAssets ?? 0;
-        const totalLiabilities = userContext?.totalLiabilities ?? 0;
+        const currency = ((userContext?.currency || 'USD') as string).toUpperCase() as CurrencyCode;
+        
+        // Why this logic exists:
+        // Fulfills Item 3: Never retain client-provided wealth totals when server balances are unavailable.
+        // Return 'Unknown / needs balance' when no balances are known. Use explicitly labelled known
+        // subtotals when coverage is partial. Apply this to both the LLM prompt and offline response.
+        // Tricky logic:
+        // Client userContext is ONLY used for preferred currency. Under no circumstance are client-supplied
+        // netWorth, totalAssets, or totalLiabilities trusted or reflected in prompts or advice.
+        // TODO: In Milestone 2, support per-entity assistant context filtering based on active screen.
+        const dbAccounts = listAccounts(db).filter(a => a.is_active && (a.type === 'asset' || a.type === 'liability'));
+        
+        let netWorthDisplay = 'Unknown / needs balance';
+        let totalAssetsDisplay = 'Unknown / needs balance';
+        let totalLiabilitiesDisplay = 'Unknown / needs balance';
+        let unrecordedNotice = '';
+        let missingRatesNotice = '';
+
+        if (dbAccounts.length > 0) {
+            const summary = getSharedFinancialSummary(db, { reporting_currency: currency });
+            const decimals = CURRENCY_DECIMALS[currency] ?? 2;
+            const divisor = Math.pow(10, decimals);
+            const knownAccountsCount = summary.accounts?.length ?? 0;
+            const unrecordedCount = summary.unrecorded_count ?? 0;
+
+            if (knownAccountsCount > 0) {
+                const isPartial = unrecordedCount > 0;
+                const prefix = isPartial ? 'Known ' : '';
+                const partialSuffix = isPartial ? ' (partial snapshot)' : '';
+
+                if (summary.converted_net_worth?.is_complete && summary.converted_total_assets && summary.converted_total_liabilities) {
+                    const nw = summary.converted_net_worth.amount_cents / divisor;
+                    const assets = summary.converted_total_assets.amount_cents / divisor;
+                    const liab = summary.converted_total_liabilities.amount_cents / divisor;
+                    const nwStr = `${nw.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+                    const assetsStr = `${assets.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+                    const liabStr = `${liab.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+
+                    netWorthDisplay = isPartial ? `${prefix}Net Worth: ${nwStr}${partialSuffix}` : nwStr;
+                    totalAssetsDisplay = `${prefix}Assets: ${assetsStr}`;
+                    totalLiabilitiesDisplay = `${prefix}Liabilities: ${liabStr}`;
+                } else {
+                    // Native currency subtotals
+                    const nwCurrencies = Object.keys(summary.net_worth_cents_by_currency || {}) as CurrencyCode[];
+                    if (nwCurrencies.length > 0) {
+                        const nativeNwStr = nwCurrencies.map(c => {
+                            const dec = CURRENCY_DECIMALS[c] ?? 2;
+                            const amt = (summary.net_worth_cents_by_currency[c] || 0) / Math.pow(10, dec);
+                            return `${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
+                        }).join(' + ');
+
+                        const assetCurrencies = Object.keys(summary.total_assets_cents_by_currency || {}) as CurrencyCode[];
+                        const nativeAssetsStr = assetCurrencies.map(c => {
+                            const dec = CURRENCY_DECIMALS[c] ?? 2;
+                            const amt = (summary.total_assets_cents_by_currency[c] || 0) / Math.pow(10, dec);
+                            return `${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
+                        }).join(' + ') || `0.00 ${currency}`;
+
+                        const liabCurrencies = Object.keys(summary.total_liabilities_cents_by_currency || {}) as CurrencyCode[];
+                        const nativeLiabStr = liabCurrencies.map(c => {
+                            const dec = CURRENCY_DECIMALS[c] ?? 2;
+                            const amt = (summary.total_liabilities_cents_by_currency[c] || 0) / Math.pow(10, dec);
+                            return `${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
+                        }).join(' + ') || `0.00 ${currency}`;
+
+                        netWorthDisplay = isPartial ? `${prefix}Net Worth: ${nativeNwStr}${partialSuffix}` : nativeNwStr;
+                        totalAssetsDisplay = `${prefix}Assets: ${nativeAssetsStr}`;
+                        totalLiabilitiesDisplay = `${prefix}Liabilities: ${nativeLiabStr}`;
+                    }
+
+                    if (summary.converted_net_worth?.missing_rates?.length) {
+                        missingRatesNotice = `\n- Exchange Rates: Missing rates for (${summary.converted_net_worth.missing_rates.join(', ')}). Totals are held in native currencies.`;
+                    }
+                }
+
+                if (isPartial) {
+                    const names = summary.unrecorded_accounts.map(a => a.name).join(', ');
+                    unrecordedNotice = `\n- Unrecorded Accounts: ${unrecordedCount} account(s) need balance updates (${names}). Snapshot represents explicitly known subtotals only.`;
+                }
+            } else {
+                // dbAccounts exist, but zero have recorded balance observations
+                const names = summary.unrecorded_accounts.map(a => a.name).join(', ');
+                unrecordedNotice = `\n- Unrecorded Accounts: All ${unrecordedCount} account(s) need balance updates (${names}). No balances are currently known.`;
+            }
+        } else {
+            unrecordedNotice = '\n- Account Coverage: No accounts are currently configured in the database.';
+        }
 
         const systemPrompt = `You are an AI-simulated financial wisdom persona inspired by the philosophy of: ${mentor?.name || 'Financial Mentor'} (${mentor?.archetype || 'Wisdom & Strategy'}).
 Personality & Philosophy: ${mentor?.personality_prompt || mentor?.description || 'Thoughtful financial guidance.'}
@@ -98,9 +203,9 @@ Your Goal:
 
 USER FINANCIAL SNAPSHOT:
 - Preferred Currency: ${currency}
-- Net Worth: ${netWorth.toLocaleString()} ${currency}
-- Total Assets: ${totalAssets.toLocaleString()} ${currency}
-- Total Liabilities: ${totalLiabilities.toLocaleString()} ${currency}
+- Net Worth: ${netWorthDisplay}
+- Total Assets: ${totalAssetsDisplay}
+- Total Liabilities: ${totalLiabilitiesDisplay}${unrecordedNotice}${missingRatesNotice}
 ${factsContext}
 
 STRICT CONSTRAINTS:
@@ -126,7 +231,7 @@ STRICT CONSTRAINTS:
                 throw new Error('Local LLM returned an empty response');
             }
 
-            return NextResponse.json({ response: responseText.trim(), facts });
+            return secureJson({ response: responseText.trim(), facts });
         } catch (llmError: any) {
             console.warn('Local LLM unavailable, using offline wisdom fallback:', llmError.message);
 
@@ -134,18 +239,26 @@ STRICT CONSTRAINTS:
             
             if (facts) {
                 offlineAdvice += `Looking at your deterministic facts for ${facts.entityName} during ${facts.periodLabel}, your expenses were: ${factsContext.split('Total Expenses: ')[1]?.split('\n')[0]}.\n\n`;
+            } else if (netWorthDisplay === 'Unknown / needs balance') {
+                offlineAdvice += `Looking at your financial picture (account balances are currently Unknown / needs balance), the key principle is ${mentor?.description || 'discipline and consistent compounding'}.\n\n`;
+                if (unrecordedNotice) {
+                    offlineAdvice += `*(Note: No balances are currently known. Add or update account balance observations to calculate your net worth.)*\n\n`;
+                }
+            } else if (unrecordedNotice) {
+                offlineAdvice += `Looking at your current known balance (${netWorthDisplay} across ${totalAssetsDisplay} and ${totalLiabilitiesDisplay}), the key principle is ${mentor?.description || 'discipline and consistent compounding'}.\n\n`;
+                offlineAdvice += `*(Note: Some accounts have unrecorded balances, so this partial snapshot represents known balances only.)*\n\n`;
             } else {
-                offlineAdvice += `Looking at your current balance (${currency} ${netWorth.toLocaleString()} net worth across ${currency} ${totalAssets.toLocaleString()} in assets and ${currency} ${totalLiabilities.toLocaleString()} in debt), the key principle is ${mentor?.description || 'discipline and consistent compounding'}.\n\n`;
+                offlineAdvice += `Looking at your current balance (${netWorthDisplay} net worth across ${totalAssetsDisplay} in assets and ${totalLiabilitiesDisplay} in debt), the key principle is ${mentor?.description || 'discipline and consistent compounding'}.\n\n`;
             }
             
             offlineAdvice += `*"Focus on the controllable variables: your savings rate, debt elimination velocity, and keeping your capital protected against unexpected shocks."*\n\n` +
                 `> 💡 *Tip: Local LLM is currently offline or loading. Start LM Studio (port 1234) or Ollama (run \`ollama run llama3.2\`) to enable live private AI chat on your machine.*\n\n` +
                 `Educational perspective only. Not financial advice.`;
 
-            return NextResponse.json({ response: offlineAdvice, isOfflineFallback: true, facts });
+            return secureJson({ response: offlineAdvice, isOfflineFallback: true, facts });
         }
     } catch (error: any) {
         console.error('Mentor Route Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to generate mentor response' }, { status: 500 });
+        return secureJson({ error: error.message || 'Failed to generate mentor response' }, { status: 500 });
     }
 }

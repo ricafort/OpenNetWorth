@@ -47,5 +47,7 @@ export interface Asset {
     is_liquid: boolean;
     /** APY for interest-bearing accounts */
     interest_rate?: number;
+    /** Optional link to authoritative modern accounting account */
+    account_id?: string;
     last_updated: string;
 }

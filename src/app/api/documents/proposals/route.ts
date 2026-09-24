@@ -78,7 +78,7 @@ export async function PATCH(request: Request) {
         initAccountingSchema(db);
 
         const body = await request.json();
-        const { proposal_id, event_date, counterparty, description, amount_cents, original_currency, account_id, suggested_category, review_status } = body;
+        const { proposal_id, event_date, counterparty, description, amount_cents, original_currency, account_id, suggested_category, review_status, save_categorization_rule } = body;
 
         if (!proposal_id || typeof proposal_id !== 'string') {
             return NextResponse.json({ error: 'Missing required field: proposal_id' }, { status: 400 });
@@ -101,7 +101,8 @@ export async function PATCH(request: Request) {
             original_currency,
             account_id,
             suggested_category,
-            review_status
+            review_status,
+            save_categorization_rule
         });
 
         return NextResponse.json({ success: true, proposal: updated });

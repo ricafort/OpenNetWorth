@@ -19,6 +19,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Wallet, CreditCard, Shield, AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 import { Account, AccountSubType, AccountType, CurrencyCode, Entity, formatMoney, parseToCents } from '@/lib/domain/accounting/types';
+import { BalanceCheckModal } from './BalanceCheckModal';
+import { CategorizationRulesModal } from './CategorizationRulesModal';
 
 /**
  * Format entity types into user-friendly labels without losing trust/household distinctions.
@@ -61,6 +63,9 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [checkBalanceAccountId, setCheckBalanceAccountId] = useState<string | null>(null);
+    const [rulesAccountId, setRulesAccountId] = useState<{ id: string, name: string } | null>(null);
+    const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
 
     // Form fields
     const [formName, setFormName] = useState('');
@@ -78,6 +83,31 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
     const [formOpeningDate, setFormOpeningDate] = useState(getLocalIsoDate);
     const [formInstitution, setFormInstitution] = useState('');
 
+    // Target account highlight and scrolling from URL parameter
+    const [targetAccountId, setTargetAccountId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const id = params.get('accountId');
+            if (id) {
+                setTargetAccountId(id);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (targetAccountId && !isLoading && accounts.length > 0) {
+            const timer = setTimeout(() => {
+                const el = document.getElementById(`account-row-${targetAccountId}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [targetAccountId, isLoading, accounts]);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape' && isModalOpen) {
@@ -93,9 +123,31 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
             setFormEntityId(selectedEntityId);
             const ent = entities.find(e => e.id === selectedEntityId);
             if (ent?.currency) setFormCurrency(ent.currency as CurrencyCode);
+        } else if (entities.length === 1) {
+            setFormEntityId(entities[0].id);
+            if (entities[0].currency) setFormCurrency(entities[0].currency as CurrencyCode);
         } else {
             setFormEntityId('');
         }
+        setFormName('');
+        setFormType('asset');
+        setFormSubType('checking');
+        setFormInstitution('');
+        setFormOpeningAmount('');
+        setEditingAccountId(null);
+        setError(null);
+        setIsModalOpen(true);
+    };
+
+    const handleEditAccount = (acc: AccountWithBalance) => {
+        setEditingAccountId(acc.id);
+        setFormName(acc.name);
+        setFormEntityId(acc.entity_id);
+        setFormType(acc.type);
+        setFormSubType(acc.sub_type);
+        setFormCurrency(acc.currency as CurrencyCode);
+        setFormInstitution(acc.institution || '');
+        setFormOpeningAmount('');
         setError(null);
         setIsModalOpen(true);
     };
@@ -155,19 +207,56 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                 openingCents = parseToCents(formOpeningAmount, formCurrency);
             }
 
-            const payload = {
-                action: 'create_account',
-                account: {
-                    entity_id: concreteEntityId,
-                    name: formName,
-                    type: formType,
-                    sub_type: formSubType,
-                    currency: formCurrency,
-                    institution: formInstitution || null,
-                    opening_date: openingCents ? formOpeningDate : null,
-                    opening_balance_cents: openingCents
+            let payload: any;
+            if (editingAccountId) {
+                const account = accounts.find(a => a.id === editingAccountId);
+                let expectedRevision = account?.revision || 1;
+                if (account && account.opening_balance_cents === null && openingCents !== null) {
+                    const obRes = await fetch('/api/accounting', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'set_opening_balance',
+                            account_id: editingAccountId,
+                            amount_cents: openingCents,
+                            date: formOpeningDate
+                        })
+                    });
+                    if (!obRes.ok) {
+                        const errData = await obRes.json().catch(() => ({}));
+                        throw new Error(errData.error || 'Failed to establish missing opening balance');
+                    }
+                    expectedRevision += 1;
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new Event('opennetworth_balances_updated'));
+                    }
                 }
-            };
+
+                payload = {
+                    action: 'update_account',
+                    account_id: editingAccountId,
+                    expected_revision: expectedRevision,
+                    updates: {
+                        name: formName,
+                        sub_type: formSubType,
+                        institution: formInstitution || null
+                    }
+                };
+            } else {
+                payload = {
+                    action: 'create_account',
+                    account: {
+                        entity_id: concreteEntityId,
+                        name: formName,
+                        type: formType,
+                        sub_type: formSubType,
+                        currency: formCurrency,
+                        institution: formInstitution || null,
+                        opening_date: openingCents !== null ? formOpeningDate : null,
+                        opening_balance_cents: openingCents
+                    }
+                };
+            }
 
             const res = await fetch('/api/accounting', {
                 method: 'POST',
@@ -184,10 +273,14 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
             setFormName('');
             setFormOpeningAmount('');
             setFormInstitution('');
+            setEditingAccountId(null);
             setIsModalOpen(false);
 
             // Refresh authoritative list
             await fetchData(selectedEntityId);
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
         } catch (err: any) {
             console.error('Account creation error:', err);
             // M1-SAFE-04: Form inputs remain intact; modal stays open; actionable error is shown
@@ -286,8 +379,17 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
 
                     {assetAccounts.map(acc => {
                         const owner = entities.find(e => e.id === acc.entity_id);
+                        const isTarget = acc.id === targetAccountId;
                         return (
-                            <div key={acc.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between hover:border-primary/50 transition">
+                            <div
+                                id={`account-row-${acc.id}`}
+                                key={acc.id}
+                                className={`bg-card border p-4 rounded-xl flex items-center justify-between transition ${
+                                    isTarget
+                                        ? 'border-primary ring-2 ring-primary/40 bg-primary/5 shadow-md'
+                                        : 'border-border hover:border-primary/50'
+                                }`}
+                            >
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-medium text-foreground">{acc.name}</span>
@@ -301,10 +403,30 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                         {acc.sub_type.replace('_', ' ')} {acc.institution ? `• ${acc.institution}` : ''}
                                     </div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-right flex flex-col items-end">
                                     <div className="font-semibold text-foreground font-mono">{acc.formatted_balance}</div>
-                                    <div className="text-[10px] text-muted-foreground">
+                                    <div className="text-[10px] text-muted-foreground mb-1.5">
                                         As of {acc.as_of_date || acc.opening_date || getLocalIsoDate()}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <button
+                                            onClick={() => handleEditAccount(acc)}
+                                            className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-700"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            onClick={() => setRulesAccountId({ id: acc.id, name: acc.name })}
+                                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded border border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:text-indigo-300 dark:border-indigo-800/50"
+                                        >
+                                            Rules
+                                        </button>
+                                        <button
+                                            onClick={() => setCheckBalanceAccountId(acc.id)}
+                                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors bg-primary/5 hover:bg-primary/10 px-2 py-1 rounded border border-primary/10"
+                                        >
+                                            Check balance
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -330,8 +452,17 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
 
                     {liabilityAccounts.map(acc => {
                         const owner = entities.find(e => e.id === acc.entity_id);
+                        const isTarget = acc.id === targetAccountId;
                         return (
-                            <div key={acc.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between hover:border-primary/50 transition">
+                            <div
+                                id={`account-row-${acc.id}`}
+                                key={acc.id}
+                                className={`bg-card border p-4 rounded-xl flex items-center justify-between transition ${
+                                    isTarget
+                                        ? 'border-primary ring-2 ring-primary/40 bg-primary/5 shadow-md'
+                                        : 'border-border hover:border-primary/50'
+                                }`}
+                            >
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-medium text-foreground">{acc.name}</span>
@@ -345,10 +476,30 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                         {acc.sub_type.replace('_', ' ')} {acc.institution ? `• ${acc.institution}` : ''}
                                     </div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-right flex flex-col items-end">
                                     <div className="font-semibold text-rose-500 font-mono">{acc.formatted_balance}</div>
-                                    <div className="text-[10px] text-muted-foreground">
+                                    <div className="text-[10px] text-muted-foreground mb-1.5">
                                         As of {acc.as_of_date || acc.opening_date || getLocalIsoDate()}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <button
+                                            onClick={() => handleEditAccount(acc)}
+                                            className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-700"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            onClick={() => setRulesAccountId({ id: acc.id, name: acc.name })}
+                                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded border border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:text-indigo-300 dark:border-indigo-800/50"
+                                        >
+                                            Rules
+                                        </button>
+                                        <button
+                                            onClick={() => setCheckBalanceAccountId(acc.id)}
+                                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors bg-primary/5 hover:bg-primary/10 px-2 py-1 rounded border border-primary/10"
+                                        >
+                                            Check balance
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -364,7 +515,9 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                         {/* Modal Header */}
                         <div className="p-6 border-b border-border flex justify-between items-center bg-card">
                             <div>
-                                <h3 className="text-lg font-bold text-foreground">Add an account</h3>
+                                <h3 className="text-lg font-bold text-foreground">
+                                    {editingAccountId ? 'Edit account' : 'Add an account'}
+                                </h3>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                     Add a bank account, credit card, loan or investment.
                                 </p>
@@ -392,13 +545,13 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                 <label className="block text-xs font-semibold text-foreground mb-1">
                                     Who owns this account? *
                                 </label>
-                                {selectedEntityId !== 'all' ? (
+                                {((selectedEntityId && selectedEntityId !== 'all') || (entities.length === 1 && formEntityId)) ? (
                                     <div className="px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm flex items-center justify-between">
                                         <span className="font-medium text-foreground">
-                                            {entities.find(e => e.id === selectedEntityId)?.name || 'Selected Entity'}
+                                            {entities.find(e => e.id === (selectedEntityId && selectedEntityId !== 'all' ? selectedEntityId : formEntityId))?.name || 'Selected Entity'}
                                         </span>
                                         <span className="text-xs text-muted-foreground uppercase font-semibold">
-                                            {getOwnerTypeLabel(entities.find(e => e.id === selectedEntityId)?.type || 'person')} • {entities.find(e => e.id === selectedEntityId)?.currency}
+                                            {getOwnerTypeLabel(entities.find(e => e.id === (selectedEntityId && selectedEntityId !== 'all' ? selectedEntityId : formEntityId))?.type || 'person')} • {entities.find(e => e.id === (selectedEntityId && selectedEntityId !== 'all' ? selectedEntityId : formEntityId))?.currency}
                                         </span>
                                     </div>
                                 ) : (
@@ -410,7 +563,8 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                             const ent = entities.find(item => item.id === e.target.value);
                                             if (ent?.currency) setFormCurrency(ent.currency as CurrencyCode);
                                         }}
-                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                                        disabled={editingAccountId !== null}
                                     >
                                         <option value="">-- Select Owner (Required) --</option>
                                         {entities.map(ent => (
@@ -442,14 +596,16 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        if (editingAccountId) return;
                                         setFormType('asset');
                                         setFormSubType('checking');
                                     }}
+                                    disabled={editingAccountId !== null}
                                     className={`p-3 rounded-xl border text-left transition ${
                                         formType === 'asset'
                                             ? 'border-primary bg-primary/10 text-primary font-medium'
                                             : 'border-border hover:bg-muted text-muted-foreground'
-                                    }`}
+                                    } ${editingAccountId ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     <div className="font-semibold text-sm">Asset</div>
                                     <div className="text-[11px] opacity-80">What you own (Cash, Property, Stock)</div>
@@ -457,14 +613,16 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        if (editingAccountId) return;
                                         setFormType('liability');
                                         setFormSubType('credit_card');
                                     }}
+                                    disabled={editingAccountId !== null}
                                     className={`p-3 rounded-xl border text-left transition ${
                                         formType === 'liability'
                                             ? 'border-primary bg-primary/10 text-primary font-medium'
                                             : 'border-border hover:bg-muted text-muted-foreground'
-                                    }`}
+                                    } ${editingAccountId ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     <div className="font-semibold text-sm">Liability</div>
                                     <div className="text-[11px] opacity-80">What you owe (Credit Card, Loan)</div>
@@ -505,8 +663,9 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                     <label className="block text-xs font-semibold text-foreground mb-1">Currency</label>
                                     <select
                                         value={formCurrency}
+                                        disabled={editingAccountId !== null}
                                         onChange={e => setFormCurrency(e.target.value as CurrencyCode)}
-                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm disabled:opacity-50"
                                     >
                                         <option value="USD">USD ($)</option>
                                         <option value="AUD">AUD ($)</option>
@@ -520,7 +679,8 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                             </div>
 
                             {/* Opening Balance (Optional) */}
-                            <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3">
+                            {(!editingAccountId || (editingAccountId && accounts.find(a => a.id === editingAccountId)?.opening_balance_cents === null)) && (
+                                <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3">
                                 <div className="text-xs font-semibold text-foreground flex items-center justify-between">
                                     <span>Dated Opening Balance</span>
                                     <span className="text-[10px] text-muted-foreground">Optional</span>
@@ -549,7 +709,8 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                 <p className="text-[10px] text-muted-foreground">
                                     Sets the balance of this account as of this date.
                                 </p>
-                            </div>
+                                </div>
+                            )}
 
                             {/* Modal Actions */}
                             <div className="flex justify-end gap-2 pt-2">
@@ -567,13 +728,44 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                     className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition flex items-center gap-2"
                                 >
                                     {isSubmitting && <RefreshCw className="w-4 h-4 animate-spin" />}
-                                    {isSubmitting ? 'Saving...' : 'Save account'}
+                                    {isSubmitting ? 'Saving...' : (editingAccountId ? 'Save changes' : 'Save account')}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
+
+            <BalanceCheckModal
+                isOpen={!!checkBalanceAccountId}
+                onClose={() => setCheckBalanceAccountId(null)}
+                accountId={checkBalanceAccountId!}
+                onActionImport={() => {
+                    // Navigate to inbox with account preselected
+                    window.location.href = `/accounting?view=inbox&accountId=${checkBalanceAccountId}`;
+                }}
+                onActionSetup={() => {
+                    const acc = accounts.find(a => a.id === checkBalanceAccountId);
+                    setCheckBalanceAccountId(null);
+                    if (acc) {
+                        handleEditAccount(acc);
+                    }
+                }}
+                onActionReview={(startDate, endDate) => {
+                    // Navigate to events view for this account
+                    let url = `/accounting?view=events&account_id=${checkBalanceAccountId}`;
+                    if (startDate) url += `&start_date=${startDate}`;
+                    if (endDate) url += `&end_date=${endDate}`;
+                    window.location.href = url;
+                }}
+            />
+
+            <CategorizationRulesModal
+                isOpen={rulesAccountId !== null}
+                onClose={() => setRulesAccountId(null)}
+                accountId={rulesAccountId?.id || ''}
+                accountName={rulesAccountId?.name || ''}
+            />
         </div>
     );
 };

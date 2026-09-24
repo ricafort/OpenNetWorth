@@ -16,6 +16,8 @@ export interface PortfolioHolding {
     price: number;
     dayChange: number;        // $ change today
     dayChangePercent: number; // % change today
+    currency?: string;        // Native currency code
+    isExcluded?: boolean;     // True if excluded from base currency aggregates
 }
 
 export interface PortfolioAnalysis {
@@ -35,6 +37,8 @@ export interface PortfolioAnalysis {
 
     sectorBreakdown: { sector: string; weight: number }[];
     assetClassBreakdown: { assetClass: string; weight: number }[];
+    totalsByCurrency: Record<string, number>;
+    hasDividendData: boolean;
 }
 
 /**
@@ -67,25 +71,32 @@ const evaluateHoldingCostBasis = (inv: Asset): { hasCostBasis: boolean; costBasi
     return { hasCostBasis: false, costBasis: null };
 };
 
-export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
-    // calculate total value first for weighting
-    const totalValue = investments.reduce((sum, inv) => {
-        // Use manual value as primary source of truth if available
-        if (inv.value && inv.value > 0) {
-            return sum + inv.value;
-        }
+export const analyzePortfolio = (investments: Asset[], baseCurrency?: string): PortfolioAnalysis => {
+    const totalsByCurrency: Record<string, number> = {};
 
-        if (inv.investment_details) {
-            const price = inv.investment_details.currentPrice || 0;
-            return sum + (inv.investment_details.shares * price);
+    // calculate total value first for weighting. Exclude cross-currency if baseCurrency is provided.
+    const totalValue = investments.reduce((sum, inv) => {
+        const cur = inv.currency || 'USD';
+        let val = inv.value;
+        if (!val && inv.investment_details) {
+            val = inv.investment_details.shares * (inv.investment_details.currentPrice || 0);
         }
-        return sum + inv.value; // Fallback
+        val = val || 0;
+
+        totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + val;
+
+        if (baseCurrency && cur !== baseCurrency) return sum;
+        return sum + val;
     }, 0);
 
     let missingCostBasisCount = 0;
     let totalCostBasisSum = 0;
 
+    let includedHoldingsCount = 0;
+
     investments.forEach(inv => {
+        if (baseCurrency && (inv.currency || 'USD') !== baseCurrency) return;
+        includedHoldingsCount++;
         const { hasCostBasis, costBasis } = evaluateHoldingCostBasis(inv);
         if (!hasCostBasis || costBasis === null) {
             missingCostBasisCount++;
@@ -96,7 +107,7 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
 
     const totalHoldingsCount = investments.length;
     // Whole-portfolio return requires all included holdings to have valid cost basis
-    const hasFullCostBasis = totalHoldingsCount > 0 && missingCostBasisCount === 0;
+    const hasFullCostBasis = includedHoldingsCount > 0 && missingCostBasisCount === 0;
 
     const totalCostBasis = hasFullCostBasis ? totalCostBasisSum : 0;
     const totalGain = hasFullCostBasis ? totalValue - totalCostBasis : 0;
@@ -143,7 +154,8 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
             gainPercent = costBasis > 0 ? (gain / costBasis) * 100 : null;
         }
 
-        const weight = totalValue > 0 ? (value / totalValue) * 100 : 0;
+        const isExcluded = baseCurrency ? (inv.currency || 'USD') !== baseCurrency : false;
+        const weight = (totalValue > 0 && !isExcluded) ? (value / totalValue) * 100 : 0;
 
         return {
             ticker,
@@ -158,7 +170,9 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
             shares,
             price,
             dayChange,
-            dayChangePercent
+            dayChangePercent,
+            currency: inv.currency || 'USD',
+            isExcluded
         };
     });
 
@@ -167,16 +181,19 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
 
     const concentrationWarnings = holdings
         .filter(h => h.isConcentrated)
-        .map(h => `${h.ticker} makes up ${h.weight.toFixed(1)}% of your portfolio.`);
+        .map(h => `${h.ticker} makes up ${h.weight.toFixed(1)}% of tracked holdings.`);
 
+    let hasDividendData = false;
     // Dividend calculation (annual projected)
     const estimatedAnnualDividends = investments.reduce((sum, inv) => {
+        if (baseCurrency && (inv.currency || 'USD') !== baseCurrency) return sum;
         if (inv.investment_details?.dividendYield) {
+            hasDividendData = true;
             let val = inv.value;
             if (!val && inv.investment_details.shares && inv.investment_details.currentPrice) {
                 val = inv.investment_details.shares * inv.investment_details.currentPrice;
             }
-            return sum + (val * (inv.investment_details.dividendYield / 100));
+            return sum + ((val || 0) * (inv.investment_details.dividendYield / 100));
         }
         return sum;
     }, 0);
@@ -184,6 +201,7 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
     // Asset Class Breakdown
     const assetClassMap = new Map<string, number>();
     investments.forEach(inv => {
+        if (baseCurrency && (inv.currency || 'USD') !== baseCurrency) return;
         const cls = inv.investment_details?.assetClass || inv.type || 'Other';
         let value = inv.value;
         if (!value && inv.investment_details) {
@@ -202,6 +220,7 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
     // Sector Breakdown
     const sectorMap = new Map<string, number>();
     investments.forEach(inv => {
+        if (baseCurrency && (inv.currency || 'USD') !== baseCurrency) return;
         const sector = inv.investment_details?.sector || 'Unknown';
         let value = inv.value;
         if (!value && inv.investment_details) {
@@ -229,7 +248,9 @@ export const analyzePortfolio = (investments: Asset[]): PortfolioAnalysis => {
         holdings,
         concentrationWarnings,
         estimatedAnnualDividends,
+        hasDividendData,
         sectorBreakdown,
-        assetClassBreakdown
+        assetClassBreakdown,
+        totalsByCurrency
     };
 };

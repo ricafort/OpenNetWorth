@@ -22,6 +22,8 @@ export interface Liability {
     minimum_payment?: number;
     /** true = mortgage, student loan (builds equity/skills) */
     is_good_debt: boolean;
+    /** Optional link to authoritative modern accounting account */
+    account_id?: string;
     last_updated: string;
 }
 
@@ -63,6 +65,9 @@ export interface DebtPayoffResult {
     isInsufficientPayment?: boolean;
     insufficientPaymentReason?: string;
     insufficientDebts?: InsufficientDebtDetail[];
+    /** True if debts amortise but exceed the 50-year (600-month) projection horizon */
+    isHorizonExceeded?: boolean;
+    horizonExceededReason?: string;
 }
 
 export interface FreedomDateSummary {
@@ -75,7 +80,22 @@ export interface FreedomDateSummary {
     paidOff: number;
 }
 
+/**
+ * Freedom / Debt Payoff scenario settings.
+ * 
+ * Why this exists:
+ * Configures the user's debt acceleration plan (strategy and monthly extra payment)
+ * along with its explicit native currency (Item 5).
+ * 
+ * Tricky logic:
+ * Legacy settings lacked an explicit currency field and defaulted to historical USD.
+ * Optional currency allows backwards compatibility while persisting explicit currency.
+ * 
+ * TODO: Support multi-currency target budgets when multi-currency debt payoff is added.
+ */
 export interface FreedomSettings {
     strategy: PayoffStrategy;
     extraMonthlyPayment: number;
+    currency?: CurrencyCode;
 }
+

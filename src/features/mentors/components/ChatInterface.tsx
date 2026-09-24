@@ -21,6 +21,8 @@ interface ChatInterfaceProps {
     onSend: () => void;
     onActionConfirm: (intent: any) => void;
     onActionCancel: () => void;
+    entities?: any[];
+    onResolveIntent?: (intent: any, entityId: string) => void;
 }
 
 export default function ChatInterface({
@@ -34,7 +36,9 @@ export default function ChatInterface({
     onSetInput,
     onSend,
     onActionConfirm,
-    onActionCancel
+    onActionCancel,
+    entities = [],
+    onResolveIntent
 }: ChatInterfaceProps) {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -154,10 +158,36 @@ export default function ChatInterface({
                                         <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-2">
                                             <p className="text-xs text-slate-500">Based on {msg.facts.transactionIds?.length || 0} supporting transactions.</p>
                                             <div className="flex gap-2">
-                                                <a href="/accounting?view=reports" className="text-xs font-bold text-blue-600 hover:underline">
+                                                <a 
+                                                    href={`/accounting?view=events${msg.facts.entityId ? `&entity_id=${msg.facts.entityId}` : ''}${msg.facts.startDate ? `&start_date=${msg.facts.startDate}` : ''}${msg.facts.endDate ? `&end_date=${msg.facts.endDate}` : ''}&intent=spending`}
+                                                    className="text-xs font-bold text-blue-600 hover:underline"
+                                                >
                                                     View Source Records →
                                                 </a>
                                             </div>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {msg.pendingIntent && msg.pendingIntent.type === 'spending_clarification' && entities.length > 0 && onResolveIntent && (
+                                    <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+                                        <p className="font-bold text-blue-900 mb-2">Select the entity to calculate spending for:</p>
+                                        <div className="flex flex-col gap-2">
+                                            <button
+                                                onClick={() => onResolveIntent(msg.pendingIntent, 'all')}
+                                                className="text-left px-3 py-2 bg-white border border-blue-200 rounded-lg text-blue-800 hover:bg-blue-100 transition-colors text-xs font-medium"
+                                            >
+                                                All Accounts
+                                            </button>
+                                            {entities.map(e => (
+                                                <button
+                                                    key={e.id}
+                                                    onClick={() => onResolveIntent(msg.pendingIntent, e.id)}
+                                                    className="text-left px-3 py-2 bg-white border border-blue-200 rounded-lg text-blue-800 hover:bg-blue-100 transition-colors text-xs font-medium"
+                                                >
+                                                    {e.name} {e.type ? `(${e.type})` : ''}
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
                                 )}
@@ -188,7 +218,8 @@ export default function ChatInterface({
                         className="w-full bg-card text-card-foreground border border-border rounded-2xl py-4 pl-6 pr-16 outline-none focus:ring-2 focus:ring-primary/20 shadow-sm transition-all placeholder:text-muted-foreground"
                     />
                     <button
-                        onClick={onSend}
+                        id="chat-send-btn"
+                        onClick={() => onSend()}
                         disabled={isLoading || !input.trim()}
                         className="absolute right-2 top-2 p-3 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all disabled:opacity-50 shadow-md"
                     >

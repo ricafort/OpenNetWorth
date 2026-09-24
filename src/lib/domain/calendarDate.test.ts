@@ -121,5 +121,51 @@ describe('Calendar Date Domain Service', () => {
             expect(result?.isValid).toBe(false);
             expect(result?.error).toContain('cannot be after end date');
         });
+
+        // Why this test exists:
+        // Resolves Assessor Finding D: "until" was previously missing from rangeRegex separators.
+        // Queries like "from 2026-08-01 until 2026-08-15" must be recognized as valid date ranges.
+        it('parses ranges using the "until" separator keyword', () => {
+            const result = parseExplicitDateRange('from 2026-08-01 until 2026-08-15');
+            expect(result).not.toBeNull();
+            expect(result?.isValid).toBe(true);
+            expect(result?.startDate).toBe('2026-08-01');
+            expect(result?.endDate).toBe('2026-08-15');
+        });
+
+        // Why this test exists:
+        // Resolves Assessor Finding D: Natural month ranges ("between July 1 and July 31") were not handled,
+        // collapsing into single-day lookups (July 1st) in intent parsing.
+        it('parses natural month-first ranges like "between July 1 and July 31"', () => {
+            const result = parseExplicitDateRange('What did I spend between July 1 and July 31?', '2026-09-22');
+            expect(result).not.toBeNull();
+            expect(result?.isValid).toBe(true);
+            expect(result?.startDate).toBe('2026-07-01');
+            expect(result?.endDate).toBe('2026-07-31');
+        });
+
+        it('parses cross-month natural ranges like "from July 1 until August 15"', () => {
+            const result = parseExplicitDateRange('spending from July 1 until August 15', '2026-09-22');
+            expect(result).not.toBeNull();
+            expect(result?.isValid).toBe(true);
+            expect(result?.startDate).toBe('2026-07-01');
+            expect(result?.endDate).toBe('2026-08-15');
+        });
+
+        it('parses day-first natural ranges like "between 1 July and 31 July"', () => {
+            const result = parseExplicitDateRange('between 1 July and 31 July', '2026-09-22');
+            expect(result).not.toBeNull();
+            expect(result?.isValid).toBe(true);
+            expect(result?.startDate).toBe('2026-07-01');
+            expect(result?.endDate).toBe('2026-07-31');
+        });
+
+        it('flags invalid dates in natural ranges like "between February 1 and February 31"', () => {
+            const result = parseExplicitDateRange('between February 1 and February 31', '2026-09-22');
+            expect(result).not.toBeNull();
+            expect(result?.isValid).toBe(false);
+            expect(result?.error).toContain("Invalid calendar date: '2026-02-31' does not exist.");
+        });
     });
 });
+

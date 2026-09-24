@@ -20,7 +20,7 @@ export default function WealthSnapshotGenerator() {
     const { assets, isLoading: isAssetsLoading } = useAssetsQuery();
     const { liabilities, isLoading: isLiabilitiesLoading } = useLiabilitiesQuery();
 
-    const { hasModernRecords, isLoading: isAccountingLoading } = useAccountingCheck();
+    const { hasModernRecords, isLoading: isAccountingLoading, isError: isAccountingError } = useAccountingCheck();
 
     const isLoading = isAssetsLoading || isLiabilitiesLoading || isAccountingLoading;
 
@@ -79,6 +79,26 @@ export default function WealthSnapshotGenerator() {
                     <div className="h-4 w-1/3 bg-slate-200 rounded"></div>
                     <div className="h-3 w-2/3 bg-slate-200 rounded"></div>
                 </div>
+            </div>
+        );
+    }
+
+    if (isAccountingError) {
+        return (
+            <div className="flex flex-col gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-xl text-left shadow-sm">
+                <div className="flex items-center gap-3 text-destructive">
+                    <FileText size={24} />
+                    <h3 className="font-bold">Balances Unavailable</h3>
+                </div>
+                <p className="text-sm text-muted-foreground font-medium">
+                    Unable to load authoritative account balances.
+                </p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="w-fit text-xs font-bold bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+                >
+                    Retry
+                </button>
             </div>
         );
     }

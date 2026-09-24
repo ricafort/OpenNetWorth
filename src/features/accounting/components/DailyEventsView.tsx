@@ -20,7 +20,9 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import {
     Plus,
     ArrowDownRight,
@@ -110,9 +112,15 @@ export interface DailyEventsViewProps {
     entities: Entity[];
     selectedEntityId: string;
     onNavigateToDocuments?: () => void;
+    initialStartDate?: string;
+    initialEndDate?: string;
+    initialIntent?: string;
 }
 
-export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, selectedEntityId, onNavigateToDocuments }) => {
+export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, selectedEntityId, onNavigateToDocuments, initialStartDate, initialEndDate, initialIntent }) => {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const accountId = searchParams.get('account_id') || undefined;
     const PAGE_SIZE = 50;
     const [accounts, setAccounts] = useState<AccountOption[]>([]);
     const [transactions, setTransactions] = useState<TransactionItem[]>([]);
@@ -133,11 +141,15 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
     };
 
     const [startDate, setStartDate] = useState(() => {
+        if (initialStartDate) return initialStartDate;
         const d = new Date();
         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
     });
-    const [endDate, setEndDate] = useState(getLocalIsoDate);
+    const [endDate, setEndDate] = useState(() => {
+        if (initialEndDate) return initialEndDate;
+        return getLocalIsoDate();
+    });
 
     // Modal state
     type TransactionType = 'expense' | 'income' | 'transfer' | 'card_repayment' | 'loan_repayment';
@@ -187,6 +199,25 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
     const [voidReason, setVoidReason] = useState('');
     const [voidActor, setVoidActor] = useState('User');
 
+    // React to URL changes (props update)
+    useEffect(() => {
+        if (initialStartDate) {
+            setStartDate(initialStartDate);
+        } else {
+            const d = new Date();
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            setStartDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`);
+        }
+        
+        if (initialEndDate) {
+            setEndDate(initialEndDate);
+        } else {
+            const d = new Date();
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            setEndDate(d.toISOString().split('T')[0]);
+        }
+    }, [initialStartDate, initialEndDate]);
+
     // Auto-focus account name input when entering account creation
     useEffect(() => {
         if (modalView === 'create_account') {
@@ -194,23 +225,37 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
         }
     }, [modalView]);
 
-    // Modal Escape Key Listener
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                if (modalView === 'create_account') {
-                    handleBackFromAccountCreation();
-                } else if (isRecordModalOpen) {
-                    setIsRecordModalOpen(false);
-                    setEditingDraftId(null);
-                    setIsPersonallyPaidBusiness(false);
-                }
-                if (voidTargetTx) setVoidTargetTx(null);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [modalView, isRecordModalOpen, voidTargetTx]);
+    // Why these hooks exist:
+    // Resolves Assessor Finding E: Transaction Entry modal & Void Confirmation modal lacked
+    // focus containment (WCAG 2.1 AA), Escape handling, and ARIA dialog semantics.
+    // Tricky logic:
+    // When the entry modal is in inline 'create_account' sub-view, pressing Escape returns to the
+    // transaction form rather than discarding all user inputs. In standard view, Escape closes the modal.
+    // Focus is trapped within active dialog boundaries and restored to trigger on close.
+    // TODO: In Milestone 2, support multiple nested modal layers with focus trap stack management.
+    const handleCloseRecordModal = useCallback(() => {
+        if (modalView === 'create_account') {
+            handleBackFromAccountCreation();
+        } else {
+            setIsRecordModalOpen(false);
+            setEditingDraftId(null);
+            setIsPersonallyPaidBusiness(false);
+        }
+    }, [modalView]);
+
+    const recordModalRef = useFocusTrap<HTMLDivElement>({
+        isOpen: isRecordModalOpen,
+        onClose: handleCloseRecordModal
+    });
+
+    const handleCloseVoidModal = useCallback(() => {
+        setVoidTargetTx(null);
+    }, []);
+
+    const voidModalRef = useFocusTrap<HTMLDivElement>({
+        isOpen: !!voidTargetTx,
+        onClose: handleCloseVoidModal
+    });
 
     const fetchDrafts = async () => {
         try {
@@ -399,6 +444,9 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             if (!res.ok) throw new Error(data.error || 'Failed to create account');
             
             await fetchData();
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
             if (accountCreationTarget === 'formToAccountId') {
                 setFormToAccountId(data.account.id);
             } else {
@@ -526,6 +574,12 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             if (selectedEntityId !== 'all') {
                 query.set('entity_id', selectedEntityId);
             }
+            if (initialIntent) {
+                query.set('intent', initialIntent);
+            }
+            if (accountId) {
+                query.set('account_id', accountId);
+            }
 
             const res = await fetch(`/api/accounting?${query.toString()}`);
             if (!res.ok) {
@@ -567,6 +621,12 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             if (selectedEntityId !== 'all') {
                 query.set('entity_id', selectedEntityId);
             }
+            if (initialIntent) {
+                query.set('intent', initialIntent);
+            }
+            if (accountId) {
+                query.set('account_id', accountId);
+            }
             const res = await fetch(`/api/accounting?${query.toString()}`);
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
@@ -591,8 +651,32 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
     };
 
     useEffect(() => {
+        // Prevent fetching with impossible dates
+        if (startDate && endDate && startDate > endDate) {
+            setError("Start date cannot be after end date.");
+            return;
+        }
         fetchData();
-    }, [selectedEntityId, startDate, endDate]);
+    }, [selectedEntityId, startDate, endDate, initialIntent, accountId]);
+
+    const handleClearFilters = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('intent');
+        params.delete('start_date');
+        params.delete('end_date');
+        params.delete('account_id');
+        
+        const d = new Date();
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        const defaultStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+        const defaultEnd = getLocalIsoDate();
+        
+        setStartDate(defaultStart);
+        setEndDate(defaultEnd);
+        setError(null);
+        
+        router.replace(`?${params.toString()}`, { scroll: false });
+    };
 
     // Handle Transaction Submission
     const handleRecordSubmit = async (e: React.FormEvent) => {
@@ -697,6 +781,9 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             setFormDescription('');
             setSuccessMessage('Transaction recorded successfully and double-entry postings committed.');
             await fetchData();
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
         } catch (err: any) {
             console.error('Submit error:', err);
             // M1-SAFE-04: Modal remains open, inputs preserved, error displayed
@@ -739,6 +826,9 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             setVoidReason('');
             setSuccessMessage(`Transaction ${voidTargetTx.description} successfully voided. Correction audit trail recorded.`);
             await fetchData();
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
         } catch (err: any) {
             console.error('Void error:', err);
             setError(err.message || 'Failed to void transaction.');
@@ -779,21 +869,51 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
         <div className="space-y-6">
             {/* Controls Bar (Uncluttered, focused on date filtering and action) */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <div className="flex items-center gap-2 text-xs">
-                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Date range:</span>
-                    <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                    <span className="text-slate-400 text-xs">to</span>
-                    <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Date range:</span>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                        <span className="text-slate-400 text-xs">to</span>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                    </div>
+                    {(initialIntent || accountId) && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            {initialIntent && (
+                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 rounded text-[10px] font-semibold border border-indigo-200 dark:border-indigo-800/50">
+                                    Filtered by Assistant Intent: {initialIntent}
+                                </span>
+                            )}
+                            {accountId && (
+                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 rounded text-[10px] font-semibold border border-indigo-200 dark:border-indigo-800/50">
+                                    Filtered by Account
+                                </span>
+                            )}
+                            <button
+                                onClick={handleClearFilters}
+                                className="text-[10px] font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline"
+                            >
+                                Clear filters
+                            </button>
+                        </div>
+                    )}
+                    {(!initialIntent && !accountId) && (startDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01` || endDate !== getLocalIsoDate()) && (
+                        <button
+                            onClick={handleClearFilters}
+                            className="text-[10px] font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline text-left"
+                        >
+                            Reset dates
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2.5 self-end sm:self-center">
@@ -1212,7 +1332,14 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                   {/* Record Event & Account Creation Modal */}
             {isRecordModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col max-h-[90vh]">
+                    <div
+                        ref={recordModalRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="record-modal-title"
+                        tabIndex={-1}
+                        className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col max-h-[90vh] focus:outline-none"
+                    >
                         {modalView === 'create_account' ? (
                             /* Sub-task 1: Account Creation View (Replaces transaction form temporarily) */
                             <>
@@ -1225,7 +1352,7 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                         <ArrowLeft className="w-4 h-4" />
                                         <span>{activeTab === 'expense' ? 'Back to expense' : 'Back to transaction'}</span>
                                     </button>
-                                    <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">Add an account</h3>
+                                    <h3 id="record-modal-title" className="font-bold text-slate-900 dark:text-slate-100 text-sm">Add an account</h3>
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1371,7 +1498,7 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                             <>
                                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-start bg-slate-50 dark:bg-slate-800/50 shrink-0">
                                     <div>
-                                        <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">
+                                        <h3 id="record-modal-title" className="font-bold text-slate-900 dark:text-slate-100 text-base">
                                             {activeTab === 'expense' ? 'Add expense' :
                                              activeTab === 'income' ? 'Add income' :
                                              activeTab === 'transfer' ? 'Transfer' :
@@ -2161,11 +2288,18 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             {/* Void Modal */}
             {voidTargetTx && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div
+                        ref={voidModalRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="void-modal-title"
+                        tabIndex={-1}
+                        className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden focus:outline-none"
+                    >
                         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-rose-50 dark:bg-rose-950/40">
                             <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300">
                                 <Ban className="w-5 h-5" />
-                                <h3 className="font-bold text-base">Auditable Transaction Void</h3>
+                                <h3 id="void-modal-title" className="font-bold text-base">Auditable Transaction Void</h3>
                             </div>
                             <button
                                 onClick={() => setVoidTargetTx(null)}

@@ -262,13 +262,17 @@ export function ingestCsvDocument(
 
     const proposals: ExtractedFinancialProposal[] = [];
 
+    // Batch C3: Fetch categorization rules for target account
+    const catRules = db.prepare('SELECT id, match_string, match_type, target_category FROM m1_categorization_rules WHERE account_id = ?').all(input.target_account_id) as any[];
+
     const saveTransaction = db.transaction(() => {
         for (const row of parseResult.rows) {
             const proposalId = `prop-${documentId}-r${row.row_number}`;
             const existingProp = getExistingPropStmt.get(proposalId) as any;
 
             // Requirement 2: If proposal was already approved into the ledger, preserve it unchanged!
-            if (existingProp && (existingProp.review_status === 'approved' || existingProp.review_status === 'linked')) {
+            // Batch C3 Fix: Also preserve 'modified' (user-reviewed) proposals on reimport.
+            if (existingProp && (existingProp.review_status === 'approved' || existingProp.review_status === 'linked' || existingProp.review_status === 'modified')) {
                 proposals.push({
                     id: existingProp.id,
                     document_id: existingProp.document_id,
@@ -344,6 +348,23 @@ export function ingestCsvDocument(
                 source_snippet: row.raw_snippet
             };
 
+            // Apply categorization rules
+            let suggestedCategory = input.default_category || (row.event_type === 'income' ? 'salary' : 'living_expense');
+            const rowDescLower = row.description.toLowerCase().trim();
+            for (const rule of catRules) {
+                if (rule.match_type === 'exact') {
+                    if (rowDescLower === rule.match_string.toLowerCase().trim()) {
+                        suggestedCategory = rule.target_category;
+                        break;
+                    }
+                } else if (rule.match_type === 'contains') {
+                    if (rowDescLower.includes(rule.match_string.toLowerCase().trim())) {
+                        suggestedCategory = rule.target_category;
+                        break;
+                    }
+                }
+            }
+
             const proposal: ExtractedFinancialProposal = {
                 id: proposalId,
                 document_id: documentId,
@@ -356,7 +377,7 @@ export function ingestCsvDocument(
                 counterparty: row.description,
                 description: row.description,
                 event_type: row.event_type,
-                suggested_category: input.default_category || (row.event_type === 'income' ? 'salary' : 'living_expense'),
+                suggested_category: suggestedCategory,
                 evidence,
                 extraction_version: 'slice1e-csv-v1',
                 validation_findings: findings,
@@ -710,6 +731,37 @@ export function approveProposals(
             const now = new Date().toISOString();
             updatePropStmt.run(description, counterparty, category, now, rawProp.id);
 
+            // Batch C3: Save categorization rule if requested
+            if (item.save_categorization_rule && category) {
+                const matchString = (counterparty || description || '').trim().toLowerCase();
+                if (matchString) {
+                    const existingRule = db.prepare(
+                        'SELECT id FROM m1_categorization_rules WHERE account_id = ? AND match_string = ?'
+                    ).get(targetAccount.id, matchString) as any;
+
+                    if (existingRule) {
+                        db.prepare(`
+                            UPDATE m1_categorization_rules 
+                            SET target_category = ?, updated_at = ? 
+                            WHERE id = ?
+                        `).run(category, now, existingRule.id);
+                    } else {
+                        const crypto = require('crypto');
+                        db.prepare(`
+                            INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+                            VALUES (?, ?, ?, 'exact', ?, ?, ?)
+                        `).run(
+                            crypto.randomUUID(),
+                            targetAccount.id,
+                            matchString,
+                            category,
+                            now,
+                            now
+                        );
+                    }
+                }
+            }
+
             transactionIds.push(txResult.id);
             approvedCount++;
         }
@@ -855,6 +907,7 @@ export function updateProposalReview(
         account_id?: string;
         suggested_category?: string;
         review_status?: ProposalReviewStatus;
+        save_categorization_rule?: boolean;
     }
 ): ExtractedFinancialProposal {
     const existing = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get(input.proposal_id) as any;
@@ -989,6 +1042,37 @@ export function updateProposalReview(
         now,
         input.proposal_id
     );
+
+    // Batch C3: Save categorization rule if requested during review
+    if (input.save_categorization_rule && category && finalAccountId) {
+        const matchString = (counterparty || description || '').trim().toLowerCase();
+        if (matchString) {
+            const existingRule = db.prepare(
+                'SELECT id FROM m1_categorization_rules WHERE account_id = ? AND match_string = ?'
+            ).get(finalAccountId, matchString) as any;
+
+            if (existingRule) {
+                db.prepare(`
+                    UPDATE m1_categorization_rules 
+                    SET target_category = ?, updated_at = ? 
+                    WHERE id = ?
+                `).run(category, now, existingRule.id);
+            } else {
+                const crypto = require('crypto');
+                db.prepare(`
+                    INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+                    VALUES (?, ?, ?, 'exact', ?, ?, ?)
+                `).run(
+                    crypto.randomUUID(),
+                    finalAccountId,
+                    matchString,
+                    category,
+                    now,
+                    now
+                );
+            }
+        }
+    }
 
     return getProposalById(db, input.proposal_id)!;
 }
@@ -1620,6 +1704,119 @@ export function linkProposalToTransaction(
             evidence_refs: updatedTx.evidence_refs ? JSON.parse(updatedTx.evidence_refs) : []
         }
     };
+}
+
+/**
+ * Bulk updates the target account and derived entity ownership for all eligible pending proposals in a document.
+ * 
+ * Why this exists:
+ * Fulfills Batch C1 Requirement 1 & Requirement 6:
+ * - Atomically updates `account_id` and derived `entity_id` across eligible pending proposals (`unreviewed` and `modified`).
+ * - Preserves approved (`approved`) and linked (`linked`) proposals unchanged without modifying their account or entity.
+ * - Reuses domain validation (`assertEligiblePaymentAccount`).
+ * - Validates currency compatibility across all eligible pending proposals.
+ *   If any proposal currency contradicts the target account currency, fails atomically via SQLite transaction,
+ *   rolling back so zero partial updates occur.
+ * - Dynamically updates validation findings: clears `CURRENCY_MISMATCH`, `MISSING_ACCOUNT`, and owner conflicts
+ *   demonstrably resolved by the account assignment.
+ *   CRITICAL: Does NOT clear `MISSING_CURRENCY` merely because an account has been selected.
+ * - Operates entirely at proposal level (`m1_proposals`), never touching non-existent `m1_documents.entity_id`.
+ * 
+ * Tricky logic:
+ * Wraps validation and updates in an explicit SQLite transaction `db.transaction(...)`.
+ * Any currency mismatch throws before/during transaction, rolling back all proposal modifications.
+ */
+export function bulkUpdateProposalAccount(
+    db: Database.Database,
+    documentId: string,
+    accountId: string
+): number {
+    const doc = db.prepare('SELECT id FROM m1_documents WHERE id = ?').get(documentId);
+    if (!doc) {
+        throw new Error(`Document not found: ${documentId}`);
+    }
+
+    const acc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    if (!acc) {
+        throw new Error(`Account not found: ${accountId}`);
+    }
+
+    // Reuse existing domain validation for payment account eligibility
+    assertEligiblePaymentAccount(acc);
+
+    const targetEntityId = acc.entity_id;
+    const targetCurrency = acc.currency.toUpperCase();
+    const now = new Date().toISOString();
+
+    const updateTx = db.transaction(() => {
+        // Query eligible pending proposals only (preserve approved and linked proposals)
+        const pendingProposals = db.prepare(`
+            SELECT * FROM m1_proposals
+            WHERE document_id = ?
+              AND review_status IN ('unreviewed', 'modified')
+        `).all(documentId) as any[];
+
+        if (pendingProposals.length === 0) {
+            return 0;
+        }
+
+        // Validate currency compatibility for each pending proposal before applying updates
+        for (const prop of pendingProposals) {
+            const propCurrency = (prop.original_currency || '').toUpperCase();
+            if (propCurrency && propCurrency !== targetCurrency) {
+                throw new Error(
+                    `Cannot update proposal "${prop.id}": account currency "${targetCurrency}" does not match proposal currency "${propCurrency}".`
+                );
+            }
+        }
+
+        const updateStmt = db.prepare(`
+            UPDATE m1_proposals
+            SET 
+                account_id = ?,
+                entity_id = ?,
+                validation_findings = ?,
+                review_status = CASE 
+                    WHEN review_status = 'unreviewed' THEN 'modified'
+                    ELSE review_status 
+                END,
+                updated_at = ?
+            WHERE id = ?
+        `);
+
+        let updatedCount = 0;
+        for (const prop of pendingProposals) {
+            let findings: ValidationFinding[] = [];
+            try {
+                findings = prop.validation_findings ? JSON.parse(prop.validation_findings) : [];
+            } catch {
+                findings = [];
+            }
+
+            // Clear findings demonstrably resolved by account selection:
+            // 1. Clear CURRENCY_MISMATCH if currency now matches target account
+            const propCurrency = (prop.original_currency || '').toUpperCase();
+            if (propCurrency && propCurrency === targetCurrency) {
+                findings = findings.filter(f => f.code !== 'CURRENCY_MISMATCH');
+            }
+            // 2. Clear MISSING_ACCOUNT / UNRESOLVED_ACCOUNT / OWNER_CONFLICT if present
+            findings = findings.filter(f =>
+                f.code !== 'MISSING_ACCOUNT' &&
+                f.code !== 'UNRESOLVED_ACCOUNT' &&
+                f.code !== 'OWNER_CONFLICT' &&
+                f.code !== 'OWNER_MISMATCH'
+            );
+            // CRITICAL: Do NOT clear MISSING_CURRENCY merely because an account has been selected!
+
+            const findingsJson = JSON.stringify(findings);
+            updateStmt.run(acc.id, targetEntityId, findingsJson, now, prop.id);
+            updatedCount++;
+        }
+
+        return updatedCount;
+    });
+
+    return updateTx();
 }
 
 

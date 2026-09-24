@@ -46,6 +46,22 @@ export default function DashboardHeader() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Listen for global open update requests
+    const [modalInitialMode, setModalInitialMode] = useState<'paste' | 'statement' | 'manual'>('paste');
+    const [modalAccountId, setModalAccountId] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        const handleOpenUpdate = (e: any) => {
+            if (e.detail) {
+                if (e.detail.mode) setModalInitialMode(e.detail.mode);
+                setModalAccountId(e.detail.accountId);
+            }
+            setIsBalancesModalOpen(true);
+        };
+        window.addEventListener('opennetworth_open_balance_update', handleOpenUpdate);
+        return () => window.removeEventListener('opennetworth_open_balance_update', handleOpenUpdate);
+    }, []);
+
     return (
         <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 px-1">
             <div>
@@ -96,14 +112,10 @@ export default function DashboardHeader() {
                         <button
                             onClick={async () => {
                                 if (window.confirm('Reset and choose a new profile? This will clear your current local data and log you out.')) {
-                                    // 1. Explicitly sign out of Supabase to ensure we fallback to Guest Mode (LocalStorage)
-                                    // This is critical because "Demo Mode" data is written to LocalStorage.
                                     const supabase = createClient();
                                     await supabase.auth.signOut();
-
-                                    // 2. Clear all local data to trigger "First Run" / "Welcome Screen" again
                                     localStorage.clear();
-                                    window.location.href = '/'; // Redirect to root to clear URL params
+                                    window.location.href = '/'; 
                                 }
                             }}
                             className="p-2 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-full transition-colors"
@@ -113,18 +125,12 @@ export default function DashboardHeader() {
                             <Gamepad2 size={20} />
                         </button>
 
-                        {/* 
-                          * Fast Balance Updates Button
-                          * Why this exists:
-                          * Provides primary header access to the Delivery 1 fast balance update modal, allowing users
-                          * to paste tabular balances, review live deltas, or execute manual fast updates.
-                          * Tricky logic:
-                          * Operates against local SQLite observation ledger and triggers 'opennetworth_balances_updated'
-                          * event upon save, causing all stat cards to recompute without reloading.
-                          * TODO: Show unobserved account count badge directly on this button in future UX iteration.
-                          */}
                         <button
-                            onClick={() => setIsBalancesModalOpen(true)}
+                            onClick={() => {
+                                setModalInitialMode('paste');
+                                setModalAccountId(undefined);
+                                setIsBalancesModalOpen(true);
+                            }}
                             className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl shadow-sm transition-all group"
                             title="Update Account Balances (Super, Trading, Bank)"
                         >
@@ -228,6 +234,8 @@ export default function DashboardHeader() {
             <UpdateBalancesModal
                 isOpen={isBalancesModalOpen}
                 onClose={() => setIsBalancesModalOpen(false)}
+                initialMode={modalInitialMode}
+                initialAccountId={modalAccountId}
             />
         </div>
     );

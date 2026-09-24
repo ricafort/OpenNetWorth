@@ -37,6 +37,7 @@ import {
     assertValidMoneyCents,
     validateTransactionBalance
 } from './types';
+import { assertValidCalendarDate } from './transactionService';
 
 export interface CreateEntityInput {
     id?: string;
@@ -223,15 +224,15 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
     const accountId = input.id || crypto.randomUUID();
     const now = new Date().toISOString();
 
-    const hasOpeningBalance = input.opening_balance_cents !== undefined &&
-        input.opening_balance_cents !== null &&
-        input.opening_balance_cents !== 0;
+    const isOpeningBasisKnown = input.opening_balance_cents !== undefined && input.opening_balance_cents !== null;
+    const hasOpeningTransaction = isOpeningBasisKnown && input.opening_balance_cents !== 0;
 
-    if (hasOpeningBalance) {
+    if (isOpeningBasisKnown) {
         assertValidMoneyCents(input.opening_balance_cents!, 'Opening balance cents');
         if (!input.opening_date || !/^\d{4}-\d{2}-\d{2}$/.test(input.opening_date)) {
             throw new ValidationError('A valid opening date (YYYY-MM-DD) is required when specifying an opening balance.');
         }
+        assertValidCalendarDate(input.opening_date, 'Opening date');
     }
 
     let createdAccount: Account;
@@ -262,7 +263,7 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             input.institution || null,
             input.account_number_mask || null,
             input.opening_date || null,
-            hasOpeningBalance ? input.opening_balance_cents : null,
+            isOpeningBasisKnown ? input.opening_balance_cents : null,
             trackingMode,
             now,
             now
@@ -279,7 +280,7 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             institution: input.institution || null,
             account_number_mask: input.account_number_mask || null,
             opening_date: input.opening_date || null,
-            opening_balance_cents: hasOpeningBalance ? input.opening_balance_cents : null,
+            opening_balance_cents: isOpeningBasisKnown ? input.opening_balance_cents : null,
             tracking_mode: trackingMode,
             balance_revision: 1,
             revision: 1,
@@ -288,7 +289,7 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
         };
 
         // 2. If opening balance provided, post balanced double-entry transaction (M1-FLOW-01, T1)
-        if (hasOpeningBalance) {
+        if (hasOpeningTransaction) {
             const equityAccount = ensureOpeningEquityAccount(db, input.entity_id, currency);
             const txId = `tx-open-${accountId}`;
             const txDate = input.opening_date!;
@@ -633,3 +634,107 @@ export function listEntityMembers(db: Database.Database, householdEntityId: stri
     }));
 }
 
+/**
+ * Establishes an opening balance for an existing account that is missing one.
+ * 
+ * Why this exists:
+ * Fulfills the requirement to provide a focused account-specific way to establish
+ * a missing opening balance and date. Ensures atomic consistency and does not 
+ * create a duplicate account or silently adjust balances.
+ */
+export function setAccountOpeningBalance(
+    db: Database.Database,
+    accountId: string,
+    amountCents: number,
+    date: string
+): void {
+    assertValidMoneyCents(amountCents, 'Opening balance cents');
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new ValidationError('A valid opening date (YYYY-MM-DD) is required.');
+    }
+    assertValidCalendarDate(date, 'Opening date');
+
+    const account = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    if (!account) {
+        throw new ValidationError(`Account not found: ${accountId}`);
+    }
+
+    if (account.opening_balance_cents !== null && account.opening_balance_cents !== undefined) {
+        // If it perfectly matches, treat it as idempotent
+        if (account.opening_balance_cents === amountCents && account.opening_date === date) {
+            return;
+        }
+        throw new ConflictError('This account already has an established opening balance.');
+    }
+
+    // History Guard: check for existing posted activity
+    const earliestTx = db.prepare(`
+        SELECT t.date FROM m1_transactions t
+        JOIN m1_journal_entries je ON je.transaction_id = t.id
+        WHERE je.account_id = ? AND t.status = 'posted'
+        ORDER BY t.date ASC
+        LIMIT 1
+    `).get(accountId) as { date: string } | undefined;
+
+    if (earliestTx && earliestTx.date < date) {
+        throw new ValidationError(`This account already has transactions before this date. Enter a known starting balance dated before those transactions. (Earliest transaction: ${earliestTx.date})`);
+    }
+
+    const now = new Date().toISOString();
+    
+    db.transaction(() => {
+        // Update the account metadata
+        db.prepare(`
+            UPDATE m1_accounts 
+            SET opening_balance_cents = ?, opening_date = ?, updated_at = ?, revision = revision + 1, balance_revision = balance_revision + 1
+            WHERE id = ?
+        `).run(amountCents, date, now, accountId);
+
+        // Record a transaction ONLY if the opening balance is not 0
+        if (amountCents !== 0) {
+            const txId = `tx-open-${accountId}`;
+            const idempotencyKey = `idemp-open-${accountId}`;
+
+            const existingTx = db.prepare('SELECT id FROM m1_transactions WHERE idempotency_key = ?').get(idempotencyKey);
+            if (!existingTx) {
+                db.prepare(`
+                    INSERT INTO m1_transactions (
+                        id, date, description, status, origin, idempotency_key, revision, created_at, updated_at
+                    ) VALUES (?, ?, ?, 'posted', 'opening_balance', ?, 1, ?, ?)
+                `).run(
+                    txId,
+                    date,
+                    `Opening Balance - ${account.name.trim()}`,
+                    idempotencyKey,
+                    now,
+                    now
+                );
+
+                const equityAccount = ensureOpeningEquityAccount(db, account.entity_id, account.currency);
+
+                // Normal balance semantics
+                let targetPostingAmount = amountCents;
+                let equityPostingAmount = -amountCents;
+
+                if (account.type === 'liability') {
+                    // Liabilities: negative is credit (increase liability), positive is debit (decrease liability)
+                    targetPostingAmount = -amountCents;
+                    equityPostingAmount = amountCents;
+                } else if (account.type === 'equity') {
+                    targetPostingAmount = -amountCents;
+                    equityPostingAmount = amountCents;
+                }
+
+                db.prepare(`
+                    INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+                    VALUES (?, ?, ?, ?, ?)
+                `).run(crypto.randomUUID(), txId, accountId, targetPostingAmount, account.currency);
+
+                db.prepare(`
+                    INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+                    VALUES (?, ?, ?, ?, ?)
+                `).run(crypto.randomUUID(), txId, equityAccount.id, equityPostingAmount, account.currency);
+            }
+        }
+    })();
+}

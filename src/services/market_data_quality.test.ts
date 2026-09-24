@@ -13,11 +13,16 @@
  * TODO: Add real-time mock provider tests for London Stock Exchange pence-to-pound conversions.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { isAustralianTicker, getMockPrice, fetchStockPrice } from './marketData';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { isAustralianTicker, getMockPrice, fetchStockPrice, clearPriceCache, setPriceCacheEntry, getPriceCacheEntry } from './marketData';
+import { normalizeYahooQuote } from './providers/yahooFinanceProvider';
 import { convertAmount } from '@/lib/utils/currencyService';
 
 describe('Market Data Quality & Currency Correctness', () => {
+    beforeEach(() => {
+        clearPriceCache();
+    });
+
     it('correctly identifies Australian tickers ending with .AX', () => {
         expect(isAustralianTicker('CBA.AX')).toBe(true);
         expect(isAustralianTicker('bhp.ax')).toBe(true);
@@ -76,5 +81,121 @@ describe('Market Data Quality & Currency Correctness', () => {
         expect(result?.isMock).toBe(true);
         expect(result?.currency).toBe('USD');
         expect(result?.price).toBe(293);
+    });
+
+    // Why this test exists:
+    // Resolves Assessor Finding C: London Stock Exchange quotes (e.g. .L) on Yahoo Finance are denominated
+    // in pence sterling ('GBp' or 'GBX'). If returned as-is with currency 'GBP', assets are overvalued by 100x.
+    // Tricky logic:
+    // 11,500 GBp is £115.00. Divisor 100 must divide price, previousClose, and change, but NOT changePercent.
+    // TODO: In Milestone 2, verify real LSE tickers (.L) against Yahoo Finance mock fixtures.
+    it('divides Yahoo Finance GBp (pence) quotes by 100 and normalizes currency to GBP', () => {
+        const mockRawQuoteGBp = {
+            regularMarketPrice: 11550, // 11,550 GBp = £115.50
+            regularMarketPreviousClose: 11400, // 11,400 GBp = £114.00
+            regularMarketChange: 150, // 150 GBp = £1.50
+            regularMarketChangePercent: 1.316, // +1.32%
+            currency: 'GBp'
+        };
+
+        const result = normalizeYahooQuote(mockRawQuoteGBp, 'AZN.L');
+        expect(result).not.toBeNull();
+        expect(result?.currency).toBe('GBP');
+        expect(result?.price).toBe(115.50);
+        expect(result?.previousClose).toBe(114.00);
+        expect(result?.change).toBe(1.50);
+        expect(result?.changePercent).toBe(1.32);
+        expect(result?.isMock).toBe(false);
+    });
+
+    it('handles GBX pence quotes identically to GBp by dividing by 100', () => {
+        const mockRawQuoteGBX = {
+            regularMarketPrice: 2450, // 2,450 GBX = £24.50
+            regularMarketPreviousClose: 2500,
+            regularMarketChange: -50,
+            regularMarketChangePercent: -2.0,
+            currency: 'GBX'
+        };
+
+        const result = normalizeYahooQuote(mockRawQuoteGBX, 'SHEL.L');
+        expect(result).not.toBeNull();
+        expect(result?.currency).toBe('GBP');
+        expect(result?.price).toBe(24.50);
+        expect(result?.previousClose).toBe(25.00);
+        expect(result?.change).toBe(-0.50);
+        expect(result?.changePercent).toBe(-2.0);
+    });
+
+    it('leaves standard USD and foreign non-pence quotes undivided', () => {
+        const mockRawQuoteUSD = {
+            regularMarketPrice: 185.50,
+            regularMarketPreviousClose: 184.00,
+            regularMarketChange: 1.50,
+            regularMarketChangePercent: 0.815,
+            currency: 'USD'
+        };
+
+        const result = normalizeYahooQuote(mockRawQuoteUSD, 'AAPL');
+        expect(result).not.toBeNull();
+        expect(result?.currency).toBe('USD');
+        expect(result?.price).toBe(185.50);
+        expect(result?.previousClose).toBe(184.00);
+        expect(result?.change).toBe(1.50);
+    });
+
+    // Why this test exists:
+    // Resolves Assessor Finding C: Demo mode writes mock data to the price cache.
+    // When returning to production (non-demo) mode, any cached entry with isMock: true must be purged
+    // and must not poison the production portfolio.
+    // Tricky logic:
+    // If a mock quote exists in cache, non-demo mode must evict it and refuse to return it as a real price.
+    it('evicts mock quotes from cache in non-demo mode and prevents cache poisoning', async () => {
+        const mockQuote = {
+            data: {
+                ticker: 'POISON_TEST',
+                price: 9999,
+                currency: 'USD',
+                previousClose: 9900,
+                change: 99,
+                changePercent: 1.0,
+                lastUpdated: new Date().toISOString(),
+                isMock: true
+            },
+            timestamp: Date.now()
+        };
+
+        setPriceCacheEntry('POISON_TEST', mockQuote);
+        expect(getPriceCacheEntry('POISON_TEST')).toBeDefined();
+
+        // In production mode, fetching POISON_TEST should evict the mock entry and return null (since provider will fail)
+        const result = await fetchStockPrice('POISON_TEST', { isDemo: false });
+        expect(result).toBeNull();
+
+        // Verify it was evicted from cache
+        expect(getPriceCacheEntry('POISON_TEST')).toBeUndefined();
+    });
+
+    it('preserves genuine non-mock quotes in cache in non-demo mode', async () => {
+        const genuineQuote = {
+            data: {
+                ticker: 'REAL_QUOTE',
+                price: 150.25,
+                currency: 'USD',
+                previousClose: 148.00,
+                change: 2.25,
+                changePercent: 1.52,
+                lastUpdated: new Date().toISOString(),
+                isMock: false
+            },
+            timestamp: Date.now()
+        };
+
+        setPriceCacheEntry('REAL_QUOTE', genuineQuote);
+
+        // Fetching in non-demo mode should return cached genuine quote without calling network
+        const result = await fetchStockPrice('REAL_QUOTE', { isDemo: false });
+        expect(result).not.toBeNull();
+        expect(result?.price).toBe(150.25);
+        expect(result?.isMock).toBe(false);
     });
 });

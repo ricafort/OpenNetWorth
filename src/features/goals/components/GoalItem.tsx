@@ -7,11 +7,14 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoalSchema, GoalFormData } from '@/features/goals/data/schemas';
 import { Trophy, Trash2, Edit2, TrendingUp, AlertTriangle } from 'lucide-react';
-import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
+import { formatCurrency } from '@/lib/utils/currencyService';
+import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
+import { centsToMajorUnits } from '@/lib/domain/accounting/types';
+import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 
 interface GoalItemProps {
     goal: Goal;
-    netWorth: number;
+    netWorth: number | null;
     baseCurrency: CurrencyCode;
     onUpdate: (updatedGoal: Goal) => Promise<any>;
     onDelete: (id: string) => Promise<any>;
@@ -27,6 +30,19 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
     // the user's explicit target is never modified by changing the dashboard base currency (Handover Section 16).
     // TODO: Support multi-currency split targets (e.g. dual AUD/USD goals) when international accounts expand.
     const goalCurrency = (goal.currency || 'USD') as CurrencyCode;
+    const isNetWorthGoal = goal.category === 'net_worth';
+
+    const { 
+        summary: goalCurrencySummary, 
+        isLoading: isGoalSummaryLoading,
+        error: isGoalSummaryError
+    } = useSharedFinancialSummary({
+        reportingCurrency: goalCurrency,
+        skip: !isNetWorthGoal
+    });
+
+    const sourceState = useFinancialSourceSelection(baseCurrency);
+    const isLegacyMode = sourceState.mode === 'legacy';
 
     // --- FORM SETUP (for Edit Mode) ---
     const {
@@ -53,16 +69,16 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
         setEditError(null);
         try {
             const selectedCurrency = (data.currency || goalCurrency) as CurrencyCode;
-            // If category is net_worth, calculate current amount in the chosen goal currency
-            const netWorthInSelectedCurrency = selectedCurrency === baseCurrency
-                ? netWorth
-                : convertAmount(netWorth, baseCurrency, selectedCurrency);
+            
+            // Note: If they change currency while category is net_worth, we do not recalculate current_amount here.
+            // It will be calculated automatically by the backend/next render.
+            // We just send data.current_amount (which will be ignored/overridden by the backend for net_worth).
 
             await onUpdate({
                 ...goal,
                 ...data,
                 currency: selectedCurrency,
-                current_amount: data.category === 'net_worth' ? netWorthInSelectedCurrency : data.current_amount
+                current_amount: data.category === 'net_worth' ? 0 : data.current_amount
             } as Goal);
             setIsEditing(false);
         } catch (err: any) {
@@ -75,10 +91,33 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
     // --- DERIVED METRICS ---
     // Why this exists: Progress calculations are strictly performed in native goal currency to ensure that
     // foreign exchange rate shifts do not artificially modify the progress percentage or completion status.
-    // Converted amounts in baseCurrency are computed for portfolio-level reference only.
-    const currentNativeAmount = goal.category === 'net_worth'
-        ? (goalCurrency === baseCurrency ? netWorth : convertAmount(netWorth, baseCurrency, goalCurrency))
-        : (goal.current_amount || 0);
+    let currentNativeAmount: number | null = goal.current_amount || 0;
+    
+    if (isNetWorthGoal) {
+        const isStaleSummary = goalCurrencySummary && goalCurrencySummary.reporting_currency !== goalCurrency;
+        
+        if (isGoalSummaryLoading || isStaleSummary) {
+            currentNativeAmount = null; // Still loading or stale summary
+        } else if (isLegacyMode) {
+            // Legacy fallback: An empty modern summary must not override valid legacy-only data.
+            // If currencies do not match, we lack a legacy FX engine, so it is strictly Unavailable (not 0%).
+            if (goalCurrency === baseCurrency && netWorth !== null && typeof netWorth === 'number') {
+                currentNativeAmount = netWorth;
+            } else {
+                currentNativeAmount = null;
+            }
+        } else if (isGoalSummaryError) {
+            currentNativeAmount = null; // Failed requests remain unknown
+        } else if (goalCurrencySummary) {
+            if (goalCurrencySummary.converted_net_worth?.is_complete) {
+                currentNativeAmount = centsToMajorUnits(goalCurrencySummary.converted_net_worth.amount_cents, goalCurrency);
+            } else {
+                currentNativeAmount = null; // Missing FX or incomplete
+            }
+        } else {
+            currentNativeAmount = null;
+        }
+    }
 
     const targetNativeAmount = goal.target_amount;
     const startNativeAmount = goal.start_amount || 0;
@@ -86,25 +125,30 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
     const isDebt = goal.category === 'debt_payoff';
 
     let progress = 0;
-    if (isDebt) {
-        const effectiveStart = startNativeAmount || Math.max(currentNativeAmount, targetNativeAmount);
-        const totalToPay = effectiveStart - targetNativeAmount;
-        const paidSoFar = effectiveStart - currentNativeAmount;
-        if (totalToPay > 0) {
-            progress = (paidSoFar / totalToPay) * 100;
+    const isAmountAvailable = currentNativeAmount !== null;
+
+    if (isAmountAvailable) {
+        if (isDebt) {
+            const effectiveStart = startNativeAmount || Math.max(currentNativeAmount!, targetNativeAmount);
+            const totalToPay = effectiveStart - targetNativeAmount;
+            const paidSoFar = effectiveStart - currentNativeAmount!;
+            if (totalToPay > 0) {
+                progress = (paidSoFar / totalToPay) * 100;
+            }
+        } else {
+            if (targetNativeAmount > 0) {
+                progress = (currentNativeAmount! / targetNativeAmount) * 100;
+            }
         }
-    } else {
-        if (targetNativeAmount > 0) {
-            progress = (currentNativeAmount / targetNativeAmount) * 100;
-        }
+        progress = Math.min(100, Math.max(0, progress));
     }
-    progress = Math.min(100, Math.max(0, progress));
-    const isCompleted = isDebt ? currentNativeAmount <= targetNativeAmount : currentNativeAmount >= targetNativeAmount;
+    
+    const isCompleted = isAmountAvailable ? (isDebt ? currentNativeAmount! <= targetNativeAmount : currentNativeAmount! >= targetNativeAmount) : false;
 
     // Secondary reference conversions for when base currency differs from goal currency
-    const isDifferentCurrency = goalCurrency !== baseCurrency;
-    const currentValBase = convertAmount(currentNativeAmount, goalCurrency, baseCurrency);
-    const targetValBase = convertAmount(targetNativeAmount, goalCurrency, baseCurrency);
+    // Per Remediation Feedback: Missing FX => unavailable/partial information, never invented conversion.
+    // We do not have synchronous FX rates to calculate targetValBase, so we do not show `≈ $XXX`.
+    const isDifferentCurrency = false; // Disabled to prevent mock FX.
 
     let isWarning = false;
     if (goal.deadline && !isCompleted && progress < 90) {
@@ -235,7 +279,7 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
                 <div>
                     <div className="flex justify-between text-xs font-black mb-2 uppercase tracking-widest">
                         <span className="text-muted-foreground opacity-70">Progress</span>
-                        <span className="text-foreground">{progress.toFixed(1)}%</span>
+                        <span className="text-foreground">{isAmountAvailable ? `${progress.toFixed(1)}%` : 'Unknown'}</span>
                     </div>
                     <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
                         <div
@@ -248,21 +292,11 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
                 <div className="flex justify-between items-baseline">
                     <div className="text-xs font-black text-muted-foreground uppercase tracking-wider">
                         Target: <span className={`text-sm text-foreground ${blurClass}`}>{formatCurrency(targetNativeAmount, goalCurrency)}</span>
-                        {isDifferentCurrency && (
-                            <span className="text-[11px] text-muted-foreground font-normal ml-1">
-                                (≈ {formatCurrency(targetValBase, baseCurrency)})
-                            </span>
-                        )}
                     </div>
                     <div className="text-right">
-                        <div className={`text-2xl font-black text-foreground tracking-tighter ${blurClass}`}>
-                            {formatCurrency(currentNativeAmount, goalCurrency)}
+                        <div className={`text-2xl font-black tracking-tighter ${!isAmountAvailable ? 'text-muted-foreground opacity-50' : 'text-foreground'} ${blurClass}`}>
+                            {isAmountAvailable ? formatCurrency(currentNativeAmount!, goalCurrency) : 'Unavailable'}
                         </div>
-                        {isDifferentCurrency && (
-                            <div className="text-xs text-muted-foreground">
-                                ≈ {formatCurrency(currentValBase, baseCurrency)}
-                            </div>
-                        )}
                     </div>
                 </div>
 

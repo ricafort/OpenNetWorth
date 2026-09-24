@@ -9,7 +9,7 @@ import { useGoalsQuery } from '@/features/goals/hooks/useGoalsQuery';
 import { useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoalSchema, GoalFormData } from '@/features/goals/data/schemas';
-import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
+import { formatCurrency } from '@/lib/utils/currencyService';
 import { CurrencyCode } from '@/types';
 import GoalItem from '@/features/goals/components/GoalItem';
 
@@ -51,36 +51,30 @@ export const GoalsPage = () => {
 
     useEffect(() => {
         if (category === 'net_worth') {
-            const nwInGoalCurrency = selectedCurrency === baseCurrency
-                ? netWorth
-                : convertAmount(netWorth, baseCurrency, selectedCurrency);
-            setValue('current_amount', nwInGoalCurrency);
+            setValue('current_amount', 0); // Backend or GoalItem evaluates this on the fly
         }
-    }, [category, netWorth, selectedCurrency, baseCurrency, setValue]);
+    }, [category, setValue]);
 
     const handleAddGoal = async (data: GoalFormData) => {
         setSaveError(null);
         try {
             // Why this exists: Goals can be denominated in currencies different from the current workspace base currency
             // (e.g. an Australian user saving for a $10,000 USD trip).
-            // Tricky logic: If category is 'net_worth', we convert the current net worth into the goal's target currency
-            // so baseline progress reflects the correct currency magnitude.
-            // TODO: Add support for tracking exchange rate benchmarks at the time goal was established.
+            // Tricky logic: If category is 'net_worth', the current amount is evaluated on-the-fly dynamically
+            // using the backend's shared financial summary to enforce exact, evidenced FX rates.
+            // We store 0 for current_amount since it's an auto-tracked target.
             const goalCurrency = (data.currency || baseCurrency) as CurrencyCode;
-            const netWorthInGoalCurrency = goalCurrency === baseCurrency
-                ? netWorth
-                : convertAmount(netWorth, baseCurrency, goalCurrency);
 
             const newGoal: Goal = {
                 id: crypto.randomUUID(),
                 name: data.name,
                 target_amount: data.target_amount,
-                current_amount: data.category === 'net_worth' ? netWorthInGoalCurrency : data.current_amount,
+                current_amount: data.category === 'net_worth' ? 0 : data.current_amount,
                 currency: goalCurrency,
                 deadline: data.deadline ? data.deadline : null, // Send null if empty string
                 category: data.category,
                 created_at: new Date().toISOString(),
-                start_amount: data.category === 'net_worth' ? netWorthInGoalCurrency : data.current_amount
+                start_amount: data.category === 'net_worth' ? 0 : data.current_amount
             };
 
             // Durably commit to SQLite before resetting form inputs or closing (DATA-02)

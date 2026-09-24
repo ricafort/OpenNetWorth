@@ -24,9 +24,11 @@ import {
     AccountType,
     CashFlowActivityType,
     CashFlowItem,
+    CashFlowLiquidAccountBalance,
     CashFlowStatementResult,
     ConsolidatedNetWorthResult,
     CurrencyCode,
+    TrackingMode,
     ExchangeRate,
     LedgerEntryDrilldownItem,
     Money,
@@ -38,6 +40,7 @@ import {
     formatMoney
 } from './types';
 import { listEntityMembers, ValidationError } from './accountService';
+import { getLocalTodayCalendarDate } from '../calendarDate';
 
 export interface AccountBalanceResult {
     account_id: string;
@@ -60,6 +63,9 @@ export interface EntityNetWorthResult {
     formatted_net_worth_by_currency: Record<CurrencyCode, string>;
     calculation_version: string;
     account_count: number;
+    unrecorded_count?: number;
+    unrecorded_accounts?: Array<{ id: string; name: string; currency: CurrencyCode }>;
+    is_partial?: boolean;
 }
 
 export interface CategoryBreakdownItem {
@@ -102,7 +108,7 @@ export function getAccountBalance(
         throw new Error(`Account not found with ID: ${accountId}`);
     }
 
-    const effectiveDate = asOfDate || new Date().toISOString().split('T')[0];
+    const effectiveDate = asOfDate || getLocalTodayCalendarDate();
 
     // Query all journal postings up to asOfDate via join to transactions
     const rows = db.prepare(`
@@ -157,37 +163,90 @@ export function getAccountBalance(
  * 
  * TODO: Support automated cross-rate currency conversion in report drilldowns in Slice 2.
  */
-function resolveGrossAccountBalanceCents(
+/**
+ * Resolves an account's balance information according to its tracking mode:
+ * - 'balance': queries latest accepted valuation observation on or before effectiveDate;
+ *   falls back to opening_balance_cents if present; otherwise flags is_unknown: true.
+ * - 'transactions': queries double-entry ledger postings.
+ * 
+ * Why this exists:
+ * Shared helper for API routes and domain balance aggregations to ensure consistent
+ * detection of balance-tracked accounts that lack observations without fabricating $0.00 (Finding B).
+ *
+ * Tricky logic:
+ * - Balance-tracked accounts without accepted observations or opening balances report
+ *   balance_cents: null and is_unknown: true so callers can disclose incomplete coverage.
+ *
+ * TODO: In Milestone 2, support automated balance observation requests when is_unknown is true.
+ */
+export function resolveAccountBalanceInfo(
     db: Database.Database,
-    acc: { id: string; tracking_mode?: string; opening_balance_cents?: number | null },
+    acc: { id: string; currency?: string; tracking_mode?: string; opening_balance_cents?: number | null },
     effectiveDate?: string
-): number {
+): {
+    balance_cents: number | null;
+    is_unknown: boolean;
+    formatted_balance: string;
+    as_of_date?: string | null;
+} {
+    const currency = (acc.currency || 'USD').toUpperCase() as CurrencyCode;
     if (acc.tracking_mode === 'balance') {
-        const targetDate = effectiveDate || new Date().toISOString().split('T')[0];
+        const targetDate = effectiveDate || getLocalTodayCalendarDate();
         const tableExists = (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_balance_observations'").get() as any)?.cnt > 0;
         if (tableExists) {
             const placeholders = VALUATION_BALANCE_KINDS.map(() => '?').join(', ');
             const row = db.prepare(`
-                SELECT amount_cents FROM m1_balance_observations
+                SELECT amount_cents, effective_date FROM m1_balance_observations
                 WHERE account_id = ?
                   AND review_status = 'accepted'
                   AND effective_date <= ?
                   AND balance_kind IN (${placeholders})
+                  AND (is_component_of_total = 0 OR is_component_of_total IS NULL)
                 ORDER BY effective_date DESC, created_at DESC, id DESC
                 LIMIT 1
             `).get(acc.id, targetDate, ...VALUATION_BALANCE_KINDS) as any;
 
             if (row && row.amount_cents !== undefined && row.amount_cents !== null) {
-                return row.amount_cents;
+                return {
+                    balance_cents: row.amount_cents,
+                    is_unknown: false,
+                    formatted_balance: formatMoney({ amount_cents: row.amount_cents, currency }),
+                    as_of_date: row.effective_date
+                };
             }
         }
         if (acc.opening_balance_cents !== undefined && acc.opening_balance_cents !== null) {
-            return acc.opening_balance_cents;
+            return {
+                balance_cents: acc.opening_balance_cents,
+                is_unknown: false,
+                formatted_balance: formatMoney({ amount_cents: acc.opening_balance_cents, currency }),
+                as_of_date: null
+            };
         }
-        return 0;
+        return {
+            balance_cents: null,
+            is_unknown: true,
+            formatted_balance: 'Unknown (Needs balance)',
+            as_of_date: null
+        };
     }
 
-    return getAccountBalance(db, acc.id, effectiveDate).balance_cents;
+    const ledger = getAccountBalance(db, acc.id, effectiveDate);
+    return {
+        balance_cents: ledger.balance_cents,
+        is_unknown: false,
+        formatted_balance: ledger.formatted_balance,
+        as_of_date: ledger.as_of_date
+    };
+}
+
+function resolveGrossAccountBalanceCents(
+    db: Database.Database,
+    acc: { id: string; currency?: string; tracking_mode?: string; opening_balance_cents?: number | null },
+    effectiveDate?: string
+): number {
+    const info = resolveAccountBalanceInfo(db, acc, effectiveDate);
+    return info.balance_cents ?? 0;
 }
 
 /**
@@ -197,13 +256,17 @@ function resolveGrossAccountBalanceCents(
  * Guarantees that personal net worth reflects the deterministic formula:
  * Net Worth = Total Assets - Total Liabilities.
  * Currencies are kept strictly distinct (no silent 1:1 conversion).
+ *
+ * Tricky logic:
+ * - When accounts lack accepted observations, they are tracked in unrecorded_accounts
+ *   and unrecorded_count, setting is_partial: true rather than silently fabricating zero wealth.
  */
 export function getEntityNetWorth(
     db: Database.Database,
     entityId: string,
     asOfDate?: string
 ): EntityNetWorthResult {
-    const effectiveDate = asOfDate || new Date().toISOString().split('T')[0];
+    const effectiveDate = asOfDate || getLocalTodayCalendarDate();
 
     // Fetch all active accounts for entity
     const accounts = db.prepare(`
@@ -214,14 +277,22 @@ export function getEntityNetWorth(
 
     const totalAssets: Record<CurrencyCode, number> = {};
     const totalLiabilities: Record<CurrencyCode, number> = {};
+    const unrecordedAccounts: Array<{ id: string; name: string; currency: CurrencyCode }> = [];
 
     for (const acc of accounts) {
         if (acc.type !== 'asset' && acc.type !== 'liability') {
             continue; // Equity, Income, Expense accounts do not count as balance sheet balance items
         }
 
-        const balanceCents = resolveGrossAccountBalanceCents(db, acc, effectiveDate);
-        const curr = acc.currency.toUpperCase();
+        const curr = acc.currency.toUpperCase() as CurrencyCode;
+        const info = resolveAccountBalanceInfo(db, acc, effectiveDate);
+
+        if (info.is_unknown) {
+            unrecordedAccounts.push({ id: acc.id, name: acc.name, currency: curr });
+            continue;
+        }
+
+        const balanceCents = info.balance_cents ?? 0;
 
         if (acc.type === 'asset') {
             totalAssets[curr] = (totalAssets[curr] || 0) + balanceCents;
@@ -250,7 +321,10 @@ export function getEntityNetWorth(
         total_liabilities_cents_by_currency: totalLiabilities,
         formatted_net_worth_by_currency: formattedNetWorth,
         calculation_version: CALCULATION_ENGINE_VERSION,
-        account_count: accounts.length
+        account_count: accounts.length,
+        unrecorded_count: unrecordedAccounts.length,
+        unrecorded_accounts: unrecordedAccounts,
+        is_partial: unrecordedAccounts.length > 0
     };
 }
 
@@ -288,17 +362,19 @@ export function getPeriodIncomeAndExpenses(
         FROM m1_journal_entries j
         JOIN m1_accounts a ON j.account_id = a.id
         JOIN m1_transactions t ON j.transaction_id = t.id
-        WHERE a.entity_id = ? AND a.type IN ('income', 'expense') AND t.status = 'posted'
+        ${entityId === 'all' ? 'WHERE a.type IN (\'income\', \'expense\') AND t.status = \'posted\'' : 'WHERE a.entity_id = ? AND a.type IN (\'income\', \'expense\') AND t.status = \'posted\''}
     `;
-    const params: any[] = [entityId];
+    const params: any[] = [];
+    if (entityId !== 'all') params.push(entityId);
 
+    const resolvedEndDate = endDate || getLocalTodayCalendarDate();
     if (startDate) {
         sql += ' AND t.date >= ?';
         params.push(startDate);
     }
-    if (endDate) {
+    if (resolvedEndDate) {
         sql += ' AND t.date <= ?';
-        params.push(endDate);
+        params.push(resolvedEndDate);
     }
 
     sql += ' ORDER BY t.date ASC';
@@ -390,7 +466,7 @@ export function getPeriodIncomeAndExpenses(
     return {
         entity_id: entityId,
         start_date: startDate,
-        end_date: endDate,
+        end_date: resolvedEndDate,
         total_income_cents_by_currency: totalIncome,
         total_expenses_cents_by_currency: totalExpenses,
         net_savings_cents_by_currency: netSavings,
@@ -475,7 +551,7 @@ export function getExchangeRate(
     const to = toCurrency.toUpperCase();
     if (from === to) return 1.0;
 
-    const date = asOfDate || new Date().toISOString().split('T')[0];
+    const date = asOfDate || getLocalTodayCalendarDate();
 
     // Check direct rate (most recent on or before date)
     const direct = db.prepare(`
@@ -636,7 +712,7 @@ export function getConsolidatedNetWorth(
         : (scopeTypeArg || 'individual');
 
     const targetCurr = reportingCurrency.toUpperCase();
-    const effectiveDate = asOfDate || new Date().toISOString().split('T')[0];
+    const effectiveDate = asOfDate || getLocalTodayCalendarDate();
 
     // Assessor Finding 3: Consume exact ownership-adjusted scoped totals from getScopeNetWorth
     const scopedNw = getScopeNetWorth(db, {
@@ -648,7 +724,8 @@ export function getConsolidatedNetWorth(
     const scopedTotals = scopedNw.scoped_net_worth_cents_by_currency || scopedNw.net_worth_cents_by_currency;
     const formattedScopedTotals = scopedNw.formatted_scoped_net_worth_by_currency || scopedNw.formatted_net_worth_by_currency;
 
-    let isComplete = true;
+    const hasUnrecorded = (scopedNw.unrecorded_count ?? 0) > 0;
+    let isComplete = !hasUnrecorded;
     const missingRates: Array<{ from: CurrencyCode; to: CurrencyCode; date: string }> = [];
     let consolidatedTotalCents = 0;
 
@@ -678,6 +755,8 @@ export function getConsolidatedNetWorth(
         target_entity_id: entityId,
         is_complete: isComplete,
         missing_rates: missingRates,
+        unrecorded_count: scopedNw.unrecorded_count || 0,
+        unrecorded_accounts: scopedNw.unrecorded_accounts || [],
         consolidated_total_cents: isComplete ? consolidatedTotalCents : null,
         formatted_consolidated_total: isComplete
             ? formatMoney({ amount_cents: consolidatedTotalCents, currency: targetCurr })
@@ -766,7 +845,7 @@ export function getScopeNetWorth(
         : targetEntityIdOrInput;
 
     const scopeType = input.scope_type || 'individual';
-    const effectiveDate = input.as_of_date || new Date().toISOString().split('T')[0];
+    const effectiveDate = input.as_of_date || getLocalTodayCalendarDate();
 
     const targetEntity = db.prepare('SELECT id, name, type, currency FROM m1_entities WHERE id = ?').get(input.target_entity_id) as any;
     if (!targetEntity) {
@@ -790,9 +869,10 @@ export function getScopeNetWorth(
             ORDER BY a.type ASC, a.name ASC
         `).all(targetEntity.id, targetEntity.id) as any[];
 
+        const unrecordedAccounts: Array<{ id: string; name: string; currency: CurrencyCode }> = [];
+
         for (const acc of candidateAccounts) {
-            const grossBalance = resolveGrossAccountBalanceCents(db, acc, effectiveDate);
-            const curr = acc.currency.toUpperCase();
+            const curr = acc.currency.toUpperCase() as CurrencyCode;
 
             // Check ownership allocations using unified policy (Resubmission Item 6)
             const ownerships = db.prepare(`
@@ -803,6 +883,32 @@ export function getScopeNetWorth(
             if (sharePercentage <= 0) continue;
 
             const isJoint = ownerships.length > 0;
+            const info = resolveAccountBalanceInfo(db, acc, effectiveDate);
+
+            if (info.is_unknown) {
+                unrecordedAccounts.push({ id: acc.id, name: acc.name, currency: curr });
+                items.push({
+                    account_id: acc.id,
+                    account_name: acc.name,
+                    account_type: acc.type,
+                    sub_type: acc.sub_type,
+                    account_sub_type: acc.sub_type,
+                    currency: curr,
+                    gross_balance_cents: 0,
+                    ownership_share_percentage: sharePercentage,
+                    ownership_percentage: sharePercentage,
+                    attributed_balance_cents: 0,
+                    formatted_attributed_balance: 'Unknown (Needs balance)',
+                    formatted_scoped_balance: 'Unknown (Needs balance)',
+                    formatted_full_balance: 'Unknown (Needs balance)',
+                    primary_entity_id: acc.entity_id,
+                    is_joint: isJoint,
+                    is_unknown: true
+                });
+                continue;
+            }
+
+            const grossBalance = info.balance_cents ?? 0;
             const attributedBalance = Math.round(grossBalance * (sharePercentage / 100));
 
             items.push({
@@ -820,7 +926,8 @@ export function getScopeNetWorth(
                 formatted_scoped_balance: formatMoney({ amount_cents: attributedBalance, currency: curr }),
                 formatted_full_balance: formatMoney({ amount_cents: grossBalance, currency: curr }),
                 primary_entity_id: acc.entity_id,
-                is_joint: isJoint
+                is_joint: isJoint,
+                is_unknown: false
             });
 
             if (acc.type === 'asset') {
@@ -856,7 +963,10 @@ export function getScopeNetWorth(
             scoped_liabilities_cents_by_currency: totalLiabilities,
             formatted_scoped_net_worth_by_currency: formattedNetWorth,
             items,
-            calculation_version: CALCULATION_ENGINE_VERSION
+            calculation_version: CALCULATION_ENGINE_VERSION,
+            unrecorded_count: unrecordedAccounts.length,
+            unrecorded_accounts: unrecordedAccounts,
+            is_partial: unrecordedAccounts.length > 0
         };
     } else {
         // Household Scope:
@@ -875,13 +985,13 @@ export function getScopeNetWorth(
         `).all(...memberIds, ...memberIds) as any[];
 
         const seenAccounts = new Set<string>();
+        const unrecordedAccounts: Array<{ id: string; name: string; currency: CurrencyCode }> = [];
 
         for (const acc of accounts) {
             if (seenAccounts.has(acc.id)) continue;
             seenAccounts.add(acc.id);
 
-            const grossBalance = resolveGrossAccountBalanceCents(db, acc, effectiveDate);
-            const curr = acc.currency.toUpperCase();
+            const curr = acc.currency.toUpperCase() as CurrencyCode;
 
             // Resubmission Item 6: Household share is strictly the sum of the attributed shares
             // of its members using the unified policy.
@@ -901,6 +1011,32 @@ export function getScopeNetWorth(
             if (householdShare <= 0) continue;
 
             const isJoint = ownerships.length > 0;
+            const info = resolveAccountBalanceInfo(db, acc, effectiveDate);
+
+            if (info.is_unknown) {
+                unrecordedAccounts.push({ id: acc.id, name: acc.name, currency: curr });
+                items.push({
+                    account_id: acc.id,
+                    account_name: acc.name,
+                    account_type: acc.type,
+                    sub_type: acc.sub_type,
+                    account_sub_type: acc.sub_type,
+                    currency: curr,
+                    gross_balance_cents: 0,
+                    ownership_share_percentage: householdShare,
+                    ownership_percentage: householdShare,
+                    attributed_balance_cents: 0,
+                    formatted_attributed_balance: 'Unknown (Needs balance)',
+                    formatted_scoped_balance: 'Unknown (Needs balance)',
+                    formatted_full_balance: 'Unknown (Needs balance)',
+                    primary_entity_id: acc.entity_id,
+                    is_joint: isJoint,
+                    is_unknown: true
+                });
+                continue;
+            }
+
+            const grossBalance = info.balance_cents ?? 0;
             const attributedBalance = Math.round(grossBalance * (householdShare / 100));
 
             items.push({
@@ -918,7 +1054,8 @@ export function getScopeNetWorth(
                 formatted_scoped_balance: formatMoney({ amount_cents: attributedBalance, currency: curr }),
                 formatted_full_balance: formatMoney({ amount_cents: grossBalance, currency: curr }),
                 primary_entity_id: acc.entity_id,
-                is_joint: isJoint
+                is_joint: isJoint,
+                is_unknown: false
             });
 
             if (acc.type === 'asset') {
@@ -955,7 +1092,10 @@ export function getScopeNetWorth(
             scoped_liabilities_cents_by_currency: totalLiabilities,
             formatted_scoped_net_worth_by_currency: formattedNetWorth,
             items,
-            calculation_version: CALCULATION_ENGINE_VERSION
+            calculation_version: CALCULATION_ENGINE_VERSION,
+            unrecorded_count: unrecordedAccounts.length,
+            unrecorded_accounts: unrecordedAccounts,
+            is_partial: unrecordedAccounts.length > 0
         };
     }
 }
@@ -988,12 +1128,35 @@ export function getActualCashFlowStatement(
     startDate?: string,
     endDate?: string
 ): CashFlowStatementResult {
+    /**
+     * Why resolvedEndDate exists:
+     * Fulfills Remediation Requirement A1:
+     * Resolves the effective reporting end date using the local calendar date convention.
+     * When endDate is omitted, bounds transactions to today's local reporting date so future-dated
+     * activity does not leak into current-period results.
+     * Guarantees both cashPostings and ledgerClosingCash evaluate against the exact same date boundary,
+     * eliminating false reconciliation discrepancies during morning hours.
+     * 
+     * Tricky logic:
+     * - Binds in-period transactions with t.date <= resolvedEndDate.
+     * - Evaluates ledger closing cash balance with getAccountBalance(db, acc.id, resolvedEndDate).
+     * 
+     * TODO: Support customizable fiscal year start dates for cash flow periods in Milestone 2.
+     */
+    const resolvedEndDate = endDate || getLocalTodayCalendarDate();
+
     // 1. Identify all liquid cash/bank accounts for the entity
     const cashAccounts = db.prepare(`
-        SELECT id, name, currency
+        SELECT id, name, currency, tracking_mode, opening_balance_cents
         FROM m1_accounts
         WHERE entity_id = ? AND type = 'asset' AND sub_type IN ('cash', 'checking', 'savings')
-    `).all(entityId) as Array<{ id: string; name: string; currency: string }>;
+    `).all(entityId) as Array<{
+        id: string;
+        name: string;
+        currency: string;
+        tracking_mode?: string;
+        opening_balance_cents?: number | null;
+    }>;
 
     const cashAccountIds = new Set(cashAccounts.map(a => a.id));
     const cashAccountMap = new Map(cashAccounts.map(a => [a.id, a.name]));
@@ -1009,8 +1172,150 @@ export function getActualCashFlowStatement(
     const endingCash: Record<CurrencyCode, number> = {};
     const items: CashFlowItem[] = [];
 
+    // Fulfills Batch B Focused Closing Corrections (Item 1):
+    // Complete cash-flow balance coverage:
+    // - Track individual liquid account balances and basis across both observation and ledger accounts.
+    // - Preserve unknown balances as unknown. Never convert "no accepted observation" into "Known Observed Balance $0".
+    // - For mixed tracking, compute a combined known balance subtotal with zero double-counting.
+    // - Distinguish ledger closing balance from balances supported by observations, showing observation dates.
+    // - Disclose unrecorded account counts and track transaction history presence per currency.
+    const liquidAccountsByCurrency: Record<CurrencyCode, CashFlowLiquidAccountBalance[]> = {};
+    const observedLiquidBalance: Record<CurrencyCode, number | null> = {};
+    const liquidCoverage: Record<CurrencyCode, 'ledger' | 'balance_only' | 'mixed' | 'unknown'> = {};
+    const formattedObservedLiquidBalance: Record<CurrencyCode, string> = {};
+    const combinedKnownBalanceByCurrency: Record<CurrencyCode, number | null> = {};
+    const formattedCombinedKnownBalanceByCurrency: Record<CurrencyCode, string> = {};
+    const unrecordedAccountCountByCurrency: Record<CurrencyCode, number> = {};
+
+    const cashAccountsByCurrency: Record<string, typeof cashAccounts> = {};
+    for (const acc of cashAccounts) {
+        const curr = acc.currency.toUpperCase() as CurrencyCode;
+        if (!cashAccountsByCurrency[curr]) cashAccountsByCurrency[curr] = [];
+        cashAccountsByCurrency[curr].push(acc);
+    }
+
+    for (const curr of Object.keys(cashAccountsByCurrency) as CurrencyCode[]) {
+        const accs = cashAccountsByCurrency[curr];
+        const accountBalances: CashFlowLiquidAccountBalance[] = [];
+        let ledgerCount = 0;
+        let balanceOnlyCount = 0;
+        let unknownCount = 0;
+        let totalObserved: number | null = null;
+        let totalCombinedKnown: number | null = null;
+        let anyObservedFound = false;
+        let anyKnownFound = false;
+
+        for (const acc of accs) {
+            const balInfo = resolveAccountBalanceInfo(db, acc, resolvedEndDate);
+
+            // Check if account has posted journal entries
+            const hasJournalEntries = (db.prepare(`
+                SELECT COUNT(*) as cnt FROM m1_journal_entries WHERE account_id = ?
+            `).get(acc.id) as any)?.cnt > 0;
+
+            let basis: 'ledger' | 'observation' | 'unknown';
+            let balanceCents: number | null = null;
+            let formattedBalance: string;
+            let asOfDate: string | null = null;
+            let isUnknown = false;
+
+            if (acc.tracking_mode === 'balance') {
+                if (balInfo.is_unknown) {
+                    basis = 'unknown';
+                    balanceCents = null;
+                    formattedBalance = 'Unknown';
+                    asOfDate = null;
+                    isUnknown = true;
+                    unknownCount++;
+                } else {
+                    basis = 'observation';
+                    balanceCents = balInfo.balance_cents;
+                    formattedBalance = balInfo.formatted_balance;
+                    asOfDate = balInfo.as_of_date || null;
+                    balanceOnlyCount++;
+                    anyObservedFound = true;
+                    totalObserved = (totalObserved || 0) + (balanceCents || 0);
+                    anyKnownFound = true;
+                    totalCombinedKnown = (totalCombinedKnown || 0) + (balanceCents || 0);
+                }
+            } else {
+                basis = 'ledger';
+                balanceCents = balInfo.balance_cents;
+                formattedBalance = balInfo.formatted_balance;
+                asOfDate = balInfo.as_of_date || resolvedEndDate;
+                ledgerCount++;
+                anyKnownFound = true;
+                totalCombinedKnown = (totalCombinedKnown || 0) + (balanceCents || 0);
+            }
+
+            accountBalances.push({
+                account_id: acc.id,
+                account_name: acc.name,
+                currency: curr,
+                tracking_mode: (acc.tracking_mode || 'transactions') as TrackingMode,
+                basis,
+                balance_cents: balanceCents,
+                formatted_balance: formattedBalance,
+                as_of_date: asOfDate,
+                is_unknown: isUnknown,
+                has_transactions: hasJournalEntries
+            });
+        }
+
+        liquidAccountsByCurrency[curr] = accountBalances;
+        unrecordedAccountCountByCurrency[curr] = unknownCount;
+
+        // Why this logic exists:
+        // Tricky logic:
+        // If zero accounts have accepted observations, observedLiquidBalance is null (not 0!).
+        // If an observation of AUD 0 was accepted, anyObservedFound is true, so observedLiquidBalance is 0.
+        // This strictly separates legitimate zero observations from missing/unknown observations.
+        // TODO: In Milestone 2, track confidence tiers for balance observation sources.
+        if (anyObservedFound) {
+            observedLiquidBalance[curr] = totalObserved;
+            formattedObservedLiquidBalance[curr] = formatMoney({ amount_cents: totalObserved, currency: curr });
+        } else {
+            observedLiquidBalance[curr] = null;
+            formattedObservedLiquidBalance[curr] = 'Unknown';
+        }
+
+        if (anyKnownFound) {
+            combinedKnownBalanceByCurrency[curr] = totalCombinedKnown;
+            formattedCombinedKnownBalanceByCurrency[curr] = formatMoney({ amount_cents: totalCombinedKnown, currency: curr });
+        } else {
+            combinedKnownBalanceByCurrency[curr] = null;
+            formattedCombinedKnownBalanceByCurrency[curr] = 'Unknown';
+        }
+
+        if (unknownCount > 0 && ledgerCount === 0 && balanceOnlyCount === 0) {
+            liquidCoverage[curr] = 'unknown';
+        } else if (balanceOnlyCount > 0 && ledgerCount === 0) {
+            liquidCoverage[curr] = 'balance_only';
+        } else if (balanceOnlyCount > 0 && ledgerCount > 0) {
+            liquidCoverage[curr] = 'mixed';
+        } else if (unknownCount > 0 && ledgerCount > 0) {
+            liquidCoverage[curr] = 'mixed';
+        } else {
+            liquidCoverage[curr] = 'ledger';
+        }
+    }
+
     // Calculate starting cash balance as of day before startDate (if startDate provided)
-    // Opening balance transactions establish the initial cash position
+    // Opening balance transactions establish the initial cash position.
+    //
+    // Why this exists:
+    // Fulfills Batch A Narrow Closing Correction 1:
+    // Prevents future-dated opening balances (dated after resolvedEndDate) from leaking into
+    // starting cash and ending cash when cash flow is requested without a start date or historically.
+    // Guarantees opening balances, in-period movements, and ledger closing balances evaluate
+    // against the exact same resolved reporting end date boundary.
+    //
+    // Tricky logic:
+    // 1. When startDate is provided, requires t.date <= resolvedEndDate as well as prior-period filter.
+    // 2. When startDate is omitted, restricts opening balances to t.date <= resolvedEndDate.
+    // 3. For empty reports (cashAccounts.length === 0), returns resolvedEndDate consistently.
+    //
+    // TODO: In Milestone 2, allow user-defined opening balance retroactive adjustment dates.
     if (startDate) {
         for (const acc of cashAccounts) {
             const curr = acc.currency.toUpperCase();
@@ -1020,7 +1325,8 @@ export function getActualCashFlowStatement(
                 JOIN m1_transactions t ON j.transaction_id = t.id
                 WHERE j.account_id = ? AND t.status = 'posted'
                   AND (t.date < ? OR (t.date = ? AND t.origin = 'opening_balance'))
-            `).all(acc.id, startDate, startDate) as Array<{ amount_cents: number }>;
+                  AND t.date <= ?
+            `).all(acc.id, startDate, startDate, resolvedEndDate) as Array<{ amount_cents: number }>;
             const bal = prevRows.reduce((sum, r) => sum + r.amount_cents, 0);
             startingCash[curr] = (startingCash[curr] || 0) + bal;
         }
@@ -1032,7 +1338,8 @@ export function getActualCashFlowStatement(
                 FROM m1_journal_entries j
                 JOIN m1_transactions t ON j.transaction_id = t.id
                 WHERE j.account_id = ? AND t.status = 'posted' AND t.origin = 'opening_balance'
-            `).all(acc.id) as Array<{ amount_cents: number }>;
+                  AND t.date <= ?
+            `).all(acc.id, resolvedEndDate) as Array<{ amount_cents: number }>;
             const bal = prevRows.reduce((sum, r) => sum + r.amount_cents, 0);
             startingCash[curr] = (startingCash[curr] || 0) + bal;
         }
@@ -1042,7 +1349,7 @@ export function getActualCashFlowStatement(
         return {
             entity_id: entityId,
             start_date: startDate,
-            end_date: endDate,
+            end_date: resolvedEndDate,
             operating_inflows_cents_by_currency: {},
             operating_outflows_cents_by_currency: {},
             net_operating_cents_by_currency: {},
@@ -1060,6 +1367,14 @@ export function getActualCashFlowStatement(
             reconciliation_discrepancy_cents_by_currency: {},
             formatted_net_cash_change_by_currency: {},
             formatted_ending_cash_by_currency: {},
+            observed_liquid_balance_cents_by_currency: {},
+            liquid_account_coverage_by_currency: {},
+            formatted_observed_liquid_balance_by_currency: {},
+            liquid_accounts_by_currency: {},
+            combined_known_balance_cents_by_currency: {},
+            formatted_combined_known_balance_by_currency: {},
+            unrecorded_account_count_by_currency: {},
+            has_transaction_history_by_currency: {},
             items: [],
             calculation_version: CALCULATION_ENGINE_VERSION
         };
@@ -1088,9 +1403,9 @@ export function getActualCashFlowStatement(
         sql += ' AND t.date >= ?';
         params.push(startDate);
     }
-    if (endDate) {
+    if (resolvedEndDate) {
         sql += ' AND t.date <= ?';
-        params.push(endDate);
+        params.push(resolvedEndDate);
     }
     sql += ' ORDER BY t.date ASC, j.id ASC';
 
@@ -1351,11 +1666,12 @@ export function getActualCashFlowStatement(
     const ledgerClosingCash: Record<CurrencyCode, number> = {};
     for (const acc of cashAccounts) {
         const curr = acc.currency.toUpperCase();
-        const balResult = getAccountBalance(db, acc.id, endDate);
+        const balResult = getAccountBalance(db, acc.id, resolvedEndDate);
         ledgerClosingCash[curr] = (ledgerClosingCash[curr] || 0) + balResult.balance_cents;
     }
 
     const allCurrencies = Array.from(new Set([
+        ...Object.keys(cashAccountsByCurrency),
         ...Object.keys(startingCash),
         ...Object.keys(operatingInflows),
         ...Object.keys(operatingOutflows),
@@ -1364,7 +1680,7 @@ export function getActualCashFlowStatement(
         ...Object.keys(investingInflows),
         ...Object.keys(investingOutflows),
         ...Object.keys(ledgerClosingCash)
-    ]));
+    ])) as CurrencyCode[];
 
     const netOperating: Record<CurrencyCode, number> = {};
     const netFinancing: Record<CurrencyCode, number> = {};
@@ -1402,16 +1718,35 @@ export function getActualCashFlowStatement(
         // Reconciliation: Compare reported ending cash with double-entry ledger closing cash
         const diff = computedEnd - ledgerEnd;
         discrepancies[curr] = diff;
-        isReconciled[curr] = (diff === 0);
+
+        // Fulfills Requirement 3 & Focused Closing Corrections Item 1:
+        // Internally Honest Balance-Only Cash Flow & Scoped Reconciliation:
+        // If liquid accounts in this currency are balance-only, mixed, or unknown,
+        // reconciliation cannot be established from transaction history alone. Never claim false reconciliation.
+        const coverage = liquidCoverage[curr] || 'ledger';
+        if (coverage === 'balance_only' || coverage === 'mixed' || coverage === 'unknown') {
+            isReconciled[curr] = false;
+        } else {
+            isReconciled[curr] = (diff === 0);
+        }
 
         formattedNetChange[curr] = formatMoney({ amount_cents: netChange, currency: curr });
-        formattedEndingCash[curr] = formatMoney({ amount_cents: computedEnd, currency: curr });
+        if (coverage === 'unknown' || (coverage === 'balance_only' && (observedLiquidBalance[curr] === null || observedLiquidBalance[curr] === undefined))) {
+            formattedEndingCash[curr] = 'Unknown';
+        } else {
+            formattedEndingCash[curr] = formatMoney({ amount_cents: computedEnd, currency: curr });
+        }
+    }
+
+    const hasTransactionHistoryByCurrency: Record<CurrencyCode, boolean> = {};
+    for (const curr of allCurrencies) {
+        hasTransactionHistoryByCurrency[curr] = cashPostings.some(p => p.currency.toUpperCase() === curr);
     }
 
     return {
         entity_id: entityId,
         start_date: startDate,
-        end_date: endDate,
+        end_date: resolvedEndDate,
         operating_inflows_cents_by_currency: operatingInflows,
         operating_outflows_cents_by_currency: operatingOutflows,
         net_operating_cents_by_currency: netOperating,
@@ -1429,6 +1764,14 @@ export function getActualCashFlowStatement(
         reconciliation_discrepancy_cents_by_currency: discrepancies,
         formatted_net_cash_change_by_currency: formattedNetChange,
         formatted_ending_cash_by_currency: formattedEndingCash,
+        observed_liquid_balance_cents_by_currency: observedLiquidBalance,
+        liquid_account_coverage_by_currency: liquidCoverage,
+        formatted_observed_liquid_balance_by_currency: formattedObservedLiquidBalance,
+        liquid_accounts_by_currency: liquidAccountsByCurrency,
+        combined_known_balance_cents_by_currency: combinedKnownBalanceByCurrency,
+        formatted_combined_known_balance_by_currency: formattedCombinedKnownBalanceByCurrency,
+        unrecorded_account_count_by_currency: unrecordedAccountCountByCurrency,
+        has_transaction_history_by_currency: hasTransactionHistoryByCurrency,
         items,
         calculation_version: CALCULATION_ENGINE_VERSION
     };

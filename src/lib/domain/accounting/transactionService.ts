@@ -1782,6 +1782,7 @@ export function listTransactions(
         accountId?: string;
         startDate?: string;
         endDate?: string;
+        intent?: string;
         limit?: number;
         offset?: number;
     } = {}
@@ -1810,6 +1811,9 @@ export function listTransactions(
     if (options.endDate) {
         sql += ' AND t.date <= ?';
         params.push(options.endDate);
+    }
+    if (options.intent === 'spending') {
+        sql += " AND a.type = 'expense' AND t.status = 'posted'";
     }
 
     // Stable deterministic ordering with primary key tiebreaker (Clarification 5)
@@ -1876,6 +1880,7 @@ export function countTransactions(
         accountId?: string;
         startDate?: string;
         endDate?: string;
+        intent?: string;
     } = {}
 ): number {
     let sql = `
@@ -1902,6 +1907,9 @@ export function countTransactions(
     if (options.endDate) {
         sql += ' AND t.date <= ?';
         params.push(options.endDate);
+    }
+    if (options.intent === 'spending') {
+        sql += " AND a.type = 'expense' AND t.status = 'posted'";
     }
 
     const row = db.prepare(sql).get(...params) as any;
