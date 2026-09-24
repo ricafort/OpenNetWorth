@@ -625,6 +625,59 @@ export function migrateAccountingSchema(db: Database.Database): void {
             `).run();
             db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_pers ON m1_reimbursement_workflows(personal_entity_id)`).run();
             db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_bus ON m1_reimbursement_workflows(business_entity_id)`).run();
+        } else {
+            // Check for legacy reimbursement_transaction_id column
+            const reimbCols = db.prepare("PRAGMA table_info(m1_reimbursement_workflows)").all() as Array<{ name: string }>;
+            if (reimbCols.some(c => c.name === 'reimbursement_transaction_id')) {
+                db.prepare(`
+                    CREATE TABLE m1_reimbursement_workflows_new (
+                        id TEXT PRIMARY KEY,
+                        personal_entity_id TEXT NOT NULL,
+                        business_entity_id TEXT NOT NULL,
+                        currency TEXT NOT NULL,
+                        due_from_account_id TEXT NOT NULL,
+                        due_to_account_id TEXT NOT NULL,
+                        draft_id TEXT,
+                        evidence_document_id TEXT,
+                        personal_transaction_id TEXT NOT NULL,
+                        business_transaction_id TEXT NOT NULL,
+                        personal_reimbursement_tx_id TEXT,
+                        business_reimbursement_tx_id TEXT,
+                        amount_cents INTEGER NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'awaiting_reimbursement' CHECK (status IN ('awaiting_reimbursement', 'reimbursed')),
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (personal_entity_id) REFERENCES m1_entities(id) ON DELETE CASCADE,
+                        FOREIGN KEY (business_entity_id) REFERENCES m1_entities(id) ON DELETE CASCADE,
+                        FOREIGN KEY (due_from_account_id) REFERENCES m1_accounts(id) ON DELETE RESTRICT,
+                        FOREIGN KEY (due_to_account_id) REFERENCES m1_accounts(id) ON DELETE RESTRICT,
+                        FOREIGN KEY (personal_transaction_id) REFERENCES m1_transactions(id) ON DELETE RESTRICT,
+                        FOREIGN KEY (business_transaction_id) REFERENCES m1_transactions(id) ON DELETE RESTRICT,
+                        FOREIGN KEY (personal_reimbursement_tx_id) REFERENCES m1_transactions(id) ON DELETE SET NULL,
+                        FOREIGN KEY (business_reimbursement_tx_id) REFERENCES m1_transactions(id) ON DELETE SET NULL,
+                        FOREIGN KEY (draft_id) REFERENCES m1_drafts(id) ON DELETE SET NULL
+                    )
+                `).run();
+                
+                db.prepare(`
+                    INSERT INTO m1_reimbursement_workflows_new (
+                        id, personal_entity_id, business_entity_id, currency, due_from_account_id, due_to_account_id,
+                        draft_id, evidence_document_id, personal_transaction_id, business_transaction_id,
+                        personal_reimbursement_tx_id, business_reimbursement_tx_id, amount_cents, status, created_at, updated_at
+                    )
+                    SELECT 
+                        id, personal_entity_id, business_entity_id, currency, due_from_account_id, due_to_account_id,
+                        draft_id, evidence_document_id, personal_transaction_id, business_transaction_id,
+                        reimbursement_transaction_id as personal_reimbursement_tx_id, NULL as business_reimbursement_tx_id,
+                        amount_cents, status, created_at, updated_at
+                    FROM m1_reimbursement_workflows
+                `).run();
+                
+                db.prepare("DROP TABLE m1_reimbursement_workflows").run();
+                db.prepare("ALTER TABLE m1_reimbursement_workflows_new RENAME TO m1_reimbursement_workflows").run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_pers ON m1_reimbursement_workflows(personal_entity_id)`).run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_bus ON m1_reimbursement_workflows(business_entity_id)`).run();
+            }
         }
     });
 

@@ -265,4 +265,49 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
             personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, performedBy: 'user'
         })).toThrow('Personal transaction is already matched to another workflow');
     });
+
+    it('enforces authoritative purchase dates (January 2 / January 9 regression)', () => {
+        // Step 1: Create a posted personal transaction on Jan 2
+        const suspenseAcc = createAccount(db, { entity_id: personalEntityId, name: 'Suspense', type: 'expense', sub_type: 'other', currency: 'AUD', tracking_mode: 'transactions' }).account;
+        const importedTx = postTransaction(db, {
+            date: '2025-01-02',
+            description: 'Officeworks',
+            origin: 'document_extraction',
+            postings: [
+                { account_id: suspenseAcc.id, amount_cents: 11000, currency: 'AUD' },
+                { account_id: personalBankId, amount_cents: -11000, currency: 'AUD' }
+            ]
+        });
+
+        // Attempting to resolve this transaction with a conflicting date (Jan 9) must fail
+        expect(() => processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-09', merchant: 'Officeworks', description: 'Officeworks (Personally Paid)',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'TestUser'
+        })).toThrow('Conflicting input date: must use authoritative purchase date.');
+
+        // Providing the authoritative date succeeds
+        const wf = processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', merchant: 'Officeworks', description: 'Officeworks (Personally Paid)',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'TestUser'
+        });
+
+        // The business transaction MUST have inherited the Jan 2 date
+        const busTx = db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+        expect(busTx.date).toBe('2025-01-02');
+    });
+
+    it('rejects stale revisions on transaction correction', () => {
+        const suspenseAcc = createAccount(db, { entity_id: personalEntityId, name: 'Suspense', type: 'expense', sub_type: 'other', currency: 'AUD', tracking_mode: 'transactions' }).account;
+        const importedTx = postTransaction(db, {
+            date: '2025-01-02', description: 'Officeworks', origin: 'manual',
+            postings: [{ account_id: suspenseAcc.id, amount_cents: 11000, currency: 'AUD' }, { account_id: personalBankId, amount_cents: -11000, currency: 'AUD' }]
+        });
+
+        expect(() => processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', description: 'desc',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId,
+            expectedRevision: 999, // stale/incorrect revision
+            performedBy: 'TestUser'
+        })).toThrow('Transaction revision mismatch');
+    });
 });

@@ -17,6 +17,7 @@ export interface ProcessPersonallyPaidExpenseInput {
     paymentAccountId: string; // the personal bank account used
     businessExpenseAccountId: string; // the business expense category account
     evidenceDocumentId?: string | null;
+    expectedRevision?: number;
     performedBy: string;
 }
 
@@ -102,9 +103,29 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
         let effectiveSourceType = input.sourceType;
         let effectiveSourceId = input.sourceId;
         
-        if (effectiveSourceType === 'draft') {
-            const draft = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(effectiveSourceId) as any;
-            if (!draft) throw new Error(`Draft not found: ${effectiveSourceId}`);
+        let draft: any = null;
+        let evidenceRefs = input.evidenceDocumentId ? [input.evidenceDocumentId] : undefined;
+
+        if (input.sourceType === 'draft') {
+            draft = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(input.sourceId) as any;
+            if (!draft) throw new Error(`Draft not found: ${input.sourceId}`);
+
+            if (draft.status !== 'draft' && draft.status !== 'posted') {
+                throw new Error('Draft is not in a valid state to be posted.');
+            }
+            if (draft.reimbursement_intent !== 'yes') {
+                throw new Error('Draft must have reimbursement intent to process as personally paid expense.');
+            }
+            if (draft.amount_cents !== input.amountCents || draft.currency !== input.currency || draft.date !== input.date || draft.payer_entity_id !== input.personalEntityId || (draft.entity_id && draft.entity_id !== input.businessEntityId)) {
+                throw new Error('Draft facts do not match provided input. Please explicitly correct the draft first.');
+            }
+            
+            if (!input.evidenceDocumentId && draft.source_document_id) {
+                evidenceRefs = [draft.source_document_id];
+            } else if (input.evidenceDocumentId && draft.source_document_id && input.evidenceDocumentId !== draft.source_document_id) {
+                throw new Error('Draft evidence does not match provided input.');
+            }
+
             if (draft.source_transaction_id) {
                 effectiveSourceType = 'posted_transaction';
                 effectiveSourceId = draft.source_transaction_id;
@@ -116,26 +137,9 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
 
         let personalTxId: string;
         let businessTxId: string;
-        let evidenceRefs = input.evidenceDocumentId ? [input.evidenceDocumentId] : undefined;
         let draftId = input.sourceType === 'draft' ? input.sourceId : null;
 
         if (effectiveSourceType === 'draft') {
-            const draft = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(effectiveSourceId) as any;
-            if (!draft) throw new Error(`Draft not found: ${effectiveSourceId}`);
-
-            if (draft.status !== 'draft' && draft.status !== 'posted') {
-                throw new Error('Draft is not in a valid state to be posted.');
-            }
-            if (draft.reimbursement_intent !== 'yes') {
-                throw new Error('Draft must have reimbursement intent to process as personally paid expense.');
-            }
-            if (draft.amount_cents !== input.amountCents || draft.currency !== input.currency || draft.date !== input.date || draft.payer_entity_id !== input.personalEntityId || (draft.entity_id && draft.entity_id !== input.businessEntityId)) {
-                throw new Error('Draft facts do not match provided input. Please explicitly correct the draft first.');
-            }
-            if (input.evidenceDocumentId && draft.source_document_id && input.evidenceDocumentId !== draft.source_document_id) {
-                throw new Error('Draft evidence does not match provided input.');
-            }
-
             const existingWf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE draft_id = ?').get(effectiveSourceId) as ReimbursementWorkflow;
             if (existingWf) {
                 if (existingWf.amount_cents !== input.amountCents || existingWf.currency !== input.currency || existingWf.personal_entity_id !== input.personalEntityId || existingWf.business_entity_id !== input.businessEntityId) {
@@ -171,12 +175,22 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
         } else if (effectiveSourceType === 'posted_transaction') {
             const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(effectiveSourceId) as any;
             if (!tx) throw new Error(`Transaction not found: ${effectiveSourceId}`);
+
+            if (input.expectedRevision !== undefined && tx.revision !== input.expectedRevision) {
+                throw new Error(`Transaction revision mismatch. Expected ${input.expectedRevision}, got ${tx.revision}.`);
+            }
             
             const existingWf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE personal_transaction_id = ?').get(effectiveSourceId) as ReimbursementWorkflow;
             if (existingWf) {
                 if (existingWf.amount_cents !== input.amountCents || existingWf.currency !== input.currency || existingWf.personal_entity_id !== input.personalEntityId || existingWf.business_entity_id !== input.businessEntityId) {
                     throw new Error('Conflicting reimbursement workflow exists for this transaction. Changed financial details or owners require explicit correction.');
                 }
+                
+                // If it resolves to a posted transaction via a draft, mark the draft as posted.
+                if (input.sourceType === 'draft') {
+                    db.prepare('UPDATE m1_drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), input.sourceId);
+                }
+
                 return existingWf;
             }
 
@@ -220,7 +234,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
                 reason: 'Reclassified as personally paid business expense',
                 performed_by: input.performedBy,
                 new_data: {
-                    date: tx.date,
+                    date: tx.date, // Use authoritative purchase date from transaction
                     description: tx.description,
                     payee_or_payer: tx.payee_or_payer,
                     postings: correctedPostings
@@ -232,12 +246,23 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
                 const parsed = JSON.parse(tx.evidence_refs);
                 evidenceRefs = parsed.length > 0 ? parsed : undefined;
             }
+
+            if (input.sourceType === 'draft') {
+                db.prepare('UPDATE m1_drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), input.sourceId);
+            }
         } else {
             throw new Error(`Unsupported source type: ${effectiveSourceType}`);
         }
 
+        // Use authoritative purchase date (tx.date) if applicable, else input.date
+        const finalPurchaseDate = (effectiveSourceType === 'posted_transaction') ? (db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(effectiveSourceId) as any).date : input.date;
+
+        if (effectiveSourceType === 'posted_transaction' && input.date !== finalPurchaseDate) {
+             throw new Error('Conflicting input date: must use authoritative purchase date.');
+        }
+
         const businessTx = postTransaction(db, {
-            date: input.date,
+            date: finalPurchaseDate,
             description: input.description,
             payee_or_payer: input.merchant,
             origin: 'manual',
