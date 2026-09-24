@@ -310,4 +310,87 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
             performedBy: 'TestUser'
         })).toThrow('Transaction revision mismatch');
     });
+
+    it('rejects idempotency on changed purchase payment account', () => {
+        const suspenseAcc = createAccount(db, { entity_id: personalEntityId, name: 'Suspense', type: 'expense', sub_type: 'other', currency: 'AUD', tracking_mode: 'transactions' }).account;
+        const personalBankId2 = createAccount(db, { entity_id: personalEntityId, name: 'Another Bank', type: 'asset', sub_type: 'checking', currency: 'AUD', tracking_mode: 'transactions' }).account.id;
+        
+        const importedTx = postTransaction(db, {
+            date: '2025-01-02', description: 'Officeworks', origin: 'manual',
+            postings: [{ account_id: suspenseAcc.id, amount_cents: 11000, currency: 'AUD' }, { account_id: personalBankId, amount_cents: -11000, currency: 'AUD' }]
+        });
+
+        processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', description: 'desc',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId,
+            expectedRevision: 1,
+            performedBy: 'TestUser'
+        });
+
+        // Retry with a different payment account -> should throw conflict
+        expect(() => processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', description: 'desc',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId2, businessExpenseAccountId: businessExpenseId,
+            expectedRevision: 1,
+            performedBy: 'TestUser'
+        })).toThrow('Conflicting reimbursement workflow exists for this transaction.');
+    });
+
+    it('accepts identical posted-expense retry using its original revision', () => {
+        const suspenseAcc = createAccount(db, { entity_id: personalEntityId, name: 'Suspense', type: 'expense', sub_type: 'other', currency: 'AUD', tracking_mode: 'transactions' }).account;
+        const importedTx = postTransaction(db, {
+            date: '2025-01-02', description: 'Officeworks', origin: 'manual',
+            postings: [{ account_id: suspenseAcc.id, amount_cents: 11000, currency: 'AUD' }, { account_id: personalBankId, amount_cents: -11000, currency: 'AUD' }]
+        });
+
+        const wf1 = processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', description: 'desc',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId,
+            expectedRevision: 1, // original revision
+            performedBy: 'TestUser'
+        });
+
+        // The transaction was modified, so its revision is now 2 in DB.
+        // However, a true idempotent retry with the exact same facts AND the original revision (1) must succeed.
+        const wf2 = processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', description: 'desc',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId,
+            expectedRevision: 1, // original revision
+            performedBy: 'TestUser'
+        });
+        
+        expect(wf1.id).toBe(wf2.id);
+    });
+
+    it('rejects matchReimbursement on changed settlement date/account/transaction selection', () => {
+        const wf = processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-01', description: 'desc',
+            sourceType: 'draft', sourceId: saveDraft(db, { payer_entity_id: personalEntityId, entity_id: businessEntityId, amount_cents: 11000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes' }).id,
+            paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
+        });
+
+        const matchedWf = matchReimbursement(db, {
+            workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, performedBy: 'user'
+        });
+
+        // Identical retry -> succeeds and returns workflow
+        const matchedWfRetry = matchReimbursement(db, {
+            workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, performedBy: 'user',
+            personalReceivingBankTxId: matchedWf.personal_reimbursement_tx_id!, businessBankTxId: matchedWf.business_reimbursement_tx_id!
+        });
+        expect(matchedWf.id).toBe(matchedWfRetry.id);
+
+        // Changed date -> throws conflict
+        expect(() => matchReimbursement(db, {
+            workflowId: wf.id, date: '2025-01-11', description: 'desc', personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, performedBy: 'user',
+            personalReceivingBankTxId: matchedWf.personal_reimbursement_tx_id!, businessBankTxId: matchedWf.business_reimbursement_tx_id!
+        })).toThrow('Conflicting matched reimbursement exists.');
+
+        // Changed receiving account -> throws conflict
+        const personalBankId2 = createAccount(db, { entity_id: personalEntityId, name: 'Another Bank', type: 'asset', sub_type: 'checking', currency: 'AUD', tracking_mode: 'transactions' }).account.id;
+        expect(() => matchReimbursement(db, {
+            workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId2, businessBankAccountId: businessBankId, performedBy: 'user',
+            personalReceivingBankTxId: matchedWf.personal_reimbursement_tx_id!, businessBankTxId: matchedWf.business_reimbursement_tx_id!
+        })).toThrow('Conflicting matched reimbursement exists.');
+    });
 });
