@@ -2,7 +2,7 @@ import { Asset } from '@/features/assets/types';
 import { Liability, PayoffStrategy } from '@/features/liabilities/types';
 import { Goal } from '@/features/goals/types';
 import { CashFlowEntry, RecurringTransaction, WealthMomentum } from '@/features/cashflow/types';
-import { NetWorthSnapshot, UserSettings, DashboardConfig } from '@/types';
+import { NetWorthSnapshot, UserSettings, DashboardConfig, CurrencyCode } from '@/types';
 import { SAMPLE_ASSETS, SAMPLE_LIABILITIES, SAMPLE_GOALS } from './sampleData';
 
 // Key constants - Primary OpenNetWorth keys with backward compatibility
@@ -649,27 +649,47 @@ export async function importData(jsonString: string): Promise<{ success: boolean
 }
 
 // Freedom Settings
-export function loadFreedomSettings(): { strategy: PayoffStrategy; extraMonthlyPayment: number } {
+/**
+ * Loads the current debt freedom settings.
+ * 
+ * Why this exists:
+ * Retrieves user preferences for debt payoff strategy and extra monthly payment.
+ * 
+ * Tricky logic:
+ * Preserves the historical USD meaning of old currency-less settings (Item 5).
+ * If a legacy settings payload does not specify currency, default safely to 'USD'
+ * rather than silently converting or assuming a local reporting currency like AUD.
+ * 
+ * TODO: Support multi-currency scenario profiles once multi-currency payoff is implemented.
+ */
+export function loadFreedomSettings(): { strategy: PayoffStrategy; extraMonthlyPayment: number; currency: CurrencyCode } {
     const defaults = {
         strategy: 'avalanche' as PayoffStrategy,
-        extraMonthlyPayment: 500
+        extraMonthlyPayment: 500,
+        currency: 'USD' as CurrencyCode
     };
     const saved = get<Partial<typeof defaults>>(STORAGE_KEYS.FREEDOM_SETTINGS);
-    return { ...defaults, ...saved };
+    return {
+        strategy: saved?.strategy || defaults.strategy,
+        extraMonthlyPayment: saved?.extraMonthlyPayment !== undefined ? saved.extraMonthlyPayment : defaults.extraMonthlyPayment,
+        currency: (saved?.currency || defaults.currency) as CurrencyCode
+    };
 }
 
 /**
- * Saves debt payoff freedom settings (strategy, extra monthly payment).
+ * Saves debt payoff freedom settings (strategy, extra monthly payment, and currency).
  * 
  * Why this exists:
  * Configures the debt snowball/avalanche acceleration engine.
+ * Persists extraMonthlyPayment together with its explicit currency (Item 5).
  * 
  * Tricky logic:
  * Commit to SQLite first before updating cache. Propagates errors to caller.
+ * Retains currency explicitly so reloading or cross-currency calculation never silently alters units.
  * 
  * TODO: Allow custom debt priority ordering beyond snowball and avalanche.
  */
-export async function saveFreedomSettings(settings: { strategy: PayoffStrategy; extraMonthlyPayment: number }): Promise<void> {
+export async function saveFreedomSettings(settings: { strategy: PayoffStrategy; extraMonthlyPayment: number; currency?: CurrencyCode }): Promise<void> {
     await persistScopedRecord('settings' as any, { key: 'freedomSettings', value: settings } as any);
 }
 
@@ -767,12 +787,15 @@ export function applyRecurringToMonth(month: string): boolean {
  * an automatic monthly recurring expense transaction so cash flow accurately reflects it.
  * 
  * Tricky logic:
- * Commit to SQLite first via persistScopedRecord, which propagates failures to the caller
- * and only updates the browser cache upon verified HTTP 200 commit.
+ * - Pass intended currency into updateDebtRecurringTransaction (Item 5).
+ * - Create and update recurring entries with the intended currency;
+ *   do not hardcode USD or silently retain an incompatible old currency.
+ * - Commit to SQLite first via persistScopedRecord, which propagates failures to the caller
+ *   and only updates the browser cache upon verified HTTP 200 commit.
  * 
  * TODO: Link recurring payment directly to specific liability payoff timeline.
  */
-export async function updateDebtRecurringTransaction(amount: number): Promise<void> {
+export async function updateDebtRecurringTransaction(amount: number, currency: CurrencyCode = 'USD'): Promise<void> {
     const DEBT_TRX_ID = 'debt-freedom-accelerator';
     const transactions = loadRecurringTransactions();
     const existing = transactions.find(t => t.id === DEBT_TRX_ID);
@@ -782,6 +805,7 @@ export async function updateDebtRecurringTransaction(amount: number): Promise<vo
             const deactivated: RecurringTransaction = {
                 ...existing,
                 amount: 0,
+                currency,
                 is_active: false
             };
             await persistScopedRecord('recurring', deactivated);
@@ -790,7 +814,7 @@ export async function updateDebtRecurringTransaction(amount: number): Promise<vo
     }
 
     const targetTrx: RecurringTransaction = existing
-        ? { ...existing, amount, is_active: true }
+        ? { ...existing, amount, currency, is_active: true }
         : {
             id: DEBT_TRX_ID,
             name: 'Debt Freedom Accelerator',
@@ -800,7 +824,7 @@ export async function updateDebtRecurringTransaction(amount: number): Promise<vo
             category: 'Debt Repayment',
             start_date: new Date().toISOString().split('T')[0],
             is_active: true,
-            currency: 'USD'
+            currency: currency
         };
 
     await persistScopedRecord('recurring', targetTrx);
@@ -1114,8 +1138,15 @@ export async function initVaultSync(): Promise<void> {
     }
 }
 
-// Auto-trigger sync on browser boot
-if (typeof window !== 'undefined') {
+// Auto-trigger sync on browser boot (suppressed in test environments to prevent unhandled background fetch)
+// Why this exists:
+// In browser runtime, synchronizes browser storage with SQLite on boot.
+// In test environments (Vitest/Jest), background timers attempting network fetches against unconfigured ports
+// cause unhandled ECONNREFUSED network errors. Tests test sync by invoking initVaultSync() directly.
+// Tricky logic:
+// Checks both process.env.NODE_ENV and process.env.VITEST to safely identify test executions.
+// TODO: Replace setTimeout with requestIdleCallback in browser runtime for smoother first contentful paint.
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
     setTimeout(() => {
         initVaultSync();
     }, 100);

@@ -112,17 +112,43 @@ export function parseToCents(val: number | string, currency: CurrencyCode = 'USD
 
 /**
  * Formats integer cents into a human-readable decimal string with currency symbol.
+ * Respects ISO minor-unit scales (e.g., JPY has 0 decimals: ¥10,000; AUD has 2: A$989.77).
  */
-export function formatMoney(money: Money): string {
-    const decimals = CURRENCY_DECIMALS[money.currency] ?? 2;
+export function formatMoney(money: Money | { amount_cents: number | null | undefined; currency?: CurrencyCode | null }): string {
+    const currency = money.currency || 'USD';
+    const amountCents = money.amount_cents ?? 0;
+    const decimals = CURRENCY_DECIMALS[currency] ?? 2;
     const divisor = Math.pow(10, decimals);
-    const major = money.amount_cents / divisor;
+    const major = amountCents / divisor;
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: money.currency,
+        currency: currency,
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals
     }).format(major);
+}
+
+/**
+ * Converts integer minor-unit cents into standard major currency units (e.g. dollars or yen).
+ * 
+ * Why this exists:
+ * Fulfills Remediation Requirement 1: Currency scaling.
+ * Unconditionally dividing by 100 corrupts currencies with non-2 decimal scales (such as JPY with 0 decimals).
+ * 10,000 JPY divided by 100 becomes 100 JPY (a 100x error).
+ * This function looks up CURRENCY_DECIMALS so 10,000 JPY cents produces 10,000 Yen, while
+ * 98,977 AUD cents produces 989.77 AUD.
+ * 
+ * Tricky logic:
+ * - If cents is null or undefined, returns 0.
+ * - Divisor is Math.pow(10, decimals). For JPY (0 decimals), divisor is 10^0 = 1.
+ * - For AUD/USD (2 decimals), divisor is 10^2 = 100.
+ */
+export function centsToMajorUnits(cents: number | null | undefined, currency?: CurrencyCode | null): number {
+    if (cents === null || cents === undefined || !Number.isFinite(cents)) {
+        return 0;
+    }
+    const decimals = (currency && currency in CURRENCY_DECIMALS) ? CURRENCY_DECIMALS[currency] : 2;
+    return cents / Math.pow(10, decimals);
 }
 
 /**
@@ -283,9 +309,38 @@ export interface BalanceObservation {
     source_type: 'manual' | 'table_paste' | 'document' | 'api';
     source_reference?: string | null;
     source_batch_id?: string | null;
+    source_excerpt?: string | null;
+    is_user_modified?: boolean;
+    is_component_of_total?: boolean;
+    parent_observation_id?: string | null;
+    /**
+     * Delivery 2B: Evidence reference to originating statement document in m1_documents.
+     * Allows opening the exact original PDF via /api/documents/raw?id=...
+     */
+    document_id?: string | null;
+    /**
+     * Delivery 2B: Specific 1-indexed page number in the statement document where the balance was sourced.
+     */
+    page_number?: number | null;
     superseded_by_id?: string | null;
     review_status: 'proposed' | 'accepted' | 'superseded' | 'rejected';
     raw_label?: string | null;
+    created_at: string;
+}
+
+/**
+ * Balance Import Batch
+ * 
+ * Why this exists:
+ * Fulfills Delivery 2A Requirement C:
+ * Retains the exact verbatim raw pasted statement text once per batch, associating individual balance observations
+ * with their originating import batch, extraction method, and model identifier for auditability and replay.
+ */
+export interface BalanceImportBatch {
+    id: string;
+    raw_text: string;
+    extraction_method: 'deterministic_table' | 'local_llm' | string;
+    model_identifier?: string | null;
     created_at: string;
 }
 
@@ -302,14 +357,18 @@ export interface AccountSourceMapping {
 export interface ReconciliationComparison {
     account_id: string;
     account_name: string;
+    owner_name?: string;
+    source_document_name?: string;
+    document_id?: string;
     currency: CurrencyCode;
     effective_date: string;
+    account_opening_date?: string | null;
     reported_amount_cents: number;
     reported_balance_kind: BalanceKind;
     recorded_ledger_cents: number;
     diff_cents: number;
     is_comparable: boolean;
-    status: 'matched' | 'discrepancy' | 'not_directly_comparable';
+    status: 'matched' | 'discrepancy' | 'not_directly_comparable' | 'balance_only' | 'insufficient_history';
     notes?: string;
 }
 
@@ -318,6 +377,144 @@ export interface ConvertedMonetaryAmount {
     currency: CurrencyCode;
     is_complete: boolean;
     missing_rates: string[];
+}
+
+/**
+ * Balance Extraction Proposal
+ * 
+ * Why this exists:
+ * Fulfills Delivery 2A Local AI-Assisted Balance Extraction:
+ * Represents an uncommitted, reviewable balance proposal extracted from pasted statement text.
+ * Couples source provenance, source excerpts, and application-validated minor units.
+ * 
+ * Tricky logic:
+ * - `unresolved_fields`: Explicitly tracks ambiguous attributes (currency, date, owner, account, amount, balance_kind)
+ *   so the UI requires user confirmation prior to persistent commitment.
+ * - `is_component_of_total`: Identifies cash or holding lines that are already included in a portfolio total,
+ *   preventing double counting of wealth.
+ * - `is_user_modified`: Tracks whether the user manually altered extracted values before saving.
+ * - `has_newer_observation`: Flags historical observations so older statements do not overwrite newer effective balances.
+ * 
+ * TODO: Support automated cross-institution reconciliation grouping for transfers in Milestone 2.
+ */
+export interface BalanceExtractionProposal {
+    id: string;
+    raw_account_name: string;
+    account_id: string | null;
+    account_name: string;
+    account_mask?: string | null;
+    entity_id?: string | null;
+    entity_name?: string | null;
+    amount_cents: number | null;
+    currency: CurrencyCode;
+    balance_kind: BalanceKind;
+    effective_date: string; // YYYY-MM-DD
+    raw_label?: string | null;
+    source_excerpt: string | null;
+    confidence: number;
+    unresolved_fields: string[];
+    is_component_of_total?: boolean;
+    parent_observation_id?: string | null;
+    has_newer_observation?: boolean;
+    existing_balance_cents?: number | null;
+    existing_balance_date?: string | null;
+    expected_balance_revision?: number;
+    tracking_mode?: 'balance' | 'transactions';
+    reconciliation?: ReconciliationComparison;
+    confirmed_by_user?: boolean;
+    is_user_modified?: boolean;
+    /**
+     * Dedicated explicit flag for supporting-detail classification overrides.
+     * 
+     * Why this exists:
+     * Fulfills Delivery 2A Narrow Closing Corrections:
+     * Separates deliberate user corrections of the supporting-detail classification
+     * from general row confirmation (`confirmed_by_user`), account selection, and `is_user_modified` (used for provenance).
+     * Prevents routine reimport confirmations from overriding a previously reviewed classification.
+     * 
+     * Tricky logic:
+     * Only set to true when the user deliberately toggles the supporting-detail checkbox.
+     * Must not be authorized by general confirmation or edits to unrelated fields.
+     * 
+     * TODO: Support classification correction audit logs in Milestone 2.
+     */
+    explicit_classification_correction?: boolean;
+    /**
+     * Delivery 2B: Document ID in m1_documents when proposal originates from an uploaded statement PDF.
+     */
+    document_id?: string | null;
+    /**
+     * Delivery 2B: 1-indexed page number in statement PDF where the balance and excerpt were sourced.
+     */
+    page_number?: number | null;
+    /**
+     * Delivery 2B: Tracks whether this proposal has already been committed to the vault.
+     */
+    is_saved?: boolean;
+    /**
+     * Remediation Requirement A3: Explains an explicit ownership contradiction between statement header and matching account.
+     */
+    owner_conflict_message?: string | null;
+}
+
+/**
+ * Statement Page Coverage Evaluation
+ * 
+ * Why this exists:
+ * Fulfills Delivery 2B Required Plan Adjustment 1:
+ * Assesses extraction coverage per page. Identifies unreadable/scanned pages
+ * and discloses partial extraction rather than relying on a global character shortcut.
+ * 
+ * Tricky logic:
+ * Counts non-whitespace characters and readable alphanumeric tokens on each page.
+ * Distinguishes true blank/scanned pages from pages containing valid sparse balances.
+ * 
+ * TODO: In Milestone 2, link scanned pages to local vision/OCR background queue.
+ */
+export interface StatementPageCoverage {
+    page_number: number;
+    character_count: number;
+    readable_token_count: number;
+    is_readable: boolean;
+    reason?: string;
+}
+
+/**
+ * Statement Coverage Summary
+ * Discloses whether a statement document was completely readable, partially readable, or scanned/unsupported.
+ */
+export interface StatementCoverageSummary {
+    total_pages: number;
+    readable_pages: number;
+    unreadable_pages: number;
+    coverage_level: 'full' | 'partial' | 'none';
+    page_details: StatementPageCoverage[];
+    disclosures: string[];
+}
+
+/**
+ * Statement Review Session (Delivery 2B: Durable Pending Review State)
+ * Preserves user modifications to parsed proposals across browser reloads.
+ */
+export interface StatementReviewState {
+    id: string;
+    document_id: string;
+    status: 'pending_review' | 'saved' | 'failed';
+    proposals: BalanceExtractionProposal[];
+    coverage_summary: StatementCoverageSummary;
+    version?: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ExtractBalancesResult {
+    success: boolean;
+    proposals: BalanceExtractionProposal[];
+    extraction_method: 'deterministic_table' | 'local_llm';
+    source_batch_id: string;
+    model_used?: string;
+    error?: string;
+    is_offline?: boolean;
 }
 
 export interface SharedFinancialSummaryAccount {
@@ -358,7 +555,13 @@ export interface SharedFinancialSummary {
     // unrecorded_accounts only includes balance-mode accounts that have zero accepted valuation observations on or before asOfDate.
     // is_complete is true only when unrecorded_count === 0 and all eligible accounts have valid balances and conversion rates.
     // TODO: Include un-reconciled ledger discrepancy accounts in completeness criteria in Milestone 2.
-    unrecorded_accounts: Array<{ id: string; name: string; currency: CurrencyCode }>;
+    unrecorded_accounts: Array<{
+        id: string;
+        name: string;
+        currency: CurrencyCode;
+        account_type?: AccountType;
+        account_sub_type?: AccountSubType;
+    }>;
     unrecorded_count: number;
     is_complete: boolean;
 }
@@ -504,6 +707,16 @@ export type ScopeType = 'individual' | 'household' | 'consolidated';
 
 /**
  * Scope-Aware Balance Item with Joint Ownership Allocation (M1-FLOW-07, T7)
+ *
+ * Why this exists:
+ * Represents each account line item on an ownership-attributed balance sheet.
+ *
+ * Tricky logic:
+ * - When an account is balance-tracked ('balance') without an accepted observation,
+ *   is_unknown is set to true and balances display "Unknown (Needs balance)"
+ *   instead of fabricating $0.00.
+ *
+ * TODO: Support automated balance inquiry request workflows.
  */
 export interface ScopeNetWorthItem {
     account_id: string;
@@ -521,10 +734,18 @@ export interface ScopeNetWorthItem {
     formatted_full_balance?: string;
     primary_entity_id: string;
     is_joint: boolean;
+    is_unknown?: boolean;
 }
 
 /**
  * Scope-Aware Net Worth Report Result (M1-CALC-01, M1-CALC-02, T7)
+ *
+ * Why this exists:
+ * Carries ownership-scoped net worth calculations and explicit completeness tracking.
+ *
+ * Tricky logic:
+ * - If unrecorded_count > 0, is_partial is true and headline figures represent
+ *   known balance totals only.
  */
 export interface ScopeNetWorthResult {
     scope_type: ScopeType;
@@ -542,6 +763,9 @@ export interface ScopeNetWorthResult {
     formatted_scoped_net_worth_by_currency?: Record<CurrencyCode, string>;
     items: ScopeNetWorthItem[];
     calculation_version: string;
+    unrecorded_count?: number;
+    unrecorded_accounts?: Array<{ id: string; name: string; currency: CurrencyCode }>;
+    is_partial?: boolean;
 }
 
 /**
@@ -550,6 +774,9 @@ export interface ScopeNetWorthResult {
  * Why this exists:
  * Reports personal net worth consolidated into a target reporting currency.
  * Consumes the exact ownership-scoped totals from getScopeNetWorth to guarantee consistency.
+ *
+ * Tricky logic:
+ * - Completeness requires both complete FX conversion rates AND zero unrecorded balance accounts.
  */
 export interface ConsolidatedNetWorthResult {
     reporting_currency: CurrencyCode;
@@ -564,6 +791,8 @@ export interface ConsolidatedNetWorthResult {
     applied_exchange_rates?: Record<string, number>;
     as_of_date: string;
     calculation_version: string;
+    unrecorded_count?: number;
+    unrecorded_accounts?: Array<{ id: string; name: string; currency: CurrencyCode }>;
 }
 
 export type CashFlowActivityType = 'operating' | 'financing' | 'investing' | 'transfer';
@@ -592,6 +821,36 @@ export interface CashFlowItem {
  * Credit card purchases are not cash flows; debt repayments and cash settlements are.
  * Independently reconciles reported closing cash with double-entry ledger closing cash.
  */
+/**
+ * Individual liquid account balance and evidence provenance within a Cash Flow statement.
+ * 
+ * Why this exists:
+ * Fulfills Batch B Focused Closing Corrections (Item 1):
+ * Makes all known cash balances visible across both observation-tracked and ledger-tracked accounts
+ * without double-counting. Distinguishes recorded ledger balances from balances supported by observations,
+ * displays observation effective dates, and flags accounts with missing valuations as unknown.
+ * 
+ * Tricky logic:
+ * - If an account is balance-tracked with an accepted observation of AUD 0, `balance_cents` is 0 (legitimate zero),
+ *   and `is_unknown` is false.
+ * - If an account has zero accepted observations, `balance_cents` is null, and `is_unknown` is true.
+ * - Each account contributes exactly once to the currency's combined known balance subtotal.
+ * 
+ * TODO: In Milestone 2, link directly to PDF statement bounding box provenance for observed balances.
+ */
+export interface CashFlowLiquidAccountBalance {
+    account_id: string;
+    account_name: string;
+    currency: CurrencyCode;
+    tracking_mode: TrackingMode;
+    basis: 'ledger' | 'observation' | 'unknown';
+    balance_cents: number | null;
+    formatted_balance: string;
+    as_of_date?: string | null;
+    is_unknown: boolean;
+    has_transactions: boolean;
+}
+
 export interface CashFlowStatementResult {
     entity_id: string;
     start_date?: string;
@@ -613,6 +872,14 @@ export interface CashFlowStatementResult {
     reconciliation_discrepancy_cents_by_currency?: Record<CurrencyCode, number>;
     formatted_net_cash_change_by_currency: Record<CurrencyCode, string>;
     formatted_ending_cash_by_currency: Record<CurrencyCode, string>;
+    observed_liquid_balance_cents_by_currency?: Record<CurrencyCode, number | null>;
+    liquid_account_coverage_by_currency?: Record<CurrencyCode, 'ledger' | 'balance_only' | 'mixed' | 'unknown'>;
+    formatted_observed_liquid_balance_by_currency?: Record<CurrencyCode, string>;
+    liquid_accounts_by_currency?: Record<CurrencyCode, CashFlowLiquidAccountBalance[]>;
+    combined_known_balance_cents_by_currency?: Record<CurrencyCode, number | null>;
+    formatted_combined_known_balance_by_currency?: Record<CurrencyCode, string>;
+    unrecorded_account_count_by_currency?: Record<CurrencyCode, number>;
+    has_transaction_history_by_currency?: Record<CurrencyCode, boolean>;
     items: CashFlowItem[];
     calculation_version: string;
 }
@@ -689,3 +956,22 @@ export interface DraftItem {
     updated_at: string;
 }
 
+
+export interface ReimbursementWorkflow {
+    id: string;
+    personal_entity_id: string;
+    business_entity_id: string;
+    currency: CurrencyCode;
+    due_from_account_id: string;
+    due_to_account_id: string;
+    draft_id?: string | null;
+    evidence_document_id?: string | null;
+    personal_transaction_id: string;
+    business_transaction_id: string;
+    personal_reimbursement_tx_id?: string | null;
+    business_reimbursement_tx_id?: string | null;
+    amount_cents: number;
+    status: 'awaiting_reimbursement' | 'reimbursed';
+    created_at: string;
+    updated_at: string;
+}

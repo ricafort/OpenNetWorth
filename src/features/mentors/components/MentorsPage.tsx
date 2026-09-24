@@ -47,6 +47,7 @@ export const MentorsPage = () => {
         mentorName?: string;
         actionIntent?: any;
         facts?: any;
+        pendingIntent?: any;
     }[]>([]);
 
     const allMentors = [...STATIC_MENTORS, ...customMentors];
@@ -72,6 +73,13 @@ export const MentorsPage = () => {
         const toSave = customMentors.map(({ icon, ...rest }) => rest);
         localStorage.setItem('custom_mentors', JSON.stringify(toSave));
     }, [customMentors]);
+
+    const [entities, setEntities] = useState<any[]>([]);
+    useEffect(() => {
+        fetch('/api/accounting').then(res => res.json()).then(data => {
+            if (data.entities) setEntities(data.entities);
+        }).catch(console.error);
+    }, []);
 
     const toggleMentor = (id: string) => {
         setSelectedMentorIds(prev =>
@@ -169,12 +177,21 @@ export const MentorsPage = () => {
         setChat(prev => prev.filter(msg => msg.role !== 'action_confirm'));
     };
 
-    const handleSend = async () => {
-        if (!input.trim()) return;
+    const handleSend = async (overrideMessage?: string, resolvedPendingContext?: any, resolvedEntityId?: string) => {
+        const userMsg = overrideMessage || input;
+        if (!userMsg.trim()) return;
 
-        const userMsg = input;
         const currentSelectedIds = [...selectedMentorIds];
-        setInput('');
+        if (!overrideMessage) setInput('');
+        
+        let pendingContextToUse = resolvedPendingContext;
+        if (!pendingContextToUse) {
+            const lastMsg = chat[chat.length - 1];
+            if (lastMsg?.role === 'mentor' && lastMsg.pendingIntent) {
+                pendingContextToUse = lastMsg.pendingIntent;
+            }
+        }
+
         setChat(prev => [...prev, { role: 'user', content: userMsg }]);
         setIsLoading(true);
 
@@ -220,17 +237,19 @@ export const MentorsPage = () => {
                                 currency: baseCurrency
                             },
                             message: userMsg,
+                            pendingContext: pendingContextToUse,
+                            resolvedEntityId,
                             localConfig
                         })
                     });
                     const data = await resp.json();
                     const reply = data.response?.trim() || data.error || 'No advice could be generated at this time. Please ensure your Local LLM is active.';
-                    return { id: m.id, name: m.name, content: reply, facts: data.facts };
+                    return { id: m.id, name: m.name, content: reply, facts: data.facts, pendingIntent: data.pending_intent };
                 })
             );
 
             responses.forEach(res => {
-                setChat(prev => [...prev, { role: 'mentor', mentorId: res.id, mentorName: res.name, content: res.content, facts: res.facts }]);
+                setChat(prev => [...prev, { role: 'mentor', mentorId: res.id, mentorName: res.name, content: res.content, facts: res.facts, pendingIntent: res.pendingIntent }]);
             });
 
             if (responses.length > 1) {
@@ -266,11 +285,17 @@ export const MentorsPage = () => {
                 mode={mode}
                 activeMentors={activeMentors}
                 baseCurrency={baseCurrency}
+                entities={entities}
                 onSetMode={setMode}
                 onSetInput={setInput}
                 onSend={handleSend}
                 onActionConfirm={handleActionConfirm}
                 onActionCancel={handleActionCancel}
+                onResolveIntent={(intent, entityId) => {
+                    const entityName = entities.find(e => e.id === entityId)?.name || (entityId === 'all' ? 'All Accounts' : entityId);
+                    const pseudoMessage = `Use entity: ${entityName}`;
+                    handleSend(pseudoMessage, intent, entityId);
+                }}
             />
 
             {/* Modals */}

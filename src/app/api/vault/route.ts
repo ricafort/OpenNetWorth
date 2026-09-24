@@ -89,8 +89,15 @@ function assertValidCalendarDateLocal(dateStr: any, context: string): void {
 }
 
 import { CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
+import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
+
+function secureJson(data: any, init?: ResponseInit): NextResponse {
+    return applySensitiveHeaders(NextResponse.json(data, init));
+}
 
 export async function GET(request: Request) {
+    const securityCheck = validateLocalSecurity(request);
+    if (securityCheck) return securityCheck;
     try {
         const { searchParams } = new URL(request.url);
         const entity = searchParams.get('entity');
@@ -103,11 +110,11 @@ export async function GET(request: Request) {
                     entity === 'cashFlow' ? 'cash_flow_history' : entity;
 
             if (!allowed.includes(table)) {
-                return NextResponse.json({ error: `Invalid entity: ${entity}` }, { status: 400 });
+                return secureJson({ error: `Invalid entity: ${entity}` }, { status: 400 });
             }
 
             const rows = db.prepare(`SELECT * FROM ${table}`).all();
-            return NextResponse.json({ data: rows });
+            return secureJson({ data: rows });
         }
 
         // Return full consistent snapshot across all collections (TRUST-11, DATA-01)
@@ -198,6 +205,7 @@ export async function GET(request: Request) {
             const exchange_rates = tableExists('m1_exchange_rates') ? db.prepare('SELECT * FROM m1_exchange_rates').all() : [];
             const asset_valuations = tableExists('m1_asset_valuations') ? db.prepare('SELECT * FROM m1_asset_valuations').all() : [];
             const drafts = tableExists('m1_drafts') ? db.prepare('SELECT * FROM m1_drafts').all() : [];
+            const reimbursement_workflows = tableExists('m1_reimbursement_workflows') ? db.prepare('SELECT * FROM m1_reimbursement_workflows').all() : [];
 
             // Modern document collections
             const documents = tableExists('m1_documents') ? db.prepare('SELECT * FROM m1_documents').all() : [];
@@ -205,9 +213,12 @@ export async function GET(request: Request) {
             const document_jobs = tableExists('m1_document_jobs') ? db.prepare('SELECT * FROM m1_document_jobs').all() : [];
             const proposals = tableExists('m1_proposals') ? db.prepare('SELECT * FROM m1_proposals').all() : [];
 
-            // Balance observations and account mappings (Delivery 1)
+            // Balance observations, import batches, account mappings, and statement reviews (Delivery 1, 2A & 2B)
             const balance_observations = tableExists('m1_balance_observations') ? db.prepare('SELECT * FROM m1_balance_observations').all() : [];
             const account_source_mappings = tableExists('m1_account_source_mappings') ? db.prepare('SELECT * FROM m1_account_source_mappings').all() : [];
+            const balance_import_batches = tableExists('m1_balance_import_batches') ? db.prepare('SELECT * FROM m1_balance_import_batches').all() : [];
+            const statement_reviews = tableExists('m1_statement_reviews') ? db.prepare('SELECT * FROM m1_statement_reviews').all() : [];
+            const categorization_rules = tableExists('m1_categorization_rules') ? db.prepare('SELECT * FROM m1_categorization_rules').all() : [];
 
             const snapshot: any = {
                 assets,
@@ -232,17 +243,29 @@ export async function GET(request: Request) {
                 document_jobs,
                 proposals
             };
+            if (reimbursement_workflows.length > 0) {
+                snapshot.reimbursement_workflows = reimbursement_workflows;
+            }
             if (balance_observations.length > 0) {
                 snapshot.balance_observations = balance_observations;
             }
             if (account_source_mappings.length > 0) {
                 snapshot.account_source_mappings = account_source_mappings;
             }
+            if (balance_import_batches.length > 0) {
+                snapshot.balance_import_batches = balance_import_batches;
+            }
+            if (statement_reviews.length > 0) {
+                snapshot.statement_reviews = statement_reviews;
+            }
+            if (categorization_rules.length > 0) {
+                snapshot.categorization_rules = categorization_rules;
+            }
 
             return snapshot;
         })();
 
-        return NextResponse.json({
+        return secureJson({
             success: true,
             manifest: {
                 app: 'OpenNetWorth',
@@ -261,7 +284,8 @@ export async function GET(request: Request) {
                     journal_entries: snapshot.journal_entries.length,
                     drafts: snapshot.drafts.length,
                     documents: snapshot.documents.length,
-                    proposals: snapshot.proposals.length
+                    proposals: snapshot.proposals.length,
+                    categorization_rules: snapshot.categorization_rules?.length || 0
                 }
             },
             vault: {
@@ -271,11 +295,13 @@ export async function GET(request: Request) {
         });
     } catch (error: any) {
         console.error('Vault GET Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return secureJson({ error: error.message }, { status: 500 });
     }
 }
 
 export async function POST(request: Request) {
+    const securityCheck = validateLocalSecurity(request);
+    if (securityCheck) return securityCheck;
     try {
         const body = await request.json();
         const db = getDb();
@@ -285,7 +311,7 @@ export async function POST(request: Request) {
         // --- SCOPED SINGLE-RECORD OPERATIONS (DATA-05) ---
         if (action === 'scoped_save') {
             if (!entity || !item || (!item.id && entity !== 'settings' && entity !== 'cashFlow' && entity !== 'history')) {
-                return NextResponse.json({ error: 'Missing entity, item, or item ID for scoped save' }, { status: 400 });
+                return secureJson({ error: 'Missing entity, item, or item ID for scoped save' }, { status: 400 });
             }
 
             if (entity === 'assets') {
@@ -317,7 +343,7 @@ export async function POST(request: Request) {
                     investment_details: item.investment_details ? JSON.stringify(item.investment_details) : null,
                     last_updated: item.last_updated || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item: { ...item, value, interest_rate } });
+                return secureJson({ success: true, item: { ...item, value, interest_rate } });
             }
 
             if (entity === 'liabilities') {
@@ -350,7 +376,7 @@ export async function POST(request: Request) {
                     currency: item.currency || 'USD',
                     last_updated: item.last_updated || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item: { ...item, balance, interest_rate, minimum_payment } });
+                return secureJson({ success: true, item: { ...item, balance, interest_rate, minimum_payment } });
             }
 
             if (entity === 'goals') {
@@ -382,7 +408,7 @@ export async function POST(request: Request) {
                     deadline: item.deadline || null,
                     created_at: item.created_at || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item: { ...item, target_amount, current_amount, start_amount } });
+                return secureJson({ success: true, item: { ...item, target_amount, current_amount, start_amount } });
             }
 
             if (entity === 'recurring') {
@@ -416,7 +442,7 @@ export async function POST(request: Request) {
                     currency: item.currency || 'USD',
                     created_at: item.created_at || new Date().toISOString()
                 });
-                return NextResponse.json({ success: true, item: { ...item, amount } });
+                return secureJson({ success: true, item: { ...item, amount } });
             }
 
             if (entity === 'cashFlow') {
@@ -455,7 +481,7 @@ export async function POST(request: Request) {
 
                 // Return the authoritative persisted record from the database
                 const persisted = db.prepare("SELECT * FROM cash_flow_history WHERE user_id = 'local_user' AND month = ?").get(month) as any;
-                return NextResponse.json({
+                return secureJson({
                     success: true,
                     item: {
                         id: persisted.id,
@@ -477,7 +503,7 @@ export async function POST(request: Request) {
                 const net_worth = parseFiniteNumber(item.netWorth ?? item.net_worth, 'Net worth', { allowNegative: true, required: true });
                 const date = item.date;
                 if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                    return NextResponse.json({ error: 'History snapshot date must be YYYY-MM-DD' }, { status: 400 });
+                    return secureJson({ error: 'History snapshot date must be YYYY-MM-DD' }, { status: 400 });
                 }
 
                 const existing = db.prepare("SELECT id FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as { id: string } | undefined;
@@ -507,7 +533,7 @@ export async function POST(request: Request) {
                 });
 
                 const persisted = db.prepare("SELECT * FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as any;
-                return NextResponse.json({
+                return secureJson({
                     success: true,
                     item: {
                         id: persisted.id,
@@ -527,7 +553,7 @@ export async function POST(request: Request) {
                  * so preferences survive browser reloads and startup synchronization.
                  */
                 if (!item || typeof item !== 'object') {
-                    return NextResponse.json({ error: 'Settings payload must be an object' }, { status: 400 });
+                    return secureJson({ error: 'Settings payload must be an object' }, { status: 400 });
                 }
 
                 const upsertSetting = db.prepare(`
@@ -551,16 +577,16 @@ export async function POST(request: Request) {
                         db.prepare("UPDATE profiles SET currency_code = ? WHERE id = 'local_user'").run(item.baseCurrency);
                     }
                 }
-                return NextResponse.json({ success: true, item });
+                return secureJson({ success: true, item });
             }
 
-            return NextResponse.json({ error: `Unsupported entity for scoped save: ${entity}` }, { status: 400 });
+            return secureJson({ error: `Unsupported entity for scoped save: ${entity}` }, { status: 400 });
         }
 
         // --- SCOPED SINGLE-RECORD DELETE (DATA-05) ---
         if (action === 'scoped_delete') {
             if (!entity || !id) {
-                return NextResponse.json({ error: 'Missing entity or id for scoped delete' }, { status: 400 });
+                return secureJson({ error: 'Missing entity or id for scoped delete' }, { status: 400 });
             }
             const tableMap: Record<string, string> = {
                 assets: 'assets',
@@ -572,7 +598,7 @@ export async function POST(request: Request) {
             };
             const table = tableMap[entity];
             if (!table) {
-                return NextResponse.json({ error: `Unsupported entity for delete: ${entity}` }, { status: 400 });
+                return secureJson({ error: `Unsupported entity for delete: ${entity}` }, { status: 400 });
             }
 
             let result;
@@ -585,9 +611,9 @@ export async function POST(request: Request) {
             }
 
             if (result.changes === 0) {
-                return NextResponse.json({ error: `Record not found for delete in ${entity} with id: ${id}` }, { status: 404 });
+                return secureJson({ error: `Record not found for delete in ${entity} with id: ${id}` }, { status: 404 });
             }
-            return NextResponse.json({ success: true, deletedId: id });
+            return secureJson({ success: true, deletedId: id });
         }
 
         // --- COMPLETE VAULT CLEAR/WIPE (DATA-01, DATA-05) ---
@@ -602,17 +628,17 @@ export async function POST(request: Request) {
                 db.prepare("DELETE FROM settings").run();
             });
             clearTx();
-            return NextResponse.json({ success: true, message: 'Vault wiped successfully' });
+            return secureJson({ success: true, message: 'Vault wiped successfully' });
         }
 
         // --- BULK RESTORE OR BULK SYNCHRONIZATION ---
         const rawVault = (body.vault && typeof body.vault === 'object') ? body.vault : body;
         const schemaVersion = body.schemaVersion ?? body.manifest?.schemaVersion ?? rawVault.schemaVersion ?? 1;
         const isV2 = schemaVersion === 2;
-        const isBulkRestore = action === 'bulk_restore';
+        const isBulkRestore = action === 'bulk_restore' || action === 'restore';
 
         if (isBulkRestore && schemaVersion !== 1 && schemaVersion !== 2) {
-            return NextResponse.json({
+            return secureJson({
                 error: `Unsupported archive schemaVersion: ${schemaVersion}`
             }, { status: 400 });
         }
@@ -657,20 +683,20 @@ export async function POST(request: Request) {
             // Distinguish missing collections from explicitly empty collections ([])
             for (const col of requiredModernCollections) {
                 if (!Array.isArray(rawVault[col])) {
-                    return NextResponse.json({
+                    return secureJson({
                         error: `Invalid Version 2 archive: required modern accounting collection "${col}" is missing. To restore an empty collection, provide an empty array [].`
                     }, { status: 400 });
                 }
             }
             for (const col of requiredLegacyCollections) {
                 if (!Array.isArray(rawVault[col])) {
-                    return NextResponse.json({
+                    return secureJson({
                         error: `Invalid Version 2 archive: required legacy collection "${col}" is missing. To restore an empty collection, provide an empty array [].`
                     }, { status: 400 });
                 }
             }
             if (!rawVault.settings || typeof rawVault.settings !== 'object' || Array.isArray(rawVault.settings)) {
-                return NextResponse.json({
+                return secureJson({
                     error: 'Invalid Version 2 archive: settings is required and must be an object'
                 }, { status: 400 });
             }
@@ -924,6 +950,8 @@ export async function POST(request: Request) {
                 const tableExists = (name: string) => (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) as any).cnt > 0;
 
                 // Wipe modern tables in reverse dependency order
+                if (tableExists('m1_categorization_rules')) db.prepare('DELETE FROM m1_categorization_rules').run();
+                if (tableExists('m1_reimbursement_workflows')) db.prepare('DELETE FROM m1_reimbursement_workflows').run();
                 if (tableExists('m1_proposals')) db.prepare('DELETE FROM m1_proposals').run();
                 if (tableExists('m1_document_jobs')) db.prepare('DELETE FROM m1_document_jobs').run();
                 if (tableExists('m1_csv_mappings')) db.prepare('DELETE FROM m1_csv_mappings').run();
@@ -937,6 +965,7 @@ export async function POST(request: Request) {
                 if (tableExists('m1_account_ownership')) db.prepare('DELETE FROM m1_account_ownership').run();
                 if (tableExists('m1_account_source_mappings')) db.prepare('DELETE FROM m1_account_source_mappings').run();
                 if (tableExists('m1_balance_observations')) db.prepare('DELETE FROM m1_balance_observations').run();
+                if (tableExists('m1_balance_import_batches')) db.prepare('DELETE FROM m1_balance_import_batches').run();
                 if (tableExists('m1_accounts')) db.prepare('DELETE FROM m1_accounts').run();
                 if (tableExists('m1_entities')) db.prepare('DELETE FROM m1_entities').run();
 
@@ -1144,6 +1173,43 @@ export async function POST(request: Request) {
                     });
                 }
 
+                // Insert reimbursement workflows
+                if (rawVault.reimbursement_workflows) {
+                    const insertWf = db.prepare(`
+                        INSERT INTO m1_reimbursement_workflows (
+                            id, personal_entity_id, business_entity_id, currency,
+                            due_from_account_id, due_to_account_id, draft_id, evidence_document_id,
+                            personal_transaction_id, business_transaction_id, personal_reimbursement_tx_id, business_reimbursement_tx_id,
+                            amount_cents, status, created_at, updated_at
+                        ) VALUES (
+                            @id, @personal_entity_id, @business_entity_id, @currency,
+                            @due_from_account_id, @due_to_account_id, @draft_id, @evidence_document_id,
+                            @personal_transaction_id, @business_transaction_id, @personal_reimbursement_tx_id, @business_reimbursement_tx_id,
+                            @amount_cents, @status, @created_at, @updated_at
+                        )
+                    `);
+                    for (const w of rawVault.reimbursement_workflows) {
+                        insertWf.run({
+                            id: w.id || crypto.randomUUID(),
+                            personal_entity_id: w.personal_entity_id,
+                            business_entity_id: w.business_entity_id,
+                            currency: w.currency,
+                            due_from_account_id: w.due_from_account_id,
+                            due_to_account_id: w.due_to_account_id,
+                            draft_id: w.draft_id || null,
+                            evidence_document_id: w.evidence_document_id || null,
+                            personal_transaction_id: w.personal_transaction_id,
+                            business_transaction_id: w.business_transaction_id,
+                            personal_reimbursement_tx_id: w.personal_reimbursement_tx_id || null,
+                            business_reimbursement_tx_id: w.business_reimbursement_tx_id || null,
+                            amount_cents: Number(w.amount_cents),
+                            status: w.status,
+                            created_at: w.created_at || new Date().toISOString(),
+                            updated_at: w.updated_at || new Date().toISOString()
+                        });
+                    }
+                }
+
                 // Insert documents
                 const insertDoc = db.prepare(`
                     INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
@@ -1247,19 +1313,59 @@ export async function POST(request: Request) {
                     });
                 }
 
-                // Insert balance observations (Delivery 1) - Two-Pass Restore
-                // Why: Pass 1 inserts all observations with superseded_by_id = NULL so all observation IDs exist.
-                // Pass 2 updates superseded_by_id links, preventing foreign key violations when a superseded row
-                // appears before its superseding row in the backup payload (P13).
+                // Insert categorization rules
+                if (Array.isArray(rawVault.categorization_rules) && tableExists('m1_categorization_rules')) {
+                    const insertRule = db.prepare(`
+                        INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+                        VALUES (@id, @account_id, @match_string, @match_type, @target_category, @created_at, @updated_at)
+                    `);
+                    for (const r of rawVault.categorization_rules) {
+                        insertRule.run({
+                            id: r.id || crypto.randomUUID(),
+                            account_id: r.account_id,
+                            match_string: r.match_string,
+                            match_type: r.match_type || 'contains',
+                            target_category: r.target_category,
+                            created_at: r.created_at || new Date().toISOString(),
+                            updated_at: r.updated_at || new Date().toISOString()
+                        });
+                    }
+                }
+
+                // Insert balance import batches (Delivery 2A: Evidence preservation)
+                if (Array.isArray(rawVault.balance_import_batches) && tableExists('m1_balance_import_batches')) {
+                    const insertBatch = db.prepare(`
+                        INSERT INTO m1_balance_import_batches (id, raw_text, extraction_method, model_identifier, created_at)
+                        VALUES (@id, @raw_text, @extraction_method, @model_identifier, @created_at)
+                    `);
+                    for (const b of rawVault.balance_import_batches) {
+                        insertBatch.run({
+                            id: b.id,
+                            raw_text: b.raw_text,
+                            extraction_method: b.extraction_method || 'local_llm',
+                            model_identifier: b.model_identifier || null,
+                            created_at: b.created_at || new Date().toISOString()
+                        });
+                    }
+                }
+
+                // Insert balance observations (Delivery 1, 2A & 2B) - Two-Pass Restore
+                // Why: Pass 1 inserts all observations with superseded_by_id = NULL and parent_observation_id = NULL
+                // so all observation IDs exist. Pass 2 updates superseded_by_id and parent_observation_id links,
+                // preventing foreign key violations when a superseded or component row appears before its parent in the backup payload.
                 if (Array.isArray(rawVault.balance_observations) && tableExists('m1_balance_observations')) {
                     const insertObs = db.prepare(`
                         INSERT INTO m1_balance_observations (
                             id, account_id, amount_cents, currency, balance_kind, effective_date,
                             effective_time, imported_at, source_type, source_reference, source_batch_id,
+                            source_excerpt, is_user_modified, is_component_of_total, parent_observation_id,
+                            document_id, page_number,
                             superseded_by_id, review_status, raw_label, created_at
                         ) VALUES (
                             @id, @account_id, @amount_cents, @currency, @balance_kind, @effective_date,
                             @effective_time, @imported_at, @source_type, @source_reference, @source_batch_id,
+                            @source_excerpt, @is_user_modified, @is_component_of_total, NULL,
+                            @document_id, @page_number,
                             NULL, @review_status, @raw_label, @created_at
                         )
                     `);
@@ -1276,21 +1382,26 @@ export async function POST(request: Request) {
                             source_type: o.source_type || 'manual',
                             source_reference: o.source_reference || null,
                             source_batch_id: o.source_batch_id || null,
+                            source_excerpt: o.source_excerpt || null,
+                            is_user_modified: o.is_user_modified ? 1 : 0,
+                            is_component_of_total: o.is_component_of_total ? 1 : 0,
+                            document_id: o.document_id || null,
+                            page_number: typeof o.page_number === 'number' ? o.page_number : null,
                             review_status: o.review_status || 'accepted',
                             raw_label: o.raw_label || null,
                             created_at: o.created_at || new Date().toISOString()
                         });
                     }
 
-                    // Pass 2: Link superseded_by_id now that all IDs are present in the table
+                    // Pass 2: Link superseded_by_id and parent_observation_id now that all IDs are present
                     const updateSuperseded = db.prepare(`
                         UPDATE m1_balance_observations
-                        SET superseded_by_id = ?
+                        SET superseded_by_id = ?, parent_observation_id = ?
                         WHERE id = ?
                     `);
                     for (const o of rawVault.balance_observations) {
-                        if (o.superseded_by_id) {
-                            updateSuperseded.run(o.superseded_by_id, o.id);
+                        if (o.superseded_by_id || o.parent_observation_id) {
+                            updateSuperseded.run(o.superseded_by_id || null, o.parent_observation_id || null, o.id);
                         }
                     }
                 }
@@ -1313,6 +1424,28 @@ export async function POST(request: Request) {
                             source_account_id: m.source_account_id,
                             institution: m.institution || null,
                             created_at: m.created_at || new Date().toISOString()
+                        });
+                    }
+                }
+
+                // Insert statement reviews (Delivery 2B: Durable Pending Review State)
+                if (Array.isArray(rawVault.statement_reviews) && tableExists('m1_statement_reviews')) {
+                    const insertStmtRev = db.prepare(`
+                        INSERT INTO m1_statement_reviews (
+                            id, document_id, status, proposals_json, coverage_summary_json, created_at, updated_at
+                        ) VALUES (
+                            @id, @document_id, @status, @proposals_json, @coverage_summary_json, @created_at, @updated_at
+                        )
+                    `);
+                    for (const r of rawVault.statement_reviews) {
+                        insertStmtRev.run({
+                            id: r.id || crypto.randomUUID(),
+                            document_id: r.document_id,
+                            status: r.status || 'pending_review',
+                            proposals_json: typeof r.proposals_json === 'string' ? r.proposals_json : JSON.stringify(r.proposals || []),
+                            coverage_summary_json: typeof r.coverage_summary_json === 'string' ? r.coverage_summary_json : JSON.stringify(r.coverage_summary || {}),
+                            created_at: r.created_at || new Date().toISOString(),
+                            updated_at: r.updated_at || new Date().toISOString()
                         });
                     }
                 }
@@ -1456,7 +1589,7 @@ export async function POST(request: Request) {
             });
 
             v2RestoreTx();
-            return NextResponse.json({ success: true, message: 'Version 2 vault fully restored and verified.' });
+            return secureJson({ success: true, message: 'Version 2 vault fully restored and verified.' });
         }
 
         // Handle Version 1 (Legacy) Bulk Restore
@@ -1465,13 +1598,13 @@ export async function POST(request: Request) {
             const requiredLegacyCollections = ['assets', 'liabilities', 'goals', 'recurring', 'history', 'cashFlow'];
             for (const col of requiredLegacyCollections) {
                 if (!Array.isArray(rawVault[col])) {
-                    return NextResponse.json({
+                    return secureJson({
                         error: `Invalid legacy restore payload: collection "${col}" is required and must be an array`
                     }, { status: 400 });
                 }
             }
             if (!rawVault.settings || typeof rawVault.settings !== 'object' || Array.isArray(rawVault.settings)) {
-                return NextResponse.json({
+                return secureJson({
                     error: 'Invalid legacy restore payload: settings is required and must be an object'
                 }, { status: 400 });
             }
@@ -1630,7 +1763,7 @@ export async function POST(request: Request) {
             });
 
             v1RestoreTx();
-            return NextResponse.json({ success: true, message: 'Legacy vault data restored. Existing modern accounting records preserved.' });
+            return secureJson({ success: true, message: 'Legacy vault data restored. Existing modern accounting records preserved.' });
         }
 
         // --- ORDINARY SYNCHRONIZATION OR SAVE ---
@@ -1810,10 +1943,10 @@ export async function POST(request: Request) {
 
         syncTransaction();
 
-        return NextResponse.json({ success: true, message: 'Vault saved to local SQLite successfully' });
+        return secureJson({ success: true, message: 'Vault saved to local SQLite successfully' });
     } catch (error: any) {
         console.error('Vault POST Error:', error);
         const status = error instanceof ValidationError || error.name === 'ValidationError' || error.statusCode === 400 ? 400 : 500;
-        return NextResponse.json({ error: error.message || 'Internal database error' }, { status });
+        return secureJson({ error: error.message || 'Internal database error' }, { status });
     }
 }

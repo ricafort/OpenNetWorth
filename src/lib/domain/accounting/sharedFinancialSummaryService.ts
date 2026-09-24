@@ -37,6 +37,7 @@ import {
 import { listAccounts, getEntity } from './accountService';
 import { getAccountBalance } from './balanceService';
 import { getLatestValuationObservation, getReconciliationComparison, getLatestObservation } from './balanceObservationService';
+import { getLocalTodayCalendarDate } from '../calendarDate';
 
 export interface FinancialSummaryOptions {
     scopeEntityId?: string;
@@ -52,7 +53,7 @@ export function getSharedFinancialSummary(
     db: Database.Database,
     options: FinancialSummaryOptions = {}
 ): SharedFinancialSummary {
-    const asOfDate = options.asOfDate || options.as_of_date || new Date().toISOString().split('T')[0];
+    const asOfDate = options.asOfDate || options.as_of_date || getLocalTodayCalendarDate();
     const reportingCurrency = (options.reportingCurrency || options.reporting_currency || 'USD').toUpperCase();
     const scopeEntityId = options.scopeEntityId || options.entity_id;
 
@@ -60,8 +61,15 @@ export function getSharedFinancialSummary(
     const accountsIncluded: SharedFinancialSummaryAccount[] = [];
     // Why this exists:
     // Tracks accounts that track balances but lack an accepted observation on or before asOfDate.
-    // Allows dashboard widgets to qualify incomplete headline totals honestly without assuming zero balances.
-    const unrecordedAccounts: Array<{ id: string; name: string; currency: CurrencyCode }> = [];
+    // Allows dashboard widgets, assets, and liabilities views to qualify incomplete headline totals honestly
+    // without assuming zero balances or commingling assets with debts.
+    const unrecordedAccounts: Array<{
+        id: string;
+        name: string;
+        currency: CurrencyCode;
+        account_type?: import('./types').AccountType;
+        account_sub_type?: import('./types').AccountSubType;
+    }> = [];
 
     const totalAssetsCentsByCurrency: Record<CurrencyCode, number> = {};
     const totalLiabilitiesCentsByCurrency: Record<CurrencyCode, number> = {};
@@ -131,7 +139,9 @@ export function getSharedFinancialSummary(
                 unrecordedAccounts.push({
                     id: account.id,
                     name: account.name,
-                    currency: account.currency
+                    currency: account.currency,
+                    account_type: account.type,
+                    account_sub_type: account.sub_type
                 });
                 coverageNotes.push(`Account "${account.name}" (${account.currency}) tracks balances but has no accepted valuation observation on or before ${asOfDate}.`);
                 continue;
@@ -187,6 +197,60 @@ export function getSharedFinancialSummary(
         } else if (account.type === 'liability') {
             addToMap(totalLiabilitiesCentsByCurrency, account.currency, weightedAmountCents);
             addToMap(netWorthCentsByCurrency, account.currency, -weightedAmountCents);
+        }
+    }
+
+    // 1.5 Eliminate internal balances for the full combined view (Batch D1)
+    if (!scopeEntityId) {
+        const workflows = db.prepare(`
+            SELECT 
+                w.due_from_account_id, 
+                w.due_to_account_id, 
+                w.amount_cents, 
+                w.currency,
+                pt.date as purchase_date,
+                prt.date as personal_reimb_date,
+                brt.date as business_reimb_date
+            FROM m1_reimbursement_workflows w
+            JOIN m1_transactions pt ON w.personal_transaction_id = pt.id
+            LEFT JOIN m1_transactions prt ON w.personal_reimbursement_tx_id = prt.id
+            LEFT JOIN m1_transactions brt ON w.business_reimbursement_tx_id = brt.id
+        `).all() as any[];
+
+        for (const wf of workflows) {
+            // Did the purchase exist on or before asOfDate?
+            if (wf.purchase_date > asOfDate) {
+                continue;
+            }
+
+            // Calculate how much is still outstanding for each side
+            const personalReimbursed = (wf.personal_reimb_date && wf.personal_reimb_date <= asOfDate);
+            const businessReimbursed = (wf.business_reimb_date && wf.business_reimb_date <= asOfDate);
+
+            // We only eliminate matched balances.
+            // If neither side has been reimbursed, the outstanding internal balance is full.
+            // If one side has been reimbursed, that side's clearing account is already 0. We can't eliminate more than what's in both.
+            // Wait, the prompt says "Derive outstanding internal balances as of the requested date from the linked posted purchase and settlement records."
+            const dueFromOutstanding = personalReimbursed ? 0 : wf.amount_cents;
+            const dueToOutstanding = businessReimbursed ? 0 : wf.amount_cents;
+
+            const eliminationAmount = Math.min(dueFromOutstanding, dueToOutstanding);
+
+            if (eliminationAmount <= 0) {
+                continue;
+            }
+
+            const dueFromAcc = accountsIncluded.find(a => a.account_id === wf.due_from_account_id);
+            const dueToAcc = accountsIncluded.find(a => a.account_id === wf.due_to_account_id);
+
+            if (dueFromAcc && dueToAcc) {
+                dueFromAcc.amount_cents -= eliminationAmount;
+                dueToAcc.amount_cents -= eliminationAmount;
+
+                // Adjust totals
+                addToMap(totalAssetsCentsByCurrency, wf.currency, -eliminationAmount);
+                addToMap(totalLiabilitiesCentsByCurrency, wf.currency, -eliminationAmount);
+            }
         }
     }
 

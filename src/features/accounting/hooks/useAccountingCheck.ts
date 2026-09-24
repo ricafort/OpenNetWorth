@@ -6,7 +6,7 @@ import { useProfile } from '@/contexts/ProfileContext';
 export function useAccountingCheck() {
     const { profile, isLoading: profileLoading } = useProfile();
 
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, isError } = useQuery({
         queryKey: ['accounting', 'check', profile?.id],
         queryFn: async () => {
             const res = await fetch('/api/accounting');
@@ -27,6 +27,7 @@ export function useAccountingCheck() {
         hasModernRecords,
         hasModernLiabilities,
         hasModernAssets,
-        isLoading
+        isLoading,
+        isError
     };
 }

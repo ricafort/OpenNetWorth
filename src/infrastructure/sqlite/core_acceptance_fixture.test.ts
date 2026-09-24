@@ -497,9 +497,20 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
 
     // Case 14: Explicit date ranges preserved without collapsing
     it('Case 14: explicit date ranges are preserved without collapsing to single days', () => {
+        // Why this test exists:
+        // Verifies that natural expressions ("from X to Y", "from X until Y") and ISO ranges ("X..Y")
+        // preserve both start and end boundaries rather than collapsing to single dates.
         const rangeIntent = parseSpendingIntent('What did I spend from 2026-08-01 to 2026-08-15?', [entHousehold], FIXED_DATE);
         expect(rangeIntent.startDate).toBe('2026-08-01');
         expect(rangeIntent.endDate).toBe('2026-08-15');
+
+        const untilIntent = parseSpendingIntent('What did I spend from 2026-08-01 until 2026-08-15?', [entHousehold], FIXED_DATE);
+        expect(untilIntent.startDate).toBe('2026-08-01');
+        expect(untilIntent.endDate).toBe('2026-08-15');
+
+        const isoRange = parseExplicitDateRange('2026-08-01 until 2026-08-15');
+        expect(isoRange?.startDate).toBe('2026-08-01');
+        expect(isoRange?.endDate).toBe('2026-08-15');
     });
 
     // Case 15: Loan with insufficient payments

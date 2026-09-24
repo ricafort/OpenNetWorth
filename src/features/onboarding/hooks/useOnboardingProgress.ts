@@ -1,6 +1,8 @@
 import { useAssetsQuery } from '@/features/assets/hooks/useAssetsQuery';
 import { useLiabilitiesQuery } from '@/features/liabilities/hooks/useLiabilitiesQuery';
 import { useGoalsQuery } from '@/features/goals/hooks/useGoalsQuery';
+import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
+import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
@@ -8,8 +10,12 @@ export function useOnboardingProgress() {
     const { assets } = useAssetsQuery();
     const { liabilities } = useLiabilitiesQuery();
     const { goals } = useGoalsQuery();
+    const { baseCurrency } = useNetWorth();
+    const sourceState = useFinancialSourceSelection(baseCurrency);
     const [hasUsedMentors, setHasUsedMentors] = useState(false);
     const pathname = usePathname();
+    const isLoading = sourceState.isLoading;
+    const isError = sourceState.mode === 'error';
 
     // Check for mentor usage flag in localStorage
     // We also re-check when pathname changes, just in case they navigated back from mentors
@@ -24,18 +30,30 @@ export function useOnboardingProgress() {
         return () => window.removeEventListener('storage', checkMentors);
     }, [pathname]);
 
+    let hasModernAsset = false;
+    let hasModernLiability = false;
+
+    if (sourceState.mode === 'modern_usable' || sourceState.mode === 'modern_missing_balances') {
+        const allAccounts = [
+            ...(sourceState.summary?.accounts || []),
+            ...(sourceState.summary?.unrecorded_accounts || [])
+        ];
+        hasModernAsset = allAccounts.some(a => a.account_type === 'asset');
+        hasModernLiability = allAccounts.some(a => a.account_type === 'liability');
+    }
+
     // Derived state for tasks
     const tasks = [
         {
             id: 'first-asset',
             label: 'Add your first asset',
-            done: assets.length > 0,
+            done: assets.length > 0 || hasModernAsset,
             href: '/assets'
         },
         {
             id: 'first-liability',
             label: 'Track a liability',
-            done: liabilities.length > 0,
+            done: liabilities.length > 0 || hasModernLiability,
             href: '/liabilities'
         },
         {
@@ -55,5 +73,5 @@ export function useOnboardingProgress() {
     const completedCount = tasks.filter(t => t.done).length;
     const progress = (completedCount / tasks.length) * 100;
 
-    return { tasks, progress, completedCount };
+    return { tasks, progress, completedCount, isLoading, isError };
 }

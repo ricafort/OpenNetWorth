@@ -77,11 +77,18 @@ export const convertAmount = (amount: number, from: CurrencyCode, to: CurrencyCo
  * @param currency The currency code (e.g., 'USD', 'PHP')
  * @param locale The locale string (default 'en-US')
  */
-export const formatCurrency = (amount: number, currency: CurrencyCode | string, locale: string = 'en-US'): string => {
+export const formatCurrency = (
+    amount: number,
+    currency: CurrencyCode | string,
+    locale: string = 'en-US',
+    options?: { minimumFractionDigits?: number; maximumFractionDigits?: number }
+): string => {
+    const hasDecimals = !Number.isInteger(amount);
     return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currency,
-        maximumFractionDigits: 0
+        minimumFractionDigits: options?.minimumFractionDigits ?? (hasDecimals ? 2 : 0),
+        maximumFractionDigits: options?.maximumFractionDigits ?? (hasDecimals ? 2 : 0)
     }).format(amount);
 };
 

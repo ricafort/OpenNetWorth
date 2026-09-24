@@ -33,7 +33,16 @@ const loadCache = () => {
         const stored = localStorage.getItem(CACHE_KEY);
         if (stored) {
             const parsed = JSON.parse(stored);
+            const inDemo = isDemoMode();
             Object.keys(parsed).forEach(key => {
+                // Why this filter exists:
+                // Implements Assessor Finding C: Prevents mock quotes from demo mode from poisoning production cache.
+                // Tricky logic:
+                // If not in demo mode, discard any cached entry marked with isMock: true.
+                // TODO: In Milestone 2, maintain separate cache namespaces per persona.
+                if (!inDemo && parsed[key]?.data?.isMock) {
+                    return;
+                }
                 PRICE_CACHE.set(key, parsed[key]);
             });
         }
@@ -50,6 +59,36 @@ const saveCache = () => {
     } catch (e) {
         console.error('Failed to save price cache to localStorage', e);
     }
+};
+
+/**
+ * Clears the in-memory and local-storage price cache.
+ * Useful when switching personas, toggling demo mode, or running isolated tests.
+ */
+export const clearPriceCache = (): void => {
+    PRICE_CACHE.clear();
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.removeItem(CACHE_KEY);
+        } catch (e) {
+            // Ignore in non-browser environments
+        }
+    }
+};
+
+/**
+ * Test & Internal utility: Manually set a cache entry.
+ */
+export const setPriceCacheEntry = (ticker: string, entry: { data: PriceData, timestamp: number }): void => {
+    PRICE_CACHE.set(ticker.toUpperCase().trim(), entry);
+    saveCache();
+};
+
+/**
+ * Test & Internal utility: Inspect a cache entry.
+ */
+export const getPriceCacheEntry = (ticker: string): { data: PriceData, timestamp: number } | undefined => {
+    return PRICE_CACHE.get(ticker.toUpperCase().trim());
 };
 
 // Initial load on module evaluation
@@ -82,7 +121,15 @@ export const fetchStockPrice = async (ticker: string, options?: FetchOptions): P
 
     // 1. Check Cache
     const cached = PRICE_CACHE.get(symbol);
-    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+    // Why this check exists:
+    // Resolves Assessor Finding C: Synthetic mock cache poisoning in non-demo mode.
+    // If running in production mode, immediately evict mock quotes left over from demo mode or previous runs.
+    // Tricky logic:
+    // When in production (!useDemo), cached entries with isMock: true must never be returned.
+    if (!useDemo && cached?.data?.isMock) {
+        PRICE_CACHE.delete(symbol);
+        saveCache();
+    } else if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
         return cached.data;
     }
 
@@ -114,10 +161,11 @@ export const fetchStockPrice = async (ticker: string, options?: FetchOptions): P
 
         // Why this exists: Previously, provider failures silently generated synthetic random prices in production mode,
         // misrepresenting actual user asset values and fabricating gains/losses (Handover Section 16 & Batch B3).
-        // Tricky logic: In production, return last cached quote if available; if completely unquoted and not in demo mode,
-        // return null so downstream portfolio components treat the asset as unpriced rather than generating fake valuation data.
+        // Tricky logic: In production, return last cached quote only if it was a genuine provider quote (not mock);
+        // if completely unquoted and not in demo mode, return null so downstream portfolio components treat the asset
+        // as unpriced rather than generating fake valuation data.
         // TODO: Support manual quote entry directly from the asset row when remote providers are unreachable.
-        if (cached) return { ...cached.data, isMock: true };
+        if (cached && !cached.data.isMock) return cached.data;
         if (useDemo) return getMockPrice(symbol);
 
         console.warn(`All market data providers failed for ${symbol}. Suppressing synthetic mock price in production mode.`);
@@ -125,7 +173,7 @@ export const fetchStockPrice = async (ticker: string, options?: FetchOptions): P
 
     } catch (error) {
         console.error(`Error fetching stock price for ${symbol}:`, error);
-        if (cached) return cached.data;
+        if (cached && !cached.data.isMock) return cached.data;
         if (useDemo) return getMockPrice(symbol);
         return null;
     }
@@ -155,7 +203,10 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
     }
 
     const cached = PRICE_CACHE.get(symbol);
-    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+    if (!useDemo && cached?.data?.isMock) {
+        PRICE_CACHE.delete(symbol);
+        saveCache();
+    } else if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
         return cached.data;
     }
 
@@ -166,7 +217,7 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
         const data = await res.json();
 
         if (!data[coinId]) {
-            if (cached) return cached.data;
+            if (cached && !cached.data.isMock) return cached.data;
             if (useDemo) return getMockPrice(symbol);
             console.warn(`CoinGecko has no quote for ${symbol} (${coinId}). Suppressing synthetic mock price.`);
             return null;
@@ -194,7 +245,7 @@ export const fetchCryptoPrice = async (ticker: string, options?: FetchOptions): 
 
     } catch (error) {
         console.error(`Error fetching crypto price for ${symbol}:`, error);
-        if (cached) return cached.data;
+        if (cached && !cached.data.isMock) return cached.data;
         if (useDemo) return getMockPrice(symbol);
         return null;
     }

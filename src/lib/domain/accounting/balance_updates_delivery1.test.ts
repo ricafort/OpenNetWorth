@@ -167,17 +167,8 @@ describe('Delivery 1: Balance Updates & Shared Financial Summary Acceptance Test
                 sub_type: 'checking',
                 currency: 'AUD',
                 opening_date: '2026-09-01',
+                opening_balance_cents: 100_000,
                 tracking_mode: 'transactions'
-            });
-
-            // Initial deposit on Sep 01: $1,000.00
-            postTransaction(db, {
-                date: '2026-09-01',
-                description: 'Opening deposit',
-                postings: [
-                    { account_id: checking.id, amount_cents: 100_000, currency: 'AUD' },
-                    { account_id: equity.id, amount_cents: -100_000, currency: 'AUD' }
-                ]
             });
 
             // Subsequent spend on Sep 10: $300.00
@@ -224,6 +215,7 @@ describe('Delivery 1: Balance Updates & Shared Financial Summary Acceptance Test
                 sub_type: 'checking',
                 currency: 'AUD',
                 opening_date: '2026-09-01',
+                opening_balance_cents: 100_000,
                 tracking_mode: 'transactions'
             });
 

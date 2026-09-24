@@ -23,12 +23,17 @@ export function useSharedFinancialSummary(options: {
     entityId?: string;
     asOfDate?: string;
     reportingCurrency?: CurrencyCode;
+    skip?: boolean;
 } = {}) {
     const [summary, setSummary] = useState<SharedFinancialSummary | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
     const fetchSummary = useCallback(async () => {
+        if (options.skip) {
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
         setError(null);
         try {
@@ -53,7 +58,7 @@ export function useSharedFinancialSummary(options: {
         } finally {
             setIsLoading(false);
         }
-    }, [options.entityId, options.asOfDate, options.reportingCurrency]);
+    }, [options.entityId, options.asOfDate, options.reportingCurrency, options.skip]);
 
     useEffect(() => {
         fetchSummary();

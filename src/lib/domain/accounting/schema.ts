@@ -173,10 +173,46 @@ export const ACCOUNTING_SCHEMA_DDL = `
     CREATE INDEX IF NOT EXISTS idx_m1_drafts_entity ON m1_drafts(entity_id);
     CREATE INDEX IF NOT EXISTS idx_m1_drafts_payer ON m1_drafts(payer_entity_id);
 
+    -- Reimbursement Workflows (Batch D1)
+    -- Why this table exists:
+    -- Uses one durable workflow reference linking the draft, source transaction, evidence,
+    -- both transactions and reimbursement. Identifies clearing accounts by owner pair and currency.
+    CREATE TABLE IF NOT EXISTS m1_reimbursement_workflows (
+        id TEXT PRIMARY KEY,
+        personal_entity_id TEXT NOT NULL,
+        business_entity_id TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        due_from_account_id TEXT NOT NULL,
+        due_to_account_id TEXT NOT NULL,
+        draft_id TEXT,
+        evidence_document_id TEXT,
+        personal_transaction_id TEXT NOT NULL,
+        business_transaction_id TEXT NOT NULL,
+        personal_reimbursement_tx_id TEXT,
+        business_reimbursement_tx_id TEXT,
+        amount_cents INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'awaiting_reimbursement' CHECK (status IN ('awaiting_reimbursement', 'reimbursed')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (personal_entity_id) REFERENCES m1_entities(id) ON DELETE CASCADE,
+        FOREIGN KEY (business_entity_id) REFERENCES m1_entities(id) ON DELETE CASCADE,
+        FOREIGN KEY (due_from_account_id) REFERENCES m1_accounts(id) ON DELETE RESTRICT,
+        FOREIGN KEY (due_to_account_id) REFERENCES m1_accounts(id) ON DELETE RESTRICT,
+        FOREIGN KEY (personal_transaction_id) REFERENCES m1_transactions(id) ON DELETE RESTRICT,
+        FOREIGN KEY (business_transaction_id) REFERENCES m1_transactions(id) ON DELETE RESTRICT,
+        FOREIGN KEY (personal_reimbursement_tx_id) REFERENCES m1_transactions(id) ON DELETE SET NULL,
+        FOREIGN KEY (business_reimbursement_tx_id) REFERENCES m1_transactions(id) ON DELETE SET NULL,
+        FOREIGN KEY (draft_id) REFERENCES m1_drafts(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_pers ON m1_reimbursement_workflows(personal_entity_id);
+    CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_bus ON m1_reimbursement_workflows(business_entity_id);
+
     -- Dated Balance Observations (Slice 1H / Delivery 1: Balance Updates & Account Reconciliation)
     -- Why this table exists:
     -- Records reported balances as evidence from statements, CSVs, manual entries, or APIs.
     -- Bypasses legacy floating-point tables and preserves balance semantics (posted, available, limit, portfolio).
+    -- Delivery 2A: Preserves verbatim source excerpts, tracks user modifications, flags portfolio components,
+    -- and links back to the originating import batch for end-to-end evidence traceability.
     CREATE TABLE IF NOT EXISTS m1_balance_observations (
         id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL,
@@ -204,15 +240,39 @@ export const ACCOUNTING_SCHEMA_DDL = `
         source_type TEXT NOT NULL CHECK (source_type IN ('manual', 'table_paste', 'document', 'api')),
         source_reference TEXT,
         source_batch_id TEXT,
+        source_excerpt TEXT,
+        is_user_modified INTEGER NOT NULL DEFAULT 0,
+        is_component_of_total INTEGER NOT NULL DEFAULT 0,
+        parent_observation_id TEXT,
+        -- Delivery 2B: Evidence links to retained PDF documents and specific page numbers
+        document_id TEXT,
+        page_number INTEGER,
         superseded_by_id TEXT,
         review_status TEXT NOT NULL DEFAULT 'proposed' CHECK (review_status IN ('proposed', 'accepted', 'superseded', 'rejected')),
         raw_label TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE,
-        FOREIGN KEY (superseded_by_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL
+        FOREIGN KEY (superseded_by_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL,
+        FOREIGN KEY (parent_observation_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL,
+        FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE SET NULL
     );
     CREATE INDEX IF NOT EXISTS idx_obs_account_date ON m1_balance_observations(account_id, effective_date);
     CREATE INDEX IF NOT EXISTS idx_obs_status ON m1_balance_observations(review_status);
+    CREATE INDEX IF NOT EXISTS idx_obs_batch ON m1_balance_observations(source_batch_id);
+    -- Note: idx_obs_doc is created in migrateAccountingSchema() to ensure safe forward-migration
+    -- on databases that were created before the document_id column existed.
+
+    -- Balance Import Batches (Delivery 2A: Evidence Preservation for Raw Pasted Statement Text)
+    -- Why this table exists:
+    -- Retains the exact verbatim pasted statement text once per batch, associating individual balance observations
+    -- with their originating import batch, extraction method, and model identifier for full provenance and auditability.
+    CREATE TABLE IF NOT EXISTS m1_balance_import_batches (
+        id TEXT PRIMARY KEY,
+        raw_text TEXT NOT NULL,
+        extraction_method TEXT NOT NULL,
+        model_identifier TEXT,
+        created_at TEXT NOT NULL
+    );
 
     -- Account Source Mappings (delivery 1: Confirmed mappings between external institutions and internal accounts)
     CREATE TABLE IF NOT EXISTS m1_account_source_mappings (
@@ -227,6 +287,43 @@ export const ACCOUNTING_SCHEMA_DDL = `
         FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_asm_account ON m1_account_source_mappings(account_id);
+
+    -- Categorization Rules (Batch C3: Remember deliberate categorisation choices)
+    CREATE TABLE IF NOT EXISTS m1_categorization_rules (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        match_string TEXT NOT NULL,
+        match_type TEXT NOT NULL DEFAULT 'contains' CHECK (match_type IN ('exact', 'contains')),
+        target_category TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_cat_rules_account ON m1_categorization_rules(account_id);
+
+    -- Statement Reviews (Delivery 2B: Durable Pending Review State)
+    -- Why this table exists:
+    -- Preserves in-flight parsed statement proposals, per-page coverage summaries,
+    -- and user edits across browser reloads before the user explicitly commits them.
+    --
+    -- Tricky logic:
+    -- Status transitions from 'pending_review' -> 'saved' when explicit save occurs.
+    -- On reload, the user can resume editing their proposals without losing modifications.
+    --
+    -- TODO: Add support for multi-statement batch review sessions in future milestones.
+    CREATE TABLE IF NOT EXISTS m1_statement_reviews (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (status IN ('pending_review', 'saved', 'failed')),
+        proposals_json TEXT NOT NULL,
+        coverage_summary_json TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_stmt_rev_doc ON m1_statement_reviews(document_id);
+    CREATE INDEX IF NOT EXISTS idx_stmt_rev_status ON m1_statement_reviews(status);
 `;
 
 /**
@@ -351,8 +448,16 @@ export function migrateAccountingSchema(db: Database.Database): void {
             }
         }
 
-        // 5. Ensure m1_balance_observations and m1_account_source_mappings tables exist
+        // 5. Ensure m1_balance_import_batches, m1_balance_observations, and m1_account_source_mappings tables exist
         db.exec(`
+            CREATE TABLE IF NOT EXISTS m1_balance_import_batches (
+                id TEXT PRIMARY KEY,
+                raw_text TEXT NOT NULL,
+                extraction_method TEXT NOT NULL,
+                model_identifier TEXT,
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS m1_balance_observations (
                 id TEXT PRIMARY KEY,
                 account_id TEXT NOT NULL,
@@ -380,15 +485,21 @@ export function migrateAccountingSchema(db: Database.Database): void {
                 source_type TEXT NOT NULL CHECK (source_type IN ('manual', 'table_paste', 'document', 'api')),
                 source_reference TEXT,
                 source_batch_id TEXT,
+                source_excerpt TEXT,
+                is_user_modified INTEGER NOT NULL DEFAULT 0,
+                is_component_of_total INTEGER NOT NULL DEFAULT 0,
+                parent_observation_id TEXT,
                 superseded_by_id TEXT,
                 review_status TEXT NOT NULL DEFAULT 'proposed' CHECK (review_status IN ('proposed', 'accepted', 'superseded', 'rejected')),
                 raw_label TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE,
-                FOREIGN KEY (superseded_by_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL
+                FOREIGN KEY (superseded_by_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL,
+                FOREIGN KEY (parent_observation_id) REFERENCES m1_balance_observations(id) ON DELETE SET NULL
             );
             CREATE INDEX IF NOT EXISTS idx_obs_account_date ON m1_balance_observations(account_id, effective_date);
             CREATE INDEX IF NOT EXISTS idx_obs_status ON m1_balance_observations(review_status);
+            CREATE INDEX IF NOT EXISTS idx_obs_batch ON m1_balance_observations(source_batch_id);
 
             CREATE TABLE IF NOT EXISTS m1_account_source_mappings (
                 id TEXT PRIMARY KEY,
@@ -403,6 +514,118 @@ export function migrateAccountingSchema(db: Database.Database): void {
             );
             CREATE INDEX IF NOT EXISTS idx_asm_account ON m1_account_source_mappings(account_id);
         `);
+
+        // 6. Check if m1_balance_observations needs newly introduced evidence columns
+        const obsColumns = db.prepare("PRAGMA table_info(m1_balance_observations)").all() as Array<{ name: string }>;
+        if (obsColumns.length > 0) {
+            if (!obsColumns.some(c => c.name === 'source_excerpt')) {
+                db.prepare("ALTER TABLE m1_balance_observations ADD COLUMN source_excerpt TEXT").run();
+            }
+            if (!obsColumns.some(c => c.name === 'is_user_modified')) {
+                db.prepare("ALTER TABLE m1_balance_observations ADD COLUMN is_user_modified INTEGER NOT NULL DEFAULT 0").run();
+            }
+            if (!obsColumns.some(c => c.name === 'is_component_of_total')) {
+                db.prepare("ALTER TABLE m1_balance_observations ADD COLUMN is_component_of_total INTEGER NOT NULL DEFAULT 0").run();
+            }
+            if (!obsColumns.some(c => c.name === 'parent_observation_id')) {
+                db.prepare("ALTER TABLE m1_balance_observations ADD COLUMN parent_observation_id TEXT").run();
+            }
+            // Delivery 2B: Document evidence links and page number tracking
+            // Why this exists:
+            // Upgrades existing databases to retain PDF document foreign keys and page numbers.
+            // Tricky logic:
+            // We must add the columns first before creating idx_obs_doc to prevent SQLite "no such column: document_id" errors.
+            // We create idx_obs_doc unconditionally once document_id is guaranteed to exist on both fresh and migrated vaults.
+            // TODO: In Milestone 2, partition observation indices by review status if rows exceed 100k.
+            if (!obsColumns.some(c => c.name === 'document_id')) {
+                db.prepare("ALTER TABLE m1_balance_observations ADD COLUMN document_id TEXT").run();
+            }
+            if (!obsColumns.some(c => c.name === 'page_number')) {
+                db.prepare("ALTER TABLE m1_balance_observations ADD COLUMN page_number INTEGER").run();
+            }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_obs_doc ON m1_balance_observations(document_id)").run();
+        }
+
+        // 7. Check if m1_statement_reviews table exists (Delivery 2B: Durable Pending Review State)
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS m1_statement_reviews (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL CHECK (status IN ('pending_review', 'saved', 'failed')),
+                proposals_json TEXT NOT NULL,
+                coverage_summary_json TEXT NOT NULL,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_stmt_rev_doc ON m1_statement_reviews(document_id);
+            CREATE INDEX IF NOT EXISTS idx_stmt_rev_status ON m1_statement_reviews(status);
+        `);
+
+        const stmtRevCols = db.prepare("PRAGMA table_info(m1_statement_reviews)").all() as Array<{ name: string }>;
+        if (stmtRevCols.length > 0 && !stmtRevCols.some(c => c.name === 'version')) {
+            db.prepare("ALTER TABLE m1_statement_reviews ADD COLUMN version INTEGER NOT NULL DEFAULT 1").run();
+        }
+        // 5. Ensure m1_categorization_rules exists (Batch C3)
+        const catRulesTableExists = (db.prepare(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_categorization_rules'"
+        ).get() as any).cnt > 0;
+
+        if (!catRulesTableExists) {
+            db.prepare(`
+                CREATE TABLE IF NOT EXISTS m1_categorization_rules (
+                    id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    match_string TEXT NOT NULL,
+                    match_type TEXT NOT NULL DEFAULT 'contains' CHECK (match_type IN ('exact', 'contains')),
+                    target_category TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
+                )
+            `).run();
+            db.prepare(`CREATE INDEX IF NOT EXISTS idx_cat_rules_account ON m1_categorization_rules(account_id)`).run();
+        }
+
+        // 6. Ensure m1_reimbursement_workflows exists (Batch D1)
+        const reimbTableExists = (db.prepare(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_reimbursement_workflows'"
+        ).get() as any).cnt > 0;
+
+        if (!reimbTableExists) {
+            db.prepare(`
+                CREATE TABLE IF NOT EXISTS m1_reimbursement_workflows (
+                    id TEXT PRIMARY KEY,
+                    personal_entity_id TEXT NOT NULL,
+                    business_entity_id TEXT NOT NULL,
+                    currency TEXT NOT NULL,
+                    due_from_account_id TEXT NOT NULL,
+                    due_to_account_id TEXT NOT NULL,
+                    draft_id TEXT,
+                    evidence_document_id TEXT,
+                    personal_transaction_id TEXT NOT NULL,
+                    business_transaction_id TEXT NOT NULL,
+                    personal_reimbursement_tx_id TEXT,
+                    business_reimbursement_tx_id TEXT,
+                    amount_cents INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'awaiting_reimbursement' CHECK (status IN ('awaiting_reimbursement', 'reimbursed')),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (personal_entity_id) REFERENCES m1_entities(id) ON DELETE CASCADE,
+                    FOREIGN KEY (business_entity_id) REFERENCES m1_entities(id) ON DELETE CASCADE,
+                    FOREIGN KEY (due_from_account_id) REFERENCES m1_accounts(id) ON DELETE RESTRICT,
+                    FOREIGN KEY (due_to_account_id) REFERENCES m1_accounts(id) ON DELETE RESTRICT,
+                    FOREIGN KEY (personal_transaction_id) REFERENCES m1_transactions(id) ON DELETE RESTRICT,
+                    FOREIGN KEY (business_transaction_id) REFERENCES m1_transactions(id) ON DELETE RESTRICT,
+                    FOREIGN KEY (personal_reimbursement_tx_id) REFERENCES m1_transactions(id) ON DELETE SET NULL,
+                    FOREIGN KEY (business_reimbursement_tx_id) REFERENCES m1_transactions(id) ON DELETE SET NULL,
+                    FOREIGN KEY (draft_id) REFERENCES m1_drafts(id) ON DELETE SET NULL
+                )
+            `).run();
+            db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_pers ON m1_reimbursement_workflows(personal_entity_id)`).run();
+            db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_bus ON m1_reimbursement_workflows(business_entity_id)`).run();
+        }
     });
 
     // Run migration safely with foreign key toggle

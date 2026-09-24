@@ -19,22 +19,32 @@ import { getDb } from '@/infrastructure/sqlite/db';
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import {
     recordBalanceObservation,
+    recordBalanceImportBatch,
     recordSourceMapping,
     RecordObservationInput
 } from '@/lib/domain/accounting/balanceObservationService';
+import { markStatementProposalsSaved } from '@/lib/domain/accounting/statementReviewService';
 import { getSharedFinancialSummary } from '@/lib/domain/accounting/sharedFinancialSummaryService';
-import { BalanceObservation, CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
+import { BalanceObservation, BalanceImportBatch, CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
 import { ValidationError, ConflictError } from '@/lib/domain/accounting/accountService';
 import { assertValidCalendarDate } from '@/lib/domain/accounting/transactionService';
+import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
+import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
+
+function secureJson(data: any, init?: ResponseInit): NextResponse {
+    return applySensitiveHeaders(NextResponse.json(data, init));
+}
 
 export async function GET(request: Request) {
+    const securityCheck = validateLocalSecurity(request);
+    if (securityCheck) return securityCheck;
     try {
         const db = getDb();
         initAccountingSchema(db);
 
         const { searchParams } = new URL(request.url);
         const scopeEntityId = searchParams.get('scopeEntityId') || searchParams.get('entity_id') || undefined;
-        const asOfDate = searchParams.get('asOfDate') || searchParams.get('as_of_date') || undefined;
+        const asOfDate = searchParams.get('asOfDate') || searchParams.get('as_of_date') || getLocalTodayCalendarDate();
         const reportingCurrency = searchParams.get('reportingCurrency') || searchParams.get('reporting_currency') || undefined;
 
         const summary = getSharedFinancialSummary(db, {
@@ -43,26 +53,28 @@ export async function GET(request: Request) {
             reportingCurrency
         });
 
-        return NextResponse.json({
+        return secureJson({
             success: true,
             summary
         });
     } catch (error: any) {
         console.error('Balances GET Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return secureJson({ error: error.message }, { status: 500 });
     }
 }
 
 export async function POST(request: Request) {
+    const securityCheck = validateLocalSecurity(request);
+    if (securityCheck) return securityCheck;
     try {
         const db = getDb();
         initAccountingSchema(db);
 
         const body = await request.json();
-        const { items, provider, connectionId } = body;
+        const { items, provider, connectionId, batch } = body;
 
         if (!Array.isArray(items) || items.length === 0) {
-            return NextResponse.json({ error: 'Payload must contain a non-empty "items" array of balance observations.' }, { status: 400 });
+            return secureJson({ error: 'Payload must contain a non-empty "items" array of balance observations.' }, { status: 400 });
         }
 
         // Pre-validate all items before opening the database transaction
@@ -92,6 +104,17 @@ export async function POST(request: Request) {
 
         // Atomic commit across all approved observations in batch
         const tx = db.transaction(() => {
+            // Delivery 2A Requirement C: If this batch contains raw statement text, persist evidence
+            if (batch && batch.id && batch.raw_text) {
+                recordBalanceImportBatch(db, {
+                    id: batch.id,
+                    raw_text: batch.raw_text,
+                    extraction_method: batch.extraction_method || 'local_llm',
+                    model_identifier: batch.model_identifier || null,
+                    created_at: new Date().toISOString()
+                });
+            }
+
             for (const item of items) {
                 // If this account was already verified and revision-incremented in this batch,
                 // do not re-check expected_balance_revision to prevent intra-batch 409 conflicts (P10)
@@ -107,7 +130,31 @@ export async function POST(request: Request) {
                     effective_time: item.effective_time,
                     source_type: item.source_type || 'manual',
                     source_reference: item.source_reference,
-                    source_batch_id: item.source_batch_id,
+                    source_batch_id: item.source_batch_id || (batch ? batch.id : null),
+                    source_excerpt: item.source_excerpt || null,
+                    is_user_modified: Boolean(item.is_user_modified),
+                    // Why this exists:
+                    // Delivery 2A Narrow Closing Corrections: Forward explicit classification correction
+                    // intent separate from is_user_modified. Only deliberate changes to supporting-detail
+                    // status authorize mutating an existing observation's classification.
+                    //
+                    // Tricky logic:
+                    // If explicit_classification_correction is provided, prioritize it. Fall back to
+                    // explicit_correction for backward compatibility with existing tests/callers.
+                    //
+                    // TODO: Deprecate explicit_correction alias in favor of explicit_classification_correction.
+                    explicit_classification_correction: item.explicit_classification_correction !== undefined
+                        ? Boolean(item.explicit_classification_correction)
+                        : (item.explicit_correction !== undefined ? Boolean(item.explicit_correction) : undefined),
+                    explicit_correction: item.explicit_classification_correction !== undefined
+                        ? Boolean(item.explicit_classification_correction)
+                        : (item.explicit_correction !== undefined ? Boolean(item.explicit_correction) : undefined),
+                    is_correction: item.is_correction !== undefined ? Boolean(item.is_correction) : undefined,
+                    is_component_of_total: Boolean(item.is_component_of_total),
+                    parent_observation_id: item.parent_observation_id || null,
+                    // Delivery 2B: Forward document_id and page_number
+                    document_id: item.document_id || null,
+                    page_number: typeof item.page_number === 'number' ? item.page_number : null,
                     review_status: 'accepted',
                     raw_label: item.raw_label,
                     expected_balance_revision: expectedRevision
@@ -127,23 +174,63 @@ export async function POST(request: Request) {
                     });
                 }
             }
+
+            // Why this exists:
+            // Fulfills Independent Assessment Finding 4: Partial saves leave remaining items visibly pending.
+            // If only a subset of proposals from a statement document are approved and saved, the remaining
+            // proposals must remain in 'pending_review' state rather than being marked saved or discarded.
+            //
+            // Tricky logic:
+            // Groups saved proposals by document_id. If specific proposal IDs are provided, calls markStatementProposalsSaved
+            // which sets is_saved = true on those items and sets status = 'saved' ONLY IF all proposals are saved.
+            // Why this exists:
+            // Fulfills Independent Assessment Finding 4 & Delivery 2B Correction 2:
+            // Partial saves leave remaining items visibly pending, and committed values (amount_cents, account_id, etc.)
+            // are persisted directly into m1_statement_reviews so reopened reviews match committed observations.
+            //
+            // Tricky logic:
+            // Groups saved proposals by document_id. Passes the full committed item list to markStatementProposalsSaved
+            // which updates amount_cents and tags is_saved = true, setting review status = 'saved' ONLY IF all proposals are saved.
+            //
+            // TODO: In Milestone 2, return saved proposal IDs directly in the API response payload.
+            const savedByDoc = new Map<string, any[]>();
+            for (const item of items) {
+                if (item.document_id) {
+                    const list = savedByDoc.get(item.document_id) || [];
+                    list.push(item);
+                    savedByDoc.set(item.document_id, list);
+                }
+            }
+
+            for (const [docId, savedItems] of savedByDoc.entries()) {
+                try {
+                    if (savedItems.length > 0) {
+                        markStatementProposalsSaved(db, docId, savedItems);
+                    } else {
+                        db.prepare("UPDATE m1_statement_reviews SET status = 'saved', updated_at = ? WHERE document_id = ?")
+                            .run(new Date().toISOString(), docId);
+                    }
+                } catch {
+                    // Safe if table doesn't exist yet
+                }
+            }
         });
 
         tx();
 
-        return NextResponse.json({
+        return secureJson({
             success: true,
             count: savedObservations.length,
             items: savedObservations
         });
     } catch (error: any) {
         if (error instanceof ValidationError) {
-            return NextResponse.json({ error: error.message }, { status: 400 });
+            return secureJson({ error: error.message }, { status: 400 });
         }
         if (error instanceof ConflictError) {
-            return NextResponse.json({ error: error.message }, { status: 409 });
+            return secureJson({ error: error.message }, { status: 409 });
         }
         console.error('Balances POST Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return secureJson({ error: error.message }, { status: 500 });
     }
 }

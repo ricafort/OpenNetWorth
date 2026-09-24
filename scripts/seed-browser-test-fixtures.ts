@@ -91,8 +91,8 @@ export function seedBrowserTestFixtures(targetDbPath: string = TEST_VAULT_PATH):
         type: 'asset',
         sub_type: 'checking',
         currency: 'AUD',
-        institution: 'Fictional National Bank',
-        account_number_mask: '•••• 4421',
+        institution: 'Commonwealth Bank',
+        account_number_mask: '•••• 1111',
         opening_balance_cents: 500000,
         opening_date: '2026-01-01'
     });
@@ -104,22 +104,35 @@ export function seedBrowserTestFixtures(targetDbPath: string = TEST_VAULT_PATH):
         type: 'asset',
         sub_type: 'savings',
         currency: 'AUD',
-        institution: 'Fictional National Bank',
-        account_number_mask: '•••• 9876',
+        institution: 'Commonwealth Bank',
+        account_number_mask: '•••• 2222',
         opening_balance_cents: 1250000,
         opening_date: '2026-01-01'
     });
 
-    // 4. Seed Platinum Rewards Credit Card (AUD, $0.00 opening balance)
+    // 4. Seed Diamond Awards Credit Card (AUD, $0.00 opening balance)
     createAccount(db, {
         entity_id: entity.id,
-        name: 'Platinum Rewards Card',
+        name: 'Diamond Awards Credit Card',
         type: 'liability',
         sub_type: 'credit_card',
         currency: 'AUD',
-        institution: 'Fictional Card Services',
-        account_number_mask: '•••• 1234',
+        institution: 'Commonwealth Bank',
+        account_number_mask: '•••• 4421',
         opening_balance_cents: 0,
+        opening_date: '2026-01-01'
+    });
+
+    // 5. Seed Global Growth Portfolio (AUD, $100,000.00 opening balance)
+    createAccount(db, {
+        entity_id: entity.id,
+        name: 'Global Growth Portfolio',
+        type: 'asset',
+        sub_type: 'investment',
+        currency: 'AUD',
+        institution: 'Fictional Wealth Brokerage',
+        account_number_mask: '•••• 5566',
+        opening_balance_cents: 10000000,
         opening_date: '2026-01-01'
     });
 
@@ -133,6 +146,18 @@ export function seedBrowserTestFixtures(targetDbPath: string = TEST_VAULT_PATH):
         name: 'Acme Consulting Pty Ltd',
         type: 'business',
         currency: 'AUD'
+    });
+
+    // Seed High Interest Savings under Acme Consulting Pty Ltd for owner disambiguation testing
+    createAccount(db, {
+        entity_id: bizEntity.id,
+        name: 'High Interest Savings',
+        type: 'asset',
+        sub_type: 'savings',
+        currency: 'AUD',
+        institution: 'Fictional Commercial Bank',
+        opening_balance_cents: 8500000,
+        opening_date: '2026-01-01'
     });
 
     /**

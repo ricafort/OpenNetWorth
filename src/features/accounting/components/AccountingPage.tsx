@@ -16,7 +16,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { ShieldCheck, BookOpen, Layers, DollarSign, PieChart, Inbox, User, Building2, Plus, AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react';
 import { AccountManagementView } from './AccountManagementView';
 import { DailyEventsView } from './DailyEventsView';
@@ -46,6 +46,7 @@ const getOwnerTypeLabel = (type: string) => {
 };
 
 export const AccountingPage: React.FC = () => {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const [activeTab, setActiveTab] = useState<'events' | 'accounts' | 'reports' | 'inbox'>(() => {
         const view = searchParams.get('view');
@@ -55,7 +56,7 @@ export const AccountingPage: React.FC = () => {
         return 'events';
     });
     const [entities, setEntities] = useState<Entity[]>([]);
-    const [selectedEntityId, setSelectedEntityId] = useState<string>('');
+    const [selectedEntityId, setSelectedEntityId] = useState<string>(() => searchParams.get('entity_id') || '');
     const [isLoading, setIsLoading] = useState(true);
 
     // Onboarding form state
@@ -77,9 +78,13 @@ export const AccountingPage: React.FC = () => {
                 const data = await res.json();
                 if (data.entities) {
                     setEntities(data.entities);
-                    if (data.entities.length > 0 && !selectedEntityId) {
-                        setSelectedEntityId('all'); // Default to Everything
-                    }
+                    // Use a functional state update to safely check the current selectedEntityId
+                    setSelectedEntityId(currentId => {
+                        if (data.entities.length > 0 && !currentId) {
+                            return 'all'; // Default to Everything
+                        }
+                        return currentId;
+                    });
                 }
             }
         } catch (err) {
@@ -93,6 +98,37 @@ export const AccountingPage: React.FC = () => {
         fetchEntities();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Listen to URL changes for navigation context
+    useEffect(() => {
+        const view = searchParams.get('view');
+        if (view === 'reports' || view === 'accounts' || view === 'inbox' || view === 'events') {
+            setActiveTab(view);
+        } else {
+            setActiveTab('events');
+        }
+        const entityId = searchParams.get('entity_id');
+        setSelectedEntityId(entityId || 'all');
+    }, [searchParams]);
+
+    // Update URL when entity changes
+    const handleEntityChange = (newEntityId: string) => {
+        setSelectedEntityId(newEntityId);
+        const params = new URLSearchParams(searchParams.toString());
+        if (newEntityId && newEntityId !== 'all') {
+            params.set('entity_id', newEntityId);
+        } else {
+            params.delete('entity_id');
+        }
+        router.replace(`?${params.toString()}`, { scroll: false });
+    };
+
+    const handleTabChange = (newTab: 'events' | 'accounts' | 'reports' | 'inbox') => {
+        setActiveTab(newTab);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('view', newTab);
+        router.replace(`?${params.toString()}`, { scroll: false });
+    };
 
     const handleCreateEntity = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -271,7 +307,7 @@ export const AccountingPage: React.FC = () => {
                         <div className="relative">
                             <select
                                 value={selectedEntityId}
-                                onChange={e => setSelectedEntityId(e.target.value)}
+                                onChange={e => handleEntityChange(e.target.value)}
                                 className="appearance-none pl-9 pr-10 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             >
                                 <option value="all">All my finances</option>
@@ -291,28 +327,28 @@ export const AccountingPage: React.FC = () => {
                     {/* Sub-tab Switcher */}
                     <div className="flex bg-slate-100 dark:bg-slate-800/70 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs font-semibold">
                         <button
-                            onClick={() => setActiveTab('events')}
+                            onClick={() => handleTabChange('events')}
                             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition ${activeTab === 'events' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
                         >
                             <DollarSign className="w-4 h-4" />
                             <span>Transactions</span>
                         </button>
                         <button
-                            onClick={() => setActiveTab('accounts')}
+                            onClick={() => handleTabChange('accounts')}
                             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition ${activeTab === 'accounts' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
                         >
                             <Layers className="w-4 h-4" />
                             <span>Accounts</span>
                         </button>
                         <button
-                            onClick={() => setActiveTab('reports')}
+                            onClick={() => handleTabChange('reports')}
                             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition ${activeTab === 'reports' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
                         >
                             <PieChart className="w-4 h-4" />
                             <span>Reports</span>
                         </button>
                         <button
-                            onClick={() => setActiveTab('inbox')}
+                            onClick={() => handleTabChange('inbox')}
                             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition ${activeTab === 'inbox' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
                         >
                             <Inbox className="w-4 h-4" />
@@ -327,7 +363,10 @@ export const AccountingPage: React.FC = () => {
                 <DailyEventsView
                     entities={entities}
                     selectedEntityId={selectedEntityId}
-                    onNavigateToDocuments={() => setActiveTab('inbox')}
+                    onNavigateToDocuments={() => handleTabChange('inbox')}
+                    initialStartDate={searchParams.get('start_date') || undefined}
+                    initialEndDate={searchParams.get('end_date') || undefined}
+                    initialIntent={searchParams.get('intent') || undefined}
                 />
             )}
             {activeTab === 'accounts' && <AccountManagementView entities={entities} selectedEntityId={selectedEntityId} />}
@@ -335,8 +374,8 @@ export const AccountingPage: React.FC = () => {
                 <ReportsTraceabilityView
                     entities={entities}
                     selectedEntityId={selectedEntityId}
-                    onNavigateToAccounts={() => setActiveTab('accounts')}
-                    onSelectEntity={(id) => setSelectedEntityId(id)}
+                    onNavigateToAccounts={() => handleTabChange('accounts')}
+                    onSelectEntity={(id) => handleEntityChange(id)}
                 />
             )}
             {activeTab === 'inbox' && <DocumentInboxView entities={entities} selectedEntityId={selectedEntityId} />}

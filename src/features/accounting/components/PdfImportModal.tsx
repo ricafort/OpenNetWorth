@@ -39,6 +39,7 @@ interface PdfImportModalProps {
     onClose: () => void;
     accounts: Account[];
     entities: Array<{ id: string; name: string }>;
+    initialEntityId?: string;
     onImportSuccess: (documentId: string) => void;
 }
 
@@ -47,6 +48,7 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
     onClose,
     accounts,
     entities,
+    initialEntityId,
     onImportSuccess
 }) => {
     const [file, setFile] = useState<File | null>(null);
@@ -55,7 +57,7 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
     const [proposals, setProposals] = useState<ExtractedFinancialProposal[]>([]);
     const [isSupported, setIsSupported] = useState<boolean>(true);
     const [targetAccountId, setTargetAccountId] = useState<string>('');
-    const [selectedEntityId, setSelectedEntityId] = useState<string>('');
+    const [selectedEntityId, setSelectedEntityId] = useState<string>(initialEntityId || '');
     const [selectedCategory, setSelectedCategory] = useState<string>('office_supplies');
     const [paymentConfirmed, setPaymentConfirmed] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -66,12 +68,40 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
         return accounts.filter(a => a.type === 'asset' || a.type === 'liability');
     }, [accounts]);
 
+    // Set initial account and entity based on context
     useEffect(() => {
-        if (paymentAccounts.length > 0 && !targetAccountId) {
-            setTargetAccountId(paymentAccounts[0].id);
-            setSelectedEntityId(paymentAccounts[0].entity_id);
+        if (!isOpen) return;
+
+        let currentAccount = paymentAccounts.find(a => a.id === targetAccountId);
+        const isConstrainedOwner = initialEntityId && initialEntityId !== 'all';
+
+        // If the selected owner changed, and the current account belongs to a different owner, clear it
+        if (isConstrainedOwner && currentAccount && currentAccount.entity_id !== initialEntityId) {
+            currentAccount = undefined;
         }
-    }, [paymentAccounts, targetAccountId]);
+
+        if (!currentAccount && paymentAccounts.length > 0) {
+            let defaultAcc = paymentAccounts[0];
+            if (isConstrainedOwner) {
+                const entityAcc = paymentAccounts.find(a => a.entity_id === initialEntityId);
+                if (entityAcc) {
+                    defaultAcc = entityAcc;
+                } else {
+                    // The selected owner has no eligible accounts
+                    setTargetAccountId('');
+                    setSelectedEntityId(initialEntityId);
+                    return;
+                }
+            }
+            // Only update if targetAccountId was invalid/cleared
+            if (!targetAccountId || currentAccount === undefined) {
+                setTargetAccountId(defaultAcc.id);
+                setSelectedEntityId(defaultAcc.entity_id);
+            }
+        } else if (currentAccount) {
+            setSelectedEntityId(currentAccount.entity_id);
+        }
+    }, [paymentAccounts, targetAccountId, initialEntityId, isOpen]);
 
     useEffect(() => {
         if (!isOpen) {

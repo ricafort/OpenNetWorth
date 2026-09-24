@@ -1,16 +1,29 @@
 'use client';
 
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 import { PayoffScheduleEntry } from '@/features/liabilities/types';
-import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { formatCurrency } from '@/lib/utils/currencyService';
+import { CurrencyCode } from '@/types';
 
 interface PayoffScheduleChartProps {
     schedule: PayoffScheduleEntry[];
+    currency?: CurrencyCode;
 }
 
-export default function PayoffScheduleChart({ schedule }: PayoffScheduleChartProps) {
-    const { baseCurrency } = useNetWorth();
+/**
+ * Payoff Schedule Area Chart.
+ * 
+ * Why this exists:
+ * Visualizes the remaining balance amortization curve across the payoff schedule.
+ * Fulfills Item 5: Uses the calculation's native currency throughout, including chart tooltips.
+ * 
+ * Tricky logic:
+ * Avoids reading useNetWorth().baseCurrency so that a portfolio reported in AUD does
+ * not incorrectly format a USD debt calculation schedule in AUD.
+ * 
+ * TODO: Support multi-curve overlays for comparing Avalanche vs Snowball side-by-side.
+ */
+export default function PayoffScheduleChart({ schedule, currency = 'USD' }: PayoffScheduleChartProps) {
 
     if (!schedule || schedule.length === 0) return null;
 
@@ -51,7 +64,7 @@ export default function PayoffScheduleChart({ schedule }: PayoffScheduleChartPro
                         hide
                     />
                     <Tooltip
-                        formatter={(value: number | string | undefined) => [formatCurrency(Number(value || 0), baseCurrency), 'Remaining Debt']}
+                        formatter={(value: number | string | undefined) => [formatCurrency(Number(value || 0), currency), 'Remaining Debt']}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                     <Area

@@ -45,10 +45,10 @@ import { LinkTransactionModal } from './LinkTransactionModal';
 
 interface ProposalReviewTableProps {
     documentId: string;
-    onBack: () => void;
+    onBack: (summary?: any) => void;
     accounts: Account[];
     entities?: Entity[];
-    onApprovalComplete?: () => void;
+    onApprovalComplete?: (summary?: any) => void;
 }
 
 export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
@@ -79,6 +79,9 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
 
     // Explicit duplicate confirmation map (Slice 1F Fix D)
     const [duplicateConfirmedMap, setDuplicateConfirmedMap] = useState<Record<string, boolean>>({});
+
+    // Save categorization rule map (Batch C3)
+    const [saveCategoryRuleMap, setSaveCategoryRuleMap] = useState<Record<string, boolean>>({});
 
     // Target liquid account for this document
     const [targetAccountId, setTargetAccountId] = useState<string>('');
@@ -115,6 +118,85 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
         setEditCategory(proposal.suggested_category || 'office_supplies');
         setEditAccountId(proposal.account_id || targetAccountId || accounts[0]?.id || '');
         setEditError(null);
+    };
+
+    const handleCategoryChange = async (proposalId: string, newCategory: string) => {
+        // Optimistically update local UI state immediately
+        setCategoryOverrides(prev => ({ ...prev, [proposalId]: newCategory }));
+        setSuccessMessage(null);
+        setError(null);
+        
+        try {
+            const res = await fetch('/api/documents/proposals', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    proposal_id: proposalId,
+                    suggested_category: newCategory,
+                    save_categorization_rule: saveCategoryRuleMap[proposalId] ?? false
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to update category.');
+            }
+
+            // Update proposals in state to ensure backend sync
+            setProposals(prev => prev.map(p => p.id === data.proposal.id ? data.proposal : p));
+            setSuccessMessage(`Category saved.`);
+            
+            // Clear success message after 3 seconds so it's not distracting
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } catch (err: any) {
+            setError(err.message || 'An error occurred while saving category.');
+            // Revert optimistic update? For now just show error.
+        }
+    };
+
+    const handleTargetAccountChange = async (newAccountId: string) => {
+        const previousAccountId = targetAccountId;
+        setTargetAccountId(newAccountId);
+        setSuccessMessage(null);
+        setError(null);
+        
+        try {
+            const res = await fetch('/api/documents/proposals/bulk', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    document_id: documentId,
+                    account_id: newAccountId
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to update target account.');
+            }
+
+            const targetAcc = accounts.find(a => a.id === newAccountId);
+            const targetEntityId = targetAcc ? targetAcc.entity_id : undefined;
+
+            // Also update proposals in state so we don't have stale account_ids or entity_ids
+            setProposals(prev => prev.map(p => {
+                if (p.review_status === 'unreviewed' || p.review_status === 'modified') {
+                    return {
+                        ...p,
+                        account_id: newAccountId,
+                        entity_id: targetEntityId || p.entity_id,
+                        review_status: 'modified'
+                    };
+                }
+                return p;
+            }));
+
+            setSuccessMessage(`Updated target account for ${data.updatedCount} pending proposals.`);
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } catch (err: any) {
+            setTargetAccountId(previousAccountId); // Revert
+            setError(err.message || 'An error occurred while saving target account.');
+        }
     };
 
     /**
@@ -354,7 +436,8 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                 description: p.description,
                 counterparty: p.counterparty || p.description,
                 payment_confirmed: paymentConfirmedMap[p.id] ?? (!isPdfDoc),
-                duplicate_confirmed: duplicateConfirmedMap[p.id] ?? false
+                duplicate_confirmed: duplicateConfirmedMap[p.id] ?? false,
+                save_categorization_rule: saveCategoryRuleMap[p.id] ?? false
             }));
 
         try {
@@ -378,7 +461,12 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
             await loadProposals();
 
             if (onApprovalComplete) {
-                onApprovalComplete();
+                onApprovalComplete({
+                    type: 'csv',
+                    approvedCount: data.approved_count || itemsToApprove.length,
+                    message: `Successfully approved and posted ${data.approved_count} transaction(s) into the double-entry ledger.`,
+                    accountId: targetAccountId
+                });
             }
         } catch (err: any) {
             setError(err.message || 'An error occurred during batch approval.');
@@ -426,14 +514,17 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                         <span className="font-medium text-slate-600 dark:text-slate-400">Target Bank Account:</span>
                         <select
                             value={targetAccountId}
-                            onChange={e => setTargetAccountId(e.target.value)}
+                            onChange={e => handleTargetAccountChange(e.target.value)}
                             className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-900 dark:text-slate-100 outline-none"
                         >
-                            {accounts.filter(a => a.type === 'asset').map(acc => (
-                                <option key={acc.id} value={acc.id}>
-                                    {acc.name} ({acc.currency})
-                                </option>
-                            ))}
+                            {accounts.filter(a => a.type === 'asset' || a.type === 'liability').map(acc => {
+                                const ownerName = entities.find(e => e.id === acc.entity_id)?.name || 'Unknown Owner';
+                                return (
+                                    <option key={acc.id} value={acc.id}>
+                                        {acc.name} ({acc.currency}) - {ownerName}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
                 </div>
@@ -649,37 +740,50 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                         {currentCategory.replace(/_/g, ' ')}
                                                     </span>
                                                 ) : (
-                                                    <select
-                                                        value={currentCategory}
-                                                        onChange={e => {
-                                                            const cat = e.target.value;
-                                                            setCategoryOverrides(prev => ({ ...prev, [proposal.id]: cat }));
-                                                        }}
-                                                        disabled={hasError}
-                                                        className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none capitalize text-slate-800 dark:text-slate-200"
-                                                    >
-                                                        {isIncome ? (
-                                                            <>
-                                                                <option value="salary">Salary / Wage</option>
-                                                                <option value="business_income">Business Income</option>
-                                                                <option value="investment_income">Investment / Dividend</option>
-                                                                <option value="other_income">Other Income</option>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <option value="living_expense">Living Expense</option>
-                                                                <option value="office_supplies">Office Supplies</option>
-                                                                <option value="groceries">Groceries</option>
-                                                                <option value="utilities">Utilities</option>
-                                                                <option value="rent_expense">Rent</option>
-                                                                <option value="transportation">Transportation</option>
-                                                                <option value="entertainment">Entertainment</option>
-                                                                <option value="healthcare">Healthcare</option>
-                                                                <option value="interest_expense">Interest / Finance</option>
-                                                                <option value="insurance">Insurance</option>
-                                                            </>
+                                                    <>
+                                                        <select
+                                                            value={currentCategory}
+                                                            onChange={e => handleCategoryChange(proposal.id, e.target.value)}
+                                                            disabled={hasError}
+                                                            className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none capitalize text-slate-800 dark:text-slate-200"
+                                                        >
+                                                            {isIncome ? (
+                                                                <>
+                                                                    <option value="salary">Salary / Wage</option>
+                                                                    <option value="business_income">Business Income</option>
+                                                                    <option value="investment_income">Investment / Dividend</option>
+                                                                    <option value="other_income">Other Income</option>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <option value="living_expense">Living Expense</option>
+                                                                    <option value="office_supplies">Office Supplies</option>
+                                                                    <option value="groceries">Groceries</option>
+                                                                    <option value="utilities">Utilities</option>
+                                                                    <option value="rent_expense">Rent</option>
+                                                                    <option value="transportation">Transportation</option>
+                                                                    <option value="entertainment">Entertainment</option>
+                                                                    <option value="healthcare">Healthcare</option>
+                                                                    <option value="interest_expense">Interest / Finance</option>
+                                                                    <option value="insurance">Insurance</option>
+                                                                </>
+                                                            )}
+                                                        </select>
+                                                        {!isSettled && (
+                                                            <label className="flex items-center gap-1.5 mt-1 cursor-pointer text-slate-600 dark:text-slate-400">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={saveCategoryRuleMap[proposal.id] ?? false}
+                                                                    onChange={e => {
+                                                                        const checked = e.target.checked;
+                                                                        setSaveCategoryRuleMap(prev => ({ ...prev, [proposal.id]: checked }));
+                                                                    }}
+                                                                    className="rounded border-slate-300 text-indigo-600 cursor-pointer"
+                                                                />
+                                                                <span className="text-[10px]">Save rule for "{proposal.description}"</span>
+                                                            </label>
                                                         )}
-                                                    </select>
+                                                    </>
                                                 )}
                                             </td>
 
@@ -719,22 +823,22 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                     {isLinked ? (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 font-semibold text-[10px]">
                                                             <Link2 className="w-3 h-3" />
-                                                            Linked to existing transaction
+                                                            Already imported (Linked)
                                                         </span>
                                                     ) : isApproved ? (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-semibold text-[10px]">
                                                             <CheckCircle2 className="w-3 h-3" />
-                                                            Posted
+                                                            Already imported (Posted)
                                                         </span>
                                                     ) : hasError ? (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 font-semibold text-[10px]">
                                                             <AlertCircle className="w-3 h-3" />
-                                                            {proposal.validation_findings[0]?.message}
+                                                            Needs info: {proposal.validation_findings[0]?.message}
                                                         </span>
                                                     ) : (
                                                         <>
                                                             <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">
-                                                                Unreviewed
+                                                                Ready to save
                                                             </span>
                                                             {internalDup && (
                                                                 <span
@@ -742,7 +846,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                                     className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-medium text-[10px]"
                                                                 >
                                                                     <AlertTriangle className="w-2.5 h-2.5" />
-                                                                    File Duplicate
+                                                                    Possible duplicate
                                                                 </span>
                                                             )}
                                                             {externalDup && (
@@ -751,7 +855,7 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                                                     className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-medium text-[10px]"
                                                                 >
                                                                     <AlertTriangle className="w-2.5 h-2.5" />
-                                                                    Ledger Match
+                                                                    Possible duplicate
                                                                 </span>
                                                             )}
                                                             {(internalDup || externalDup) && !isSettled && (
@@ -997,7 +1101,12 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                 proposal={linkingProposal}
                 onLinked={() => {
                     loadProposals();
-                    onApprovalComplete?.();
+                    onApprovalComplete?.({
+                        type: document?.mime_type === 'application/pdf' ? 'pdf_receipt' : 'csv',
+                        linkedCount: 1,
+                        message: '1 receipt linked, 0 new transactions created',
+                        accountId: targetAccountId
+                    });
                 }}
             />
         </div>

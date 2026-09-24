@@ -17,6 +17,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
     Inbox,
     Upload,
@@ -32,6 +33,9 @@ import {
 import { CsvImportModal } from './CsvImportModal';
 import { PdfImportModal } from './PdfImportModal';
 import { ProposalReviewTable } from './ProposalReviewTable';
+import UpdateBalancesModal from '@/features/sync/components/UpdateBalancesModal';
+import { UnifiedImportModal } from './UnifiedImportModal';
+import { ImportSummaryBanner, ImportSummary } from './ImportSummaryBanner';
 import { Account, Entity } from '@/lib/domain/accounting/types';
 
 interface DocumentItem {
@@ -56,10 +60,17 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
     const [documents, setDocuments] = useState<DocumentItem[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+    const [isUnifiedModalOpen, setIsUnifiedModalOpen] = useState<boolean>(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
     const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+    const [isStatementModalOpen, setIsStatementModalOpen] = useState<boolean>(false);
+    const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+    const [selectedStatementDocId, setSelectedStatementDocId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+
+    const searchParams = useSearchParams();
+    const accountId = searchParams.get('accountId') || searchParams.get('account_id') || undefined;
 
     // Fetch documents, accounts, and entities
     const loadData = async () => {
@@ -129,13 +140,23 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
                 }}
                 accounts={accounts}
                 entities={entities}
-                onApprovalComplete={() => loadData()}
+                onApprovalComplete={(summary) => {
+                    if (summary) setImportSummary(summary);
+                    loadData();
+                }}
             />
         );
     }
 
     return (
         <div className="space-y-6">
+            {importSummary && (
+                <ImportSummaryBanner 
+                    summary={importSummary} 
+                    onDismiss={() => setImportSummary(null)} 
+                />
+            )}
+
             {/* Action & Metric Header */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
@@ -155,18 +176,11 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
 
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={() => setIsPdfModalOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-                        >
-                            <FileText className="w-4 h-4 text-indigo-400" />
-                            <span>Add receipt or invoice</span>
-                        </button>
-                        <button
-                            onClick={() => setIsImportModalOpen(true)}
+                            onClick={() => setIsUnifiedModalOpen(true)}
                             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
                         >
                             <Upload className="w-4 h-4" />
-                            <span>Import bank statement</span>
+                            <span>Import Document</span>
                         </button>
                     </div>
                 </div>
@@ -268,7 +282,7 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
                             </p>
                         </div>
                         <button
-                            onClick={() => setIsImportModalOpen(true)}
+                            onClick={() => setIsUnifiedModalOpen(true)}
                             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
                         >
                             <Upload className="w-4 h-4" />
@@ -331,13 +345,26 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
                                                 </div>
                                             </td>
                                             <td className="py-3.5 px-4 text-right">
-                                                <button
-                                                    onClick={() => setSelectedDocumentId(doc.id)}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold transition"
-                                                >
-                                                    <span>Review transactions</span>
-                                                    <ArrowRight className="w-3.5 h-3.5" />
-                                                </button>
+                                                {doc.total_proposals === 0 ? (
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedStatementDocId(doc.id);
+                                                            setIsStatementModalOpen(true);
+                                                        }}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+                                                    >
+                                                        <span>Review balances</span>
+                                                        <ArrowRight className="w-3.5 h-3.5" />
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setSelectedDocumentId(doc.id)}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer"
+                                                    >
+                                                        <span>Review transactions</span>
+                                                        <ArrowRight className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     );
@@ -354,9 +381,31 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
                 onClose={() => setIsImportModalOpen(false)}
                 accounts={accounts}
                 entities={entities}
+                initialEntityId={selectedEntityId === 'all' ? undefined : selectedEntityId}
+                initialAccountId={accountId}
                 onImportSuccess={newDocId => {
                     loadData();
+                    setIsImportModalOpen(false);
                     setSelectedDocumentId(newDocId);
+                }}
+            />
+
+            {/* Unified Import Modal Orchestrator */}
+            <UnifiedImportModal
+                isOpen={isUnifiedModalOpen}
+                onClose={() => setIsUnifiedModalOpen(false)}
+                onSelectBankCsv={() => {
+                    setIsUnifiedModalOpen(false);
+                    setIsImportModalOpen(true);
+                }}
+                onSelectStatementPdf={() => {
+                    setIsUnifiedModalOpen(false);
+                    setSelectedStatementDocId(null);
+                    setIsStatementModalOpen(true);
+                }}
+                onSelectReceiptPdf={() => {
+                    setIsUnifiedModalOpen(false);
+                    setIsPdfModalOpen(true);
                 }}
             />
 
@@ -366,10 +415,26 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
                 onClose={() => setIsPdfModalOpen(false)}
                 accounts={accounts}
                 entities={entities}
+                initialEntityId={selectedEntityId}
                 onImportSuccess={newDocId => {
                     loadData();
+                    setIsPdfModalOpen(false);
                     setSelectedDocumentId(newDocId);
                 }}
+            />
+
+            {/* Statement PDF Balance Update Modal (Delivery 2B) */}
+            <UpdateBalancesModal
+                isOpen={isStatementModalOpen}
+                onClose={(summary) => {
+                    setIsStatementModalOpen(false);
+                    setSelectedStatementDocId(null);
+                    if (summary) setImportSummary(summary);
+                    loadData();
+                }}
+                initialMode="statement"
+                initialDocumentId={selectedStatementDocId || undefined}
+                initialEntityId={selectedEntityId}
             />
         </div>
     );

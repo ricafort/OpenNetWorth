@@ -53,6 +53,7 @@ import {
     formatMoney,
     parseToCents
 } from '@/lib/domain/accounting/types';
+import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
 
 /**
  * Format entity types into user-friendly labels without losing trust/household distinctions.
@@ -108,11 +109,7 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
     onSelectEntity
 }) => {
     // Scope State
-    const getLocalIsoDate = () => {
-        const d = new Date();
-        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-        return d.toISOString().split('T')[0];
-    };
+    const getLocalIsoDate = () => getLocalTodayCalendarDate();
 
     const [scopeType, setScopeType] = useState<ScopeType>('individual');
     const [asOfDate, setAsOfDate] = useState<string>(getLocalIsoDate);
@@ -718,14 +715,24 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                                 const nw = comp.net_worth?.formatted_net_worth_by_currency?.[curr] || '$0.00';
                                                 const aCents = comp.net_worth?.total_assets_cents_by_currency?.[curr] || 0;
                                                 const lCents = comp.net_worth?.total_liabilities_cents_by_currency?.[curr] || 0;
+                                                const hasUnknownInComp = comp.accounts.some(a => a.is_unknown || a.balance_cents === null);
+                                                const unknownCountInComp = comp.accounts.filter(a => a.is_unknown || a.balance_cents === null).length;
                                                 return (
                                                     <div key={curr} className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-1">
                                                         <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase">
-                                                            <span>Net Worth ({curr})</span>
-                                                            <span>{curr}</span>
+                                                            <span>{hasUnknownInComp ? `Known Net Worth (${curr})` : `Net Worth (${curr})`}</span>
+                                                            <div className="flex items-center gap-1">
+                                                                {hasUnknownInComp && (
+                                                                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-bold normal-case text-[9px] flex items-center gap-0.5">
+                                                                        <AlertTriangle className="w-2.5 h-2.5" />
+                                                                        {unknownCountInComp === 1 ? '1 needs balance' : `${unknownCountInComp} need balance`}
+                                                                    </span>
+                                                                )}
+                                                                <span>{curr}</span>
+                                                            </div>
                                                         </div>
                                                         <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                                                            What you own minus what you owe
+                                                            {hasUnknownInComp ? 'Known balance total — does not assume zero for unrecorded accounts' : 'What you own minus what you owe'}
                                                         </div>
                                                         <div className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
                                                             {nw}
@@ -833,20 +840,33 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                     </h3>
                                     {consolidatedReport?.is_complete ? (
                                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                                            100% Exchange Rates Available
+                                            100% Complete (Rates & Balances Known)
                                         </span>
                                     ) : (
                                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                                            Incomplete Valuation (Missing Rates)
+                                            {(consolidatedReport?.unrecorded_count ?? 0) > 0 && (consolidatedReport?.missing_rates?.length ?? 0) > 0
+                                                ? 'Incomplete Valuation (Needs Balance & Missing Rates)'
+                                                : (consolidatedReport?.unrecorded_count ?? 0) > 0
+                                                    ? 'Incomplete Valuation (Needs Balance)'
+                                                    : 'Incomplete Valuation (Missing Exchange Rates)'}
                                         </span>
                                     )}
                                 </div>
                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                                     Strict currency conversion (M1-CALC-03, T8). No fallback to 1:1 parity without explicit rates.
                                 </p>
-                                {consolidatedReport && !consolidatedReport.is_complete && consolidatedReport.missing_rates.length > 0 && (
-                                    <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-400 font-medium">
-                                        Missing dated exchange rates: {consolidatedReport.missing_rates.join(', ')}
+                                {consolidatedReport && !consolidatedReport.is_complete && (
+                                    <div className="mt-2 space-y-1">
+                                        {(consolidatedReport.unrecorded_count ?? 0) > 0 && (
+                                            <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                                                • Unrecorded accounts: {consolidatedReport.unrecorded_count} account(s) need balance updates ({consolidatedReport.unrecorded_accounts?.map(a => a.name).join(', ') || ''}).
+                                            </div>
+                                        )}
+                                        {consolidatedReport.missing_rates && consolidatedReport.missing_rates.length > 0 && (
+                                            <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                                                • Missing dated exchange rates: {consolidatedReport.missing_rates.map((r: any) => typeof r === 'string' ? r : `${r.from} \u2192 ${r.to}${r.date ? ` (${r.date})` : ''}`).join(', ')}.
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -880,16 +900,25 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                 const nw = scopeReport.formatted_net_worth_by_currency[curr];
                                 const assets = scopeReport.total_assets_cents_by_currency[curr] || 0;
                                 const liab = scopeReport.total_liabilities_cents_by_currency[curr] || 0;
+                                const hasUnrecorded = (scopeReport.unrecorded_count ?? 0) > 0;
                                 return (
                                     <div key={curr} className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
                                         <div className="flex justify-between items-center text-xs font-bold text-slate-500">
-                                            <span>Net Worth ({curr})</span>
-                                            <span className="uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px]">
-                                                {scopeType}
-                                            </span>
+                                            <span>{hasUnrecorded ? `Known Net Worth (${curr})` : `Net Worth (${curr})`}</span>
+                                            <div className="flex items-center gap-1.5">
+                                                {hasUnrecorded && (
+                                                    <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 text-[10px] font-bold flex items-center gap-1">
+                                                        <AlertTriangle className="w-3 h-3" />
+                                                        {scopeReport.unrecorded_count === 1 ? '1 needs balance' : `${scopeReport.unrecorded_count} need balance`}
+                                                    </span>
+                                                )}
+                                                <span className="uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px]">
+                                                    {scopeType}
+                                                </span>
+                                            </div>
                                         </div>
                                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                                            What you own minus what you owe
+                                            {hasUnrecorded ? 'Known balance total — does not assume zero for unrecorded accounts' : 'What you own minus what you owe'}
                                         </div>
                                         <div className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">
                                             {nw}
@@ -952,10 +981,22 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                                     {scopeType === 'household' ? '100% (Unified)' : `${item.ownership_share_percentage}%`}
                                                 </td>
                                                 <td className="px-4 py-3 text-right text-slate-500">
-                                                    {item.formatted_full_balance || formatMoney({ amount_cents: item.gross_balance_cents, currency: item.currency })}
+                                                    {item.is_unknown ? (
+                                                        <span className="text-amber-600 dark:text-amber-400 font-bold italic text-xs">
+                                                            Unknown (Needs balance)
+                                                        </span>
+                                                    ) : (
+                                                        item.formatted_full_balance || formatMoney({ amount_cents: item.gross_balance_cents, currency: item.currency })
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 text-right font-extrabold text-slate-900 dark:text-slate-100">
-                                                    {item.formatted_attributed_balance}
+                                                    {item.is_unknown ? (
+                                                        <span className="text-amber-600 dark:text-amber-400 font-bold italic text-xs">
+                                                            Unknown (Needs balance)
+                                                        </span>
+                                                    ) : (
+                                                        item.formatted_attributed_balance
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 text-center">
                                                     <div className="flex items-center justify-center gap-1.5">
@@ -1108,16 +1149,16 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                                 {isReconciled ? (
                                                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
                                                         <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
-                                                        <span>RECONCILED — Cash movements verified against independent ledger balance</span>
+                                                        <span>RECONCILED &mdash; Cash movements verified against internal ledger accounts</span>
                                                     </div>
                                                 ) : (
                                                     <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-[11px] space-y-1">
                                                         <div className="flex items-center gap-1.5 font-extrabold text-xs">
                                                             <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-600" />
-                                                            <span>UNRECONCILED DISCREPANCY: {formatMoney({ amount_cents: discrepancy, currency: curr })}</span>
+                                                            <span>INTERNAL LEDGER DISCREPANCY: {formatMoney({ amount_cents: discrepancy, currency: curr })}</span>
                                                         </div>
                                                         <p className="text-[10px] text-rose-600 dark:text-rose-400">
-                                                            Independent ledger liquid closing cash ({formatMoney({ amount_cents: ledgerClose, currency: curr })}) does not match statement ending cash ({formatMoney({ amount_cents: endVal, currency: curr })}). Do not present as verified.
+                                                            Internal ledger liquid closing cash ({formatMoney({ amount_cents: ledgerClose, currency: curr })}) does not match reported cash flow ending cash ({formatMoney({ amount_cents: endVal, currency: curr })}). External bank statements have not been compared.
                                                         </p>
                                                     </div>
                                                 )}
@@ -1264,41 +1305,57 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
 
                             {accrualReport ? (
                                 <div className="space-y-4 text-xs">
-                                    {Object.keys(accrualReport.total_income_cents_by_currency || {}).map(curr => {
-                                        const inc = accrualReport.total_income_cents_by_currency[curr] || 0;
-                                        const exp = accrualReport.total_expenses_cents_by_currency[curr] || 0;
-                                        const sav = accrualReport.net_savings_cents_by_currency[curr] || 0;
+                                    {(() => {
+                                        const allCurrencies = Array.from(new Set([
+                                            ...Object.keys(accrualReport.total_income_cents_by_currency || {}),
+                                            ...Object.keys(accrualReport.total_expenses_cents_by_currency || {}),
+                                            ...Object.keys(accrualReport.net_savings_cents_by_currency || {})
+                                        ]));
 
-                                        return (
-                                            <div key={curr} className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl space-y-2 border border-slate-200/70 dark:border-slate-700/60">
-                                                <div className="font-bold text-slate-700 dark:text-slate-300 pb-1 border-b border-slate-200 dark:border-slate-700 flex justify-between">
-                                                    <span>Currency: {curr}</span>
-                                                    <span className="text-[10px] uppercase font-bold text-indigo-600">Accrual Performance</span>
+                                        if (allCurrencies.length === 0) {
+                                            return (
+                                                <div className="text-center py-6 text-slate-400">
+                                                    No income or expense activity recorded for this period.
                                                 </div>
+                                            );
+                                        }
 
-                                                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                                                    <span>Total Operating Income</span>
-                                                    <span className="font-medium text-emerald-600">
-                                                        {formatMoney({ amount_cents: inc, currency: curr })}
-                                                    </span>
-                                                </div>
+                                        return allCurrencies.map(curr => {
+                                            const inc = accrualReport.total_income_cents_by_currency?.[curr] || 0;
+                                            const exp = accrualReport.total_expenses_cents_by_currency?.[curr] || 0;
+                                            const sav = accrualReport.net_savings_cents_by_currency?.[curr] ?? (inc - exp);
 
-                                                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                                                    <span>Total Incurred Expenses</span>
-                                                    <span className="font-medium text-rose-600">
-                                                        {formatMoney({ amount_cents: exp, currency: curr })}
-                                                    </span>
-                                                </div>
+                                            return (
+                                                <div key={curr} className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl space-y-2 border border-slate-200/70 dark:border-slate-700/60">
+                                                    <div className="font-bold text-slate-700 dark:text-slate-300 pb-1 border-b border-slate-200 dark:border-slate-700 flex justify-between">
+                                                        <span>Currency: {curr}</span>
+                                                        <span className="text-[10px] uppercase font-bold text-indigo-600">Accrual Performance</span>
+                                                    </div>
 
-                                                <div className="flex justify-between font-extrabold text-sm pt-2 border-t border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
-                                                    <span>Net Savings (Accrual)</span>
-                                                    <span className={sav >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                                                        {formatMoney({ amount_cents: sav, currency: curr })}
-                                                    </span>
+                                                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                                                        <span>Total Operating Income</span>
+                                                        <span className="font-medium text-emerald-600">
+                                                            {formatMoney({ amount_cents: inc, currency: curr })}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                                                        <span>Total Incurred Expenses</span>
+                                                        <span className="font-medium text-rose-600">
+                                                            {formatMoney({ amount_cents: exp, currency: curr })}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex justify-between font-extrabold text-sm pt-2 border-t border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+                                                        <span>Net Savings (Accrual)</span>
+                                                        <span className={sav >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                                                            {formatMoney({ amount_cents: sav, currency: curr })}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        });
+                                    })()}
 
                                     {accrualReport.breakdown_by_category && accrualReport.breakdown_by_category.length > 0 && (
                                         <div className="pt-2">
@@ -1306,12 +1363,15 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                                 Category Breakdown
                                             </div>
                                             <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                                                {accrualReport.breakdown_by_category.map((cat: any) => (
-                                                    <div key={cat.category_name} className="flex justify-between text-xs py-1 border-b border-slate-100 dark:border-slate-800">
-                                                        <span className="text-slate-700 dark:text-slate-300">{cat.category_name}</span>
-                                                        <span className="font-semibold text-slate-900 dark:text-slate-100">{cat.formatted_total}</span>
-                                                    </div>
-                                                ))}
+                                                {accrualReport.breakdown_by_category.map((cat: any, idx: number) => {
+                                                    const catLabel = cat.account_name || cat.category_name || 'Uncategorized';
+                                                    return (
+                                                        <div key={cat.account_id || catLabel || idx} className="flex justify-between text-xs py-1 border-b border-slate-100 dark:border-slate-800">
+                                                            <span className="text-slate-700 dark:text-slate-300">{catLabel}</span>
+                                                            <span className="font-semibold text-slate-900 dark:text-slate-100">{cat.formatted_total}</span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}

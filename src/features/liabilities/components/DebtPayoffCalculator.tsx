@@ -2,42 +2,163 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Liability, DebtPayoffResult, PayoffStrategy } from '@/features/liabilities/types';
+import { Liability, LiabilityType, DebtPayoffResult, PayoffStrategy } from '@/features/liabilities/types';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
 import { loadFreedomSettings, saveFreedomSettings, updateDebtRecurringTransaction } from '@/infrastructure/local_driver';
 import { TrendingDown, Calendar, DollarSign, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
-import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
+import { formatCurrency } from '@/lib/utils/currencyService';
+import { CurrencyCode } from '@/types';
 
+import { centsToMajorUnits } from '@/lib/domain/accounting/types';
 import PayoffScheduleChart from '@/components/charts/PayoffScheduleChart';
 import { ContentCard } from '@/components/common/ContentCard';
 
 import { useLiabilitiesQuery } from '@/features/liabilities/hooks/useLiabilitiesQuery';
+import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
 import { useAccountingCheck } from '@/features/accounting/hooks/useAccountingCheck';
 
 export default function DebtPayoffCalculator() {
     const { baseCurrency } = useNetWorth();
     const { liabilities, isLoading: isLiabilitiesLoading } = useLiabilitiesQuery();
-    const { hasModernLiabilities, isLoading: isAccountingLoading } = useAccountingCheck();
+    const {
+        summary,
+        isLoading: isSummaryLoading,
+        error: summaryError,
+        refresh: refreshSummary
+    } = useSharedFinancialSummary({ reportingCurrency: baseCurrency });
+    const { hasModernLiabilities, isError: isAccountingError, isLoading: isAccountingCheckLoading } = useAccountingCheck();
 
-    const isLoading = isLiabilitiesLoading || isAccountingLoading;
+    const isLoading = isLiabilitiesLoading || isAccountingCheckLoading || (hasModernLiabilities && isSummaryLoading && !summaryError);
 
-    // Lazy initialization
-    const [extraPaymentUSD, setExtraPaymentUSD] = useState(() => {
-        if (typeof window !== 'undefined') {
-            return loadFreedomSettings().extraMonthlyPayment;
+    // Modern liabilities from authoritative summary
+    const modernDebts = useMemo((): Liability[] => {
+        if (!summary?.accounts) return [];
+        return summary.accounts
+            .filter(a => a.account_type === 'liability')
+            .map(a => ({
+                id: a.account_id,
+                name: a.account_name,
+                type: (['mortgage', 'student_loan', 'auto_loan', 'credit_card'].includes(a.account_sub_type)
+                    ? a.account_sub_type
+                    : 'other') as LiabilityType,
+                balance: centsToMajorUnits(a.amount_cents, a.currency),
+                currency: (a.currency || 'USD') as CurrencyCode,
+                interest_rate: (a as any).interest_rate,
+                minimum_payment: (a as any).minimum_payment,
+                is_good_debt: ['mortgage', 'student_loan'].includes(a.account_sub_type),
+                last_updated: a.effective_date
+            }));
+    }, [summary?.accounts]);
+
+    const unrecordedLiabilities = useMemo(() => {
+        if (!summary?.unrecorded_accounts) return [];
+        return summary.unrecorded_accounts.filter(a => a.account_type === 'liability');
+    }, [summary?.unrecorded_accounts]);
+
+    // Unified debt collection prioritizing authoritative modern debts
+    // Fulfills Requirement 4: Deduplicate by established account_id relationships, never infer identity from matching names.
+    const allDebts = useMemo(() => {
+        if (modernDebts.length > 0) {
+            const modernAccountIds = new Set(modernDebts.map(d => d.id));
+            const unlinkedLegacy = liabilities.filter(l => !l.account_id || !modernAccountIds.has(l.account_id));
+            
+            const mergedModern = modernDebts.map(md => {
+                const legacy = liabilities.find(l => l.account_id === md.id);
+                if (legacy) {
+                    return {
+                        ...md,
+                        interest_rate: legacy.interest_rate,
+                        minimum_payment: legacy.minimum_payment
+                    };
+                }
+                return md;
+            });
+
+            return [...mergedModern, ...unlinkedLegacy];
         }
-        return 500;
+        return liabilities;
+    }, [modernDebts, liabilities]);
+
+    const activeDebts = useMemo(() => allDebts.filter(l => (l.balance || 0) > 0), [allDebts]);
+
+    const debtsLackingInputs = useMemo(() => {
+        return activeDebts.filter(d => 
+            d.interest_rate === undefined || d.interest_rate === null ||
+            d.minimum_payment === undefined || d.minimum_payment === null
+        );
+    }, [activeDebts]);
+
+    const hasDebtsLackingInputs = debtsLackingInputs.length > 0;
+
+    const rawCurrencies = useMemo(() => {
+        return Array.from(new Set(activeDebts.map(l => (l.currency || 'USD') as CurrencyCode)));
+    }, [activeDebts]);
+    const isMultiCurrency = rawCurrencies.length > 1;
+    const debtCurrency = (rawCurrencies[0] || (baseCurrency as CurrencyCode) || 'USD') as CurrencyCode;
+
+    // Saved settings loaded from local SQLite storage / cache
+    // Why this exists:
+    // Holds the currently persisted freedom plan (strategy, extraMonthlyPayment, currency).
+    // Tricky logic:
+    // Preserves historical USD meaning of old currency-less settings (defaults to 'USD').
+    // TODO: Support multiple named scenario profiles in SQLite settings.
+    const [savedSettings, setSavedSettings] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return loadFreedomSettings();
+        }
+        return { strategy: 'avalanche' as PayoffStrategy, extraMonthlyPayment: 500, currency: 'USD' as CurrencyCode };
     });
 
-    // We control the input in "Base Currency", but store in "USD"
-    const extraPaymentBase = convertAmount(extraPaymentUSD, 'USD', baseCurrency);
+    // Associated editable payment state coupled to its currency
+    // Why this exists:
+    // Fulfills Item 5 Loading-State Correction:
+    // - Associates the editable extra payment amount with its explicit currency.
+    // - Prevents state initialized before async debts finish loading from corrupting calculations.
+    // - When debt currency changes, prevents an amount from previous currency reaching the calculation.
+    // - Restores matching saved plans correctly when debt currency matches saved plan currency.
+    // - Preserves deliberate user edits during ordinary rerenders.
+    // Tricky logic:
+    // We track prevDebtCurrency and update state when !isLoading and debtCurrency changes.
+    // In the current render pass, extraPayment immediately derives a safe value in debtCurrency,
+    // ensuring zero render passes ever execute with cross-currency numbers.
+    // TODO: Support scenario undo/redo history stack across multiple currency profiles.
+    const [paymentPlan, setPaymentPlan] = useState<{ amount: number; currency: CurrencyCode } | null>(null);
+    const [prevDebtCurrency, setPrevDebtCurrency] = useState<CurrencyCode | null>(null);
+
+    if (!isLoading && debtCurrency !== prevDebtCurrency) {
+        setPrevDebtCurrency(debtCurrency);
+        const initialAmount = (savedSettings.currency && savedSettings.currency === debtCurrency)
+            ? savedSettings.extraMonthlyPayment
+            : 0;
+        setPaymentPlan({ amount: initialAmount, currency: debtCurrency });
+    }
+
+    // Effective extra payment in debtCurrency for calculations and display
+    const extraPayment = (paymentPlan && paymentPlan.currency === debtCurrency)
+        ? paymentPlan.amount
+        : ((savedSettings.currency && savedSettings.currency === debtCurrency) ? savedSettings.extraMonthlyPayment : 0);
 
     const handleExtraPaymentChange = (val: number) => {
-        const valUSD = convertAmount(val, baseCurrency, 'USD');
-        setExtraPaymentUSD(valUSD);
+        setPaymentPlan({ amount: val, currency: debtCurrency });
     };
+
+    // Why this check exists:
+    // Fulfills Item 5: A saved-plan/debt currency mismatch cannot silently change units.
+    // If the saved plan was created in USD (or legacy currency-less setting defaulting to USD)
+    // and active debts are in AUD, we must flag this mismatch and show a clear review state.
+    // Tricky logic:
+    // Guards with !isLoading and activeDebts.length > 0 so that mismatch warnings do not flash
+    // prematurely while data is still loading or when no debts exist.
+    // TODO: In Milestone 2, offer an automated FX conversion preview using dated exchange rates.
+    const isCurrencyMismatch = Boolean(
+        !isLoading &&
+        activeDebts.length > 0 &&
+        !isMultiCurrency &&
+        savedSettings.currency &&
+        savedSettings.currency !== debtCurrency
+    );
 
     const [strategy, setStrategy] = useState<PayoffStrategy>(() => {
         if (typeof window !== 'undefined') {
@@ -46,34 +167,25 @@ export default function DebtPayoffCalculator() {
         return 'avalanche';
     });
 
-    // Why this exists: Previously, an auto-saving useEffect executed on every slider adjustment and on initial page render,
-    // silently creating and modifying recurring debt-accelerator transactions in the database without user consent (Handover Section 15 & 16).
-    // Now scenario exploration is kept purely in-memory until the user explicitly saves their plan.
-    // Tricky logic: Compare rounded extraPaymentUSD against saved extraMonthlyPayment to avoid floating-point precision differences triggering false unsaved indicators.
-    // TODO: Support multi-scenario profiles (e.g. Aggressive vs Conservative) once scenario metadata is supported in the SQLite schema.
-    const [savedSettings, setSavedSettings] = useState(() => {
-        if (typeof window !== 'undefined') {
-            return loadFreedomSettings();
-        }
-        return { strategy: 'avalanche' as PayoffStrategy, extraMonthlyPayment: 500 };
-    });
-
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
     const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
     const hasUnsavedChanges = useMemo(() => {
-        return strategy !== savedSettings.strategy || Math.round(extraPaymentUSD) !== Math.round(savedSettings.extraMonthlyPayment);
-    }, [strategy, extraPaymentUSD, savedSettings]);
+        return strategy !== savedSettings.strategy ||
+            Math.round(extraPayment) !== Math.round(savedSettings.extraMonthlyPayment) ||
+            savedSettings.currency !== debtCurrency;
+    }, [strategy, extraPayment, savedSettings, debtCurrency]);
 
     const handleSavePlan = async () => {
         setIsSaving(true);
         setSaveSuccessMessage(null);
         setSaveErrorMessage(null);
         try {
-            await saveFreedomSettings({ strategy, extraMonthlyPayment: extraPaymentUSD });
-            await updateDebtRecurringTransaction(strategy === 'minimum' ? 0 : extraPaymentUSD);
-            setSavedSettings({ strategy, extraMonthlyPayment: extraPaymentUSD });
+            await saveFreedomSettings({ strategy, extraMonthlyPayment: extraPayment, currency: debtCurrency });
+            await updateDebtRecurringTransaction(strategy === 'minimum' ? 0 : extraPayment, debtCurrency);
+            setSavedSettings({ strategy, extraMonthlyPayment: extraPayment, currency: debtCurrency });
+            setPaymentPlan({ amount: extraPayment, currency: debtCurrency });
             setSaveSuccessMessage('Plan saved to your budget successfully.');
             setTimeout(() => setSaveSuccessMessage(null), 4000);
         } catch (err: any) {
@@ -86,46 +198,61 @@ export default function DebtPayoffCalculator() {
 
     const handleResetPlan = () => {
         setStrategy(savedSettings.strategy);
-        setExtraPaymentUSD(savedSettings.extraMonthlyPayment);
+        const resetAmount = (savedSettings.currency && savedSettings.currency === debtCurrency)
+            ? savedSettings.extraMonthlyPayment
+            : 0;
+        setPaymentPlan({ amount: resetAmount, currency: debtCurrency });
         setSaveSuccessMessage(null);
         setSaveErrorMessage(null);
     };
 
-    const [result, setResult] = useState<DebtPayoffResult | null>(null);
-    const [baselineResult, setBaselineResult] = useState<DebtPayoffResult | null>(null);
+    // Debts are calculated strictly in their native currency
+    const calcLiabilities = activeDebts;
 
-    // Derived: Converted Liabilities for Calculation
-    const calcLiabilities = useMemo(() => {
-        return liabilities.map(l => ({
-            ...l,
-            // Normalize balance to Base Currency
-            balance: convertAmount(l.balance, l.currency || 'USD', baseCurrency)
-        }));
-    }, [liabilities, baseCurrency]);
+    // Why this is memoized:
+    // Pure, synchronous calculation runs in the same render pass as extraPayment and strategy updates.
+    // Eliminates 1-frame async state lag and ensures rendered timeline and schedule table always agree.
+    const result = useMemo(() => {
+        if (calcLiabilities.length === 0) return null;
+        return calculatePayoff(calcLiabilities, extraPayment, strategy);
+    }, [calcLiabilities, extraPayment, strategy]);
 
-    useEffect(() => {
-        if (calcLiabilities.length === 0) return;
-
-        // Calculate using Base Currency values
-        const res = calculatePayoff(calcLiabilities, extraPaymentBase, strategy);
-        setResult(res);
-
-        // Calculate baseline (minimum only) for comparison
-        if (strategy !== 'minimum') {
-            const baseline = calculatePayoff(calcLiabilities, 0, 'minimum');
-            setBaselineResult(baseline);
-        } else {
-            setBaselineResult(null);
-        }
-    }, [calcLiabilities, extraPaymentBase, strategy]);
+    const baselineResult = useMemo(() => {
+        if (calcLiabilities.length === 0 || strategy === 'minimum') return null;
+        return calculatePayoff(calcLiabilities, 0, 'minimum');
+    }, [calcLiabilities, strategy]);
 
     const savings = useMemo(() => {
         if (!result || !baselineResult) return null;
+        // Why this check exists:
+        // Do not calculate savings against a failed (insufficient payment) or truncated (horizon exceeded) baseline (Assessor Finding A).
+        if (result.isInsufficientPayment || result.isHorizonExceeded || result.isMultiCurrencyUnsupported) return null;
+        if (baselineResult.isInsufficientPayment || baselineResult.isHorizonExceeded || baselineResult.isMultiCurrencyUnsupported) return null;
+        if (baselineResult.monthsToPayoff <= 0) return null;
         return {
             months: Math.max(0, baselineResult.monthsToPayoff - result.monthsToPayoff),
             interest: Math.max(0, baselineResult.totalInterestPaid - result.totalInterestPaid)
         };
     }, [result, baselineResult]);
+
+    // Fulfills Requirement 2: A failed summary must not produce "No liabilities" or "Debt Free".
+    if (summaryError || isAccountingError) {
+        return (
+            <ContentCard className="text-center p-8 border-destructive/30 bg-destructive/10">
+                <AlertCircle size={48} className="mx-auto text-destructive mb-4" />
+                <h3 className="text-xl font-bold text-foreground">Failed to Load Debt Balances</h3>
+                <p className="text-muted-foreground mt-2 text-sm max-w-md mx-auto">
+                    An error occurred while loading your authoritative liability balances{summaryError ? `: ${summaryError}` : '.'}
+                </p>
+                <button
+                    onClick={() => { refreshSummary(); window.location.reload(); }}
+                    className="mt-4 px-4 py-2 bg-destructive text-destructive-foreground rounded-xl text-xs font-bold hover:opacity-90 transition cursor-pointer"
+                >
+                    Retry
+                </button>
+            </ContentCard>
+        );
+    }
 
     if (isLoading) {
         return (
@@ -136,14 +263,14 @@ export default function DebtPayoffCalculator() {
         );
     }
 
-    if (liabilities.length === 0) {
-        if (hasModernLiabilities) {
+    if (activeDebts.length === 0) {
+        if (unrecordedLiabilities.length > 0) {
             return (
-                <ContentCard className="text-center p-8 bg-slate-50 border-amber-200">
-                    <ShieldCheck size={48} className="mx-auto text-amber-500 mb-4" />
-                    <h3 className="text-xl font-bold text-foreground">Incomplete View</h3>
+                <ContentCard className="text-center p-8 bg-amber-50/50 border-amber-200">
+                    <AlertCircle size={48} className="mx-auto text-amber-500 mb-4" />
+                    <h3 className="text-xl font-bold text-foreground">Liability Balances Pending</h3>
                     <p className="text-muted-foreground mt-2">
-                        This view does not yet include all your recorded accounts. <a href="/accounting" className="text-blue-600 hover:underline">See Accounts for your balances.</a>
+                        You have recorded debt accounts without accepted balances. Complete your valuations in Accounts to calculate debt payoff projections.
                     </p>
                 </ContentCard>
             );
@@ -155,6 +282,58 @@ export default function DebtPayoffCalculator() {
                 <h3 className="text-xl font-bold text-foreground">You are Debt Free!</h3>
                 <p className="text-muted-foreground mt-2">No liabilities found. Enjoy your freedom!</p>
             </ContentCard>
+        );
+    }
+
+    // Fulfills Governing Principle & Requirement 2:
+    // If a debt lacks interest-rate or repayment details needed for a projection, show its known balance
+    // and explain the missing inputs. Do not invent an interest rate or payoff date.
+    if (hasDebtsLackingInputs) {
+        return (
+            <div className="space-y-6">
+                <ContentCard className="border border-border">
+                    <div className="flex items-start gap-4">
+                        <div className="p-3 bg-amber-100 dark:bg-amber-900/40 text-amber-600 rounded-xl">
+                            <AlertCircle size={24} />
+                        </div>
+                        <div className="space-y-2 flex-1">
+                            <h3 className="text-lg font-bold text-foreground">
+                                Active Debts Recorded — Projection Inputs Required
+                            </h3>
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                                Debt payoff schedules require an annual interest rate and minimum payment terms.
+                                The following recorded debts have known balances, but lack projection terms:
+                            </p>
+                            <div className="divide-y divide-border border border-border rounded-xl overflow-hidden mt-3">
+                                {debtsLackingInputs.map(d => (
+                                    <div key={d.id} className="p-4 flex justify-between items-center bg-card">
+                                        <div>
+                                            <span className="font-bold text-foreground">{d.name}</span>
+                                            <span className="ml-2 text-xs uppercase px-2 py-0.5 rounded bg-muted text-muted-foreground font-semibold">
+                                                {d.type.replace('_', ' ')}
+                                            </span>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="font-mono font-black text-rose-500 text-base">
+                                                {formatCurrency(d.balance, d.currency || debtCurrency)}
+                                            </div>
+                                            <span className="text-[11px] text-amber-600 font-medium">
+                                                Interest rate and repayment terms not configured
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-xs text-muted-foreground pt-2">
+                                To prevent fabricated financial projections, payoff horizons and interest savings are not invented without these inputs.{' '}
+                                <a href="/accounting?view=accounts" className="text-primary font-bold hover:underline">
+                                    Manage accounts in Accounting
+                                </a>.
+                            </p>
+                        </div>
+                    </div>
+                </ContentCard>
+            </div>
         );
     }
 
@@ -187,17 +366,27 @@ export default function DebtPayoffCalculator() {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-bold text-muted-foreground mb-3">Extra Monthly Payment</label>
+                        <div className="flex items-center justify-between mb-3">
+                            <label className="block text-sm font-bold text-muted-foreground">Extra Monthly Payment</label>
+                            <span className="text-xs font-bold px-2 py-0.5 rounded bg-muted text-foreground border border-border font-mono">
+                                {debtCurrency}
+                            </span>
+                        </div>
                         <div className="relative">
                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">
-                                {formatCurrency(0, baseCurrency).replace(/\d/g, '').replace(/[\.,\s]/g, '')}
+                                {formatCurrency(0, debtCurrency).replace(/\d/g, '').replace(/[\.,\s]/g, '')}
                             </span>
                             <input
                                 type="number"
-                                value={Math.round(extraPaymentBase)} // Display rounded for cleaner UI input
-                                onChange={(e) => handleExtraPaymentChange(Number(e.target.value))}
-                                className="w-full pl-14 pr-4 py-3 bg-muted border border-border rounded-xl font-bold text-foreground focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={Math.round(extraPayment)} // Display rounded in native debt currency
+                                onChange={(e) => {
+                                    handleExtraPaymentChange(Number(e.target.value));
+                                }}
+                                className="w-full pl-14 pr-16 py-3 bg-muted border border-border rounded-xl font-bold text-foreground focus:ring-2 focus:ring-blue-500 outline-none"
                             />
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-xs font-mono">
+                                {debtCurrency}
+                            </span>
                         </div>
                         {strategy === 'minimum' && (
                             <p className="text-xs text-amber-500 mt-2 font-medium">
@@ -207,10 +396,31 @@ export default function DebtPayoffCalculator() {
                     </div>
                 </div>
 
+                {/* Currency Mismatch Review Banner (Item 5) */}
+                {isCurrencyMismatch && (
+                    <div role="alert" className="mt-6 p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-xl text-amber-900 dark:text-amber-200">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div className="text-sm">
+                                <p className="font-bold">Currency Mismatch: Plan Review Required</p>
+                                <p className="mt-1 text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                                    Your saved plan was configured in <span className="font-mono font-bold">{savedSettings.currency}</span> ({formatCurrency(savedSettings.extraMonthlyPayment, savedSettings.currency)}/mo), but your active debts are in <span className="font-mono font-bold">{debtCurrency}</span>.
+                                    To prevent silently converting or reinterpreting amounts across currencies, review and confirm your extra payment in <span className="font-mono font-bold">{debtCurrency}</span> before saving to your budget.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Plan Persistence & Scenario Action Bar (Handover Section 15 & 16) */}
                 <div className="mt-6 pt-4 border-t border-border flex flex-wrap items-center justify-between gap-4">
                     <div className="flex flex-wrap items-center gap-2">
-                        {hasUnsavedChanges ? (
+                        {isCurrencyMismatch ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                <AlertCircle size={14} className="text-amber-500" />
+                                Saved in {savedSettings.currency} — review required before saving
+                            </span>
+                        ) : hasUnsavedChanges ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                                 Scenario preview (not saved to budget)
@@ -218,7 +428,7 @@ export default function DebtPayoffCalculator() {
                         ) : (
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                                 <ShieldCheck size={14} />
-                                Active plan saved
+                                Active plan saved ({savedSettings.currency})
                             </span>
                         )}
                         {saveSuccessMessage && (
@@ -289,7 +499,7 @@ export default function DebtPayoffCalculator() {
                                 <ul className="mt-3 space-y-1 text-xs text-rose-700 dark:text-rose-400">
                                     {result.insufficientDebts.map(d => (
                                         <li key={d.id}>
-                                            • <span className="font-semibold">{d.name}</span>: Minimum payment ({formatCurrency(d.minimumPayment, baseCurrency)}) does not cover monthly interest ({formatCurrency(d.monthlyInterest, baseCurrency)}).
+                                            • <span className="font-semibold">{d.name}</span>: Minimum payment ({formatCurrency(d.minimumPayment, debtCurrency)}) does not cover monthly interest ({formatCurrency(d.monthlyInterest, debtCurrency)}).
                                         </li>
                                     ))}
                                 </ul>
@@ -299,8 +509,26 @@ export default function DebtPayoffCalculator() {
                 </ContentCard>
             )}
 
+            {/* Horizon Exceeded Notice */}
+            {result?.isHorizonExceeded && (
+                <ContentCard className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-6">
+                    <div className="flex items-start gap-4">
+                        <AlertCircle className="w-8 h-8 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                            <h3 className="font-bold text-lg">Payoff Exceeds 50-Year Horizon</h3>
+                            <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
+                                {result.horizonExceededReason || 'Debt payoff exceeds the 50-year projection horizon with the current payment schedule.'}
+                            </p>
+                            <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+                                While monthly payments exceed accrued interest charges, the current rate of amortization would take longer than 50 years to extinguish the principal balance. Consider increasing your monthly payment to accelerate payoff.
+                            </p>
+                        </div>
+                    </div>
+                </ContentCard>
+            )}
+
             {/* Results */}
-            {result && !result.isMultiCurrencyUnsupported && !result.isInsufficientPayment && (
+            {result && !result.isMultiCurrencyUnsupported && !result.isInsufficientPayment && !result.isHorizonExceeded && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Main Freedom Card */}
                     <div className="lg:col-span-2 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
@@ -309,7 +537,9 @@ export default function DebtPayoffCalculator() {
                         <div className="relative z-10">
                             <div className="flex items-center gap-3 mb-2 opacity-90">
                                 <Calendar className="w-5 h-5" />
-                                <span className="text-sm font-bold tracking-wider uppercase">Your Freedom Date</span>
+                                <span className="text-sm font-bold tracking-wider uppercase">
+                                    {unrecordedLiabilities.length > 0 ? "Estimated Payoff for Included Debts" : "Your Freedom Date"}
+                                </span>
                             </div>
 
                             <h2 className="text-4xl md:text-5xl font-black mb-6 tracking-tight">
@@ -339,9 +569,9 @@ export default function DebtPayoffCalculator() {
                                         <p className="text-2xl font-black privacy-value">{
                                             (() => {
                                                 // Monthly Burn = Sum(Balance * MonthlyRate)
-                                                // This is the "interest cost" of the current month
+                                                // This is the "interest cost" of the current month in debtCurrency
                                                 const monthlyBurn = calcLiabilities.reduce((sum, l) => sum + (l.balance * (l.interest_rate / 100 / 12)), 0);
-                                                return formatCurrency(monthlyBurn, baseCurrency);
+                                                return formatCurrency(monthlyBurn, debtCurrency);
                                             })()
                                         }</p>
                                         <span className="text-xs text-blue-200 font-medium">lost to interest</span>
@@ -352,15 +582,15 @@ export default function DebtPayoffCalculator() {
                             <div className="flex flex-wrap gap-8">
                                 <div>
                                     <p className="text-blue-100 text-sm font-medium mb-1">Time to Payoff</p>
-                                    <p className="text-2xl font-bold privacy-value">{Math.ceil(result.monthsToPayoff)} months</p>
+                                    <p className="text-2xl font-bold privacy-value">{result.monthsToPayoff} {result.monthsToPayoff === 1 ? 'month' : 'months'}</p>
                                 </div>
                                 <div>
                                     <p className="text-blue-100 text-sm font-medium mb-1">Total Interest</p>
-                                    <p className="text-2xl font-bold privacy-value">{formatCurrency(result.totalInterestPaid, baseCurrency)}</p>
+                                    <p className="text-2xl font-bold privacy-value">{formatCurrency(result.totalInterestPaid, debtCurrency)}</p>
                                 </div>
                                 <div>
                                     <p className="text-blue-100 text-sm font-medium mb-1">Total Paid</p>
-                                    <p className="text-2xl font-bold privacy-value">{formatCurrency(result.totalPayments, baseCurrency)}</p>
+                                    <p className="text-2xl font-bold privacy-value">{formatCurrency(result.totalPayments, debtCurrency)}</p>
                                 </div>
                             </div>
                         </div>
@@ -368,7 +598,7 @@ export default function DebtPayoffCalculator() {
 
                     {/* Right: Chart */}
                     <div className="lg:col-span-1">
-                        <PayoffScheduleChart schedule={result.schedule} />
+                        <PayoffScheduleChart schedule={result.schedule} currency={debtCurrency} />
 
                         {/* Comparison Card - Moved inside right column for better layout */}
                         {savings && (
@@ -392,7 +622,7 @@ export default function DebtPayoffCalculator() {
                                         </div>
                                         <div>
                                             <p className="text-sm text-muted-foreground">Interest Saved</p>
-                                            <p className="text-2xl font-black text-emerald-600 privacy-value">{formatCurrency(savings.interest, baseCurrency)}</p>
+                                            <p className="text-2xl font-black text-emerald-600 privacy-value">{formatCurrency(savings.interest, debtCurrency)}</p>
                                         </div>
                                     </div>
 
@@ -409,7 +639,7 @@ export default function DebtPayoffCalculator() {
             )}
 
             {/* Payoff Schedule Preview */}
-            {result && !result.isMultiCurrencyUnsupported && !result.isInsufficientPayment && (
+            {result && !result.isMultiCurrencyUnsupported && !result.isInsufficientPayment && !result.isHorizonExceeded && (
                 <ContentCard className="overflow-hidden p-0">
                     <div className="p-6 border-b border-border bg-muted/30">
                         <h3 className="font-bold text-foreground">Payoff Schedule</h3>
@@ -445,10 +675,10 @@ export default function DebtPayoffCalculator() {
                                 }, {} as Record<string, any>)).slice(0, 12).map((row: any) => (
                                     <tr key={row.month} className="hover:bg-muted/50 transition-colors">
                                         <td className="px-6 py-4 font-mono font-medium text-foreground">{row.month}</td>
-                                        <td className="px-6 py-4 privacy-value">{formatCurrency(row.payment, baseCurrency)}</td>
-                                        <td className="px-6 py-4 text-emerald-600 privacy-value">{formatCurrency(row.principal, baseCurrency)}</td>
-                                        <td className="px-6 py-4 text-rose-500 privacy-value">{formatCurrency(row.interest, baseCurrency)}</td>
-                                        <td className="px-6 py-4 font-bold text-foreground privacy-value">{formatCurrency(row.balance, baseCurrency)}</td>
+                                        <td className="px-6 py-4 privacy-value">{formatCurrency(row.payment, debtCurrency)}</td>
+                                        <td className="px-6 py-4 text-emerald-600 privacy-value">{formatCurrency(row.principal, debtCurrency)}</td>
+                                        <td className="px-6 py-4 text-rose-500 privacy-value">{formatCurrency(row.interest, debtCurrency)}</td>
+                                        <td className="px-6 py-4 font-bold text-foreground privacy-value">{formatCurrency(row.balance, debtCurrency)}</td>
                                     </tr>
                                 ))}
                             </tbody>

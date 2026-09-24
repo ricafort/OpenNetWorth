@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Bell, Globe, TrendingUp, Cpu } from 'lucide-react';
 import { loadSettings, saveSettings, loadFreedomSettings, saveFreedomSettings } from '@/infrastructure/local_driver'; // Updated import
-import { UserSettings } from '@/types'; // Updated import
+import { UserSettings, CurrencyCode } from '@/types'; // Updated import
+import { formatCurrency } from '@/lib/utils/currencyService';
 import { FreedomSettings } from '@/features/liabilities/types';
 import CurrencySelector from '@/components/ui/CurrencySelector';
 import LocalAiSettingsModal from '@/components/ui/LocalAiSettingsModal';
@@ -61,7 +62,10 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
         setIsSaving(true);
         try {
             await saveSettings(settings);
-            await saveFreedomSettings(freedomSettings);
+            await saveFreedomSettings({
+                ...freedomSettings,
+                currency: freedomSettings.currency || (settings.baseCurrency as CurrencyCode) || 'USD'
+            });
             if (onSave) onSave(settings);
             onClose();
         } catch (err: any) {
@@ -159,18 +163,28 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                Extra Monthly Payment
-                            </label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                    Extra Monthly Payment
+                                </label>
+                                <span className="text-[10px] font-mono font-bold text-slate-400">
+                                    {freedomSettings.currency || settings.baseCurrency}
+                                </span>
+                            </div>
                             <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
+                                    {formatCurrency(0, freedomSettings.currency || (settings.baseCurrency as CurrencyCode)).replace(/\d/g, '').replace(/[\.,\s]/g, '')}
+                                </span>
                                 <input
                                     type="number"
                                     value={freedomSettings.extraMonthlyPayment}
                                     onChange={(e) => setFreedomSettings({ ...freedomSettings, extraMonthlyPayment: Number(e.target.value) })}
-                                    className="w-full bg-card border border-border rounded-xl py-3 pl-8 pr-4 font-bold text-foreground focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                    className="w-full bg-card border border-border rounded-xl py-3 pl-8 pr-14 font-bold text-foreground focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                                     placeholder="500"
                                 />
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-xs font-mono">
+                                    {freedomSettings.currency || settings.baseCurrency}
+                                </span>
                             </div>
                             <p className="text-[10px] text-slate-500 mt-2 font-medium">Amount you can pay ABOVE minimums to crush debt.</p>
                         </div>

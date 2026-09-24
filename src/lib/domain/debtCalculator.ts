@@ -42,7 +42,8 @@ const calculatePayoffPrecise = (
             comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
             currency: 'USD',
             isMultiCurrencyUnsupported: false,
-            isInsufficientPayment: false
+            isInsufficientPayment: false,
+            isHorizonExceeded: false
         };
     }
 
@@ -66,7 +67,8 @@ const calculatePayoffPrecise = (
             comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
             isMultiCurrencyUnsupported: true,
             unsupportedCurrencies: currencies,
-            isInsufficientPayment: false
+            isInsufficientPayment: false,
+            isHorizonExceeded: false
         };
     }
 
@@ -126,6 +128,7 @@ const calculatePayoffPrecise = (
             currency: debtCurrency,
             isMultiCurrencyUnsupported: false,
             isInsufficientPayment: true,
+            isHorizonExceeded: false,
             insufficientPaymentReason: isMinimumStrategyStalled
                 ? 'Minimum monthly payments do not cover accrued interest charges. Loans will not amortise without higher payments.'
                 : 'Total monthly payment (minimums plus extra) does not cover total accrued interest charges across your debts. Principal balance will grow over time.',
@@ -152,8 +155,10 @@ const calculatePayoffPrecise = (
     let totalPayments = 0;
     let monthsElapsed = 0;
     const MAX_MONTHS = 600; // 50 years cap
+    let finalPaymentDate = new Date(currentDate);
 
     while (debts.some(d => d.balance > 0.01) && monthsElapsed < MAX_MONTHS) {
+        finalPaymentDate = new Date(currentDate);
         const monthStr = currentDate.toISOString().slice(0, 7);
 
         // Calculate Pot
@@ -163,65 +168,105 @@ const calculatePayoffPrecise = (
         const currentActiveMin = debts.reduce((sum, d) => d.balance > 0.01 ? sum + d.minPayment : 0, 0);
 
         // Ensure strictly positive math for the pot
-        let turboAmount = safeExtra + Math.max(0, originalTotalMin - currentActiveMin);
+        const pot = strategy === 'minimum' ? 0 : (extraMonthlyPayment + Math.max(0, originalTotalMin - currentActiveMin));
 
-        // If strategy is minimum only, turbo is 0
-        if (strategy === 'minimum') turboAmount = 0;
+        // Phase 1: Accrue Interest & Pay Minimums on all active debts
+        // Why this exists:
+        // Ensures contractually mandated minimum payments and interest charges are applied to each debt first.
+        // Tricky logic:
+        // We track initial monthly state (interest and minimum payment) before extra payments are applied,
+        // allowing exact mathematical principal calculation: principal = totalMonthlyPayment - interest.
+        // TODO: Support custom debt payment schedules (e.g. bi-weekly).
+        const monthlyRecords = new Map<string, {
+            debt: typeof debts[0];
+            interest: number;
+            minPayment: number;
+            extraPayment: number;
+        }>();
 
-        // 1. Process each debt for Minimum Payment
-        debts.forEach(debt => {
-            if (debt.balance <= 0.01) return;
+        debts.forEach(d => {
+            if (d.balance <= 0.01) return;
 
-            const interest = debt.balance * debt.rate;
-            let payment = Math.min(debt.minPayment, debt.balance + interest);
-
-            // Prevent floating point floating away
-            if (payment > debt.balance + interest) payment = debt.balance + interest;
-
-            const principal = payment - interest;
-            debt.balance -= principal;
-
+            const interest = d.balance * d.rate;
             totalInterest += interest;
-            totalPayments += payment;
+            d.balance += interest;
 
-            schedule.push({
-                month: monthStr,
-                debtId: debt.id,
-                debtName: debt.name,
-                payment,
-                principal,
+            const minPayment = Math.min(d.balance, d.minPayment);
+            d.balance -= minPayment;
+            totalPayments += minPayment;
+
+            monthlyRecords.set(d.id, {
+                debt: d,
                 interest,
-                remainingBalance: Math.max(0, debt.balance)
+                minPayment,
+                extraPayment: 0
             });
         });
 
-        // 2. Process Turbo Amount (Iteratively apply to top priority debts)
-        // Only if we have extra AND there are debts left
-        while (turboAmount > 0.01 && debts.some(d => d.balance > 0.01)) {
-            const target = debts.find(d => d.balance > 0.01); // First active based on sort
+        // Phase 2: Target Selection & Pot Application across all eligible debts
+        // Why this exists:
+        // Fulfills Item 1: Continue applying remaining monthly extra payment budget to the next eligible debt
+        // after the first debt is cleared within the same month.
+        // Tricky logic:
+        // A single large extra payment can extinguish Debt 1 and still have remaining budget to pay down Debt 2.
+        // We loop until remainingPot is exhausted or all debts have 0 balance.
+        let remainingPot = pot;
+        while (remainingPot > 0.001) {
+            const target = debts.find(d => d.balance > 0.01);
             if (!target) break;
 
-            const payment = Math.min(turboAmount, target.balance);
-            target.balance -= payment;
-            turboAmount -= payment;
+            const extraPay = Math.min(target.balance, remainingPot);
+            target.balance -= extraPay;
+            totalPayments += extraPay;
+            remainingPot -= extraPay;
 
-            totalPayments += payment;
-
-            // Update Schedule
-            const entry = schedule.find(s => s.month === monthStr && s.debtId === target.id);
-            if (entry) {
-                entry.payment += payment;
-                entry.principal += payment;
-                entry.remainingBalance = Math.max(0, target.balance);
+            const rec = monthlyRecords.get(target.id);
+            if (rec) {
+                rec.extraPayment += extraPay;
             }
         }
+
+        // Phase 3: Record Schedule Entries with Authoritative Accounting Arithmetic
+        // Why this exists:
+        // Fulfills Item 2: Calculate principal strictly as (totalPayment - interest), rather than clamping
+        // the minimum-payment principal to zero and then adding the entire extra payment.
+        // Tricky logic:
+        // If interest charges exceed the total payment for a debt in a given month, principal reduction
+        // is legitimately negative (principal = payment - interest), accurately matching balance growth.
+        // Invariant: closingBalance = openingBalance - principal = openingBalance + interest - totalPayment.
+        monthlyRecords.forEach(rec => {
+            const totalPayment = rec.minPayment + rec.extraPayment;
+            const principal = Number((totalPayment - rec.interest).toFixed(2));
+            const roundedPayment = Number(totalPayment.toFixed(2));
+            const roundedInterest = Number(rec.interest.toFixed(2));
+            const remainingBalance = Math.max(0, Number(rec.debt.balance.toFixed(2)));
+
+            schedule.push({
+                month: monthStr,
+                debtId: rec.debt.id,
+                debtName: rec.debt.name,
+                payment: roundedPayment,
+                principal,
+                interest: roundedInterest,
+                remainingBalance
+            });
+        });
 
         currentDate.setMonth(currentDate.getMonth() + 1);
         monthsElapsed++;
     }
 
-    // If after 600 months debts are still not cleared, report insufficient payment
+    // If after 600 months debts are still not cleared:
+    // Why this exists:
+    // Distinguishes mathematically non-amortising loans (where interest exceeds payment) from loans
+    // whose payments amortise the principal but take longer than the 50-year projection horizon (Handover Section 15 & Assessor Finding A).
+    // Tricky logic:
+    // If all remaining debts have minPayment > monthlyInterest, the payments DO reduce principal,
+    // so we set isHorizonExceeded: true and isInsufficientPayment: false.
+    // Only if payments fail to cover interest do we set isInsufficientPayment: true.
+    // TODO: Allow configurable projection horizons (e.g. 30, 40, 50 years) in settings.
     if (debts.some(d => d.balance > 0.01)) {
+        const hasUnpayableInterest = debts.some(d => d.balance > 0.01 && d.minPayment <= (d.balance * d.rate));
         return {
             strategy,
             freedomDate: '',
@@ -233,8 +278,14 @@ const calculatePayoffPrecise = (
             comparisonToMinimum: { monthsSaved: 0, interestSaved: 0 },
             currency: debtCurrency,
             isMultiCurrencyUnsupported: false,
-            isInsufficientPayment: true,
-            insufficientPaymentReason: 'Debts could not be paid off within 50 years with the current payment schedule. Payments are insufficient to amortise the balance.',
+            isInsufficientPayment: hasUnpayableInterest,
+            insufficientPaymentReason: hasUnpayableInterest
+                ? 'Monthly payments do not cover accrued interest charges. Loans will not amortise without higher payments.'
+                : undefined,
+            isHorizonExceeded: !hasUnpayableInterest,
+            horizonExceededReason: !hasUnpayableInterest
+                ? 'Debt payoff exceeds the 50-year projection horizon with the current payment schedule.'
+                : undefined,
             insufficientDebts: debts.filter(d => d.balance > 0.01).map(d => ({
                 id: d.id,
                 name: d.name,
@@ -245,13 +296,16 @@ const calculatePayoffPrecise = (
         };
     }
 
-    const freedomDate = currentDate.toISOString();
-    const daysUntilFreedom = Math.ceil((currentDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    // Why this exists: Return the actual month of the final payment that cleared the balance,
+    // rather than overshooting into the subsequent month (Assessor Finding A).
+    const freedomDate = finalPaymentDate.toISOString();
+    const daysUntilFreedom = Math.ceil((finalPaymentDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
     let comparison = { monthsSaved: 0, interestSaved: 0 };
     if (strategy !== 'minimum') {
         const baseline = calculatePayoffPrecise(liabilities, 0, 'minimum');
-        if (!baseline.isInsufficientPayment && !baseline.isMultiCurrencyUnsupported && baseline.monthsToPayoff > 0) {
+        // Do not calculate savings against failed (insufficient payment) or truncated (horizon exceeded) baseline projections
+        if (!baseline.isInsufficientPayment && !baseline.isHorizonExceeded && !baseline.isMultiCurrencyUnsupported && baseline.monthsToPayoff > 0) {
             comparison = {
                 monthsSaved: Math.max(0, baseline.monthsToPayoff - monthsElapsed),
                 interestSaved: Math.max(0, baseline.totalInterestPaid - totalInterest)
@@ -270,6 +324,7 @@ const calculatePayoffPrecise = (
         comparisonToMinimum: comparison,
         currency: debtCurrency,
         isMultiCurrencyUnsupported: false,
-        isInsufficientPayment: false
+        isInsufficientPayment: false,
+        isHorizonExceeded: false
     };
 };

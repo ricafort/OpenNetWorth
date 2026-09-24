@@ -30,6 +30,7 @@ import {
     setAccountOwnership,
     getAccountOwnership,
     listEntityMembers,
+    setAccountOpeningBalance,
     ValidationError,
     ConflictError
 } from '@/lib/domain/accounting/accountService';
@@ -41,7 +42,8 @@ import {
     getAccountLedgerDrilldown,
     getScopeNetWorth,
     getConsolidatedNetWorth,
-    setExchangeRate
+    setExchangeRate,
+    resolveAccountBalanceInfo
 } from '@/lib/domain/accounting/balanceService';
 import {
     postTransaction,
@@ -59,61 +61,26 @@ import { saveDraft, getDrafts, deleteDraft } from '@/lib/domain/accounting/draft
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ScopeType, formatMoney, Account } from '@/lib/domain/accounting/types';
 import { getLatestValuationObservation } from '@/lib/domain/accounting/balanceObservationService';
+import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
+import { getLocalTodayCalendarDate, isValidCalendarDate } from '@/lib/domain/calendarDate';
+
+function secureJson(data: any, init?: ResponseInit): NextResponse {
+    return applySensitiveHeaders(NextResponse.json(data, init));
+}
 
 /**
  * Resolves the effective balance for an account.
  * Why this exists:
- * Bridges accounts tracking balances (via dated observations) with accounts tracking
- * transactions (via double-entry ledger calculation).
- * Tricky logic:
- * For balance-tracked accounts ('balance'):
- * - Returns the latest accepted valuation observation on or before asOfDate.
- * - Falls back to opening balance if an explicit opening balance was configured.
- * - CRITICAL: If no accepted observation or opening balance exists, it must NOT fall back to
- *   a ledger $0.00 balance claiming "as of today" (which misrepresents an unknown balance as verified zero).
- *   Instead, returns null balance_cents, formatted_balance: 'Unknown (Needs balance)', and null as_of_date.
- * For transaction-tracked accounts ('transactions'):
- * - Returns the calculated double-entry ledger balance.
- * TODO: Support automated balance request triggers when is_unknown is true.
+ * Uses domain resolveAccountBalanceInfo so API routes and domain services
+ * share identical balance tracking and unknown-status logic (Finding B).
  */
 function resolveAccountBalance(db: any, acc: Account, asOfDate?: string) {
-    if (acc.tracking_mode === 'balance') {
-        const obs = getLatestValuationObservation(db, acc.id, asOfDate);
-        if (obs) {
-            return {
-                balance_cents: obs.amount_cents,
-                formatted_balance: formatMoney({ amount_cents: obs.amount_cents, currency: acc.currency }),
-                as_of_date: obs.effective_date,
-                is_unknown: false
-            };
-        }
-        if (acc.opening_balance_cents !== undefined && acc.opening_balance_cents !== null) {
-            return {
-                balance_cents: acc.opening_balance_cents,
-                formatted_balance: formatMoney({ amount_cents: acc.opening_balance_cents, currency: acc.currency }),
-                as_of_date: acc.opening_date || null,
-                is_unknown: false
-            };
-        }
-        // Balance-tracked account with NO observation and NO opening balance:
-        // Truthfully report unknown state rather than claiming $0.00 as of today.
-        return {
-            balance_cents: null,
-            formatted_balance: 'Unknown (Needs balance)',
-            as_of_date: null,
-            is_unknown: true
-        };
-    }
-    const ledger = getAccountBalance(db, acc.id, asOfDate);
-    return {
-        balance_cents: ledger.balance_cents,
-        formatted_balance: ledger.formatted_balance,
-        as_of_date: ledger.as_of_date,
-        is_unknown: false
-    };
+    return resolveAccountBalanceInfo(db, acc, asOfDate);
 }
 
 export async function GET(request: Request) {
+    const securityCheck = validateLocalSecurity(request);
+    if (securityCheck) return securityCheck;
     try {
         const db = getDb();
         initAccountingSchema(db); // Idempotent schema check
@@ -121,7 +88,7 @@ export async function GET(request: Request) {
         const url = new URL(request.url);
         const view = url.searchParams.get('view');
         const entityId = url.searchParams.get('entity_id');
-        const asOfDate = url.searchParams.get('as_of_date') || undefined;
+        const asOfDate = url.searchParams.get('as_of_date') || getLocalTodayCalendarDate();
         const startDate = url.searchParams.get('start_date') || undefined;
         const endDate = url.searchParams.get('end_date') || undefined;
         const includeTransactions = url.searchParams.get('include_transactions') === 'true';
@@ -129,6 +96,18 @@ export async function GET(request: Request) {
         const fetchLimit = limitParam ? parseInt(limitParam, 10) : 500;
         const offsetParam = url.searchParams.get('offset');
         const fetchOffset = offsetParam ? parseInt(offsetParam, 10) : 0;
+        const intent = url.searchParams.get('intent') || undefined;
+        const accountId = url.searchParams.get('account_id') || undefined;
+
+        if (startDate && !isValidCalendarDate(startDate)) {
+            return secureJson({ error: `Invalid start date: ${startDate}` }, { status: 400 });
+        }
+        if (endDate && !isValidCalendarDate(endDate)) {
+            return secureJson({ error: `Invalid end date: ${endDate}` }, { status: 400 });
+        }
+        if (startDate && endDate && startDate > endDate) {
+            return secureJson({ error: `Reversed range: ${startDate} to ${endDate}` }, { status: 400 });
+        }
 
         // Drafts query (M1-DRAFT-01, Clarification 3)
         if (view === 'drafts') {
@@ -165,10 +144,10 @@ export async function GET(request: Request) {
         if (view === 'members') {
             const householdId = url.searchParams.get('household_id');
             if (!householdId) {
-                return NextResponse.json({ error: 'Missing required parameter: household_id' }, { status: 400 });
+                return secureJson({ error: 'Missing required parameter: household_id' }, { status: 400 });
             }
             const members = listEntityMembers(db, householdId);
-            return NextResponse.json({ success: true, members });
+            return secureJson({ success: true, members });
         }
 
         if (view === 'reports') {
@@ -192,7 +171,7 @@ export async function GET(request: Request) {
                         };
                     })
                 }));
-                return NextResponse.json({
+                return secureJson({
                     success: true,
                     is_everything: true,
                     component_entities: componentEntities,
@@ -203,10 +182,10 @@ export async function GET(request: Request) {
             if (reportType === 'scope_net_worth') {
                 const scopeType = (url.searchParams.get('scope_type') || 'individual') as ScopeType;
                 if (!scopeId) {
-                    return NextResponse.json({ error: 'Missing required parameter: scope_id' }, { status: 400 });
+                    return secureJson({ error: 'Missing required parameter: scope_id' }, { status: 400 });
                 }
                 const report = getScopeNetWorth(db, scopeId, scopeType, asOfDate);
-                return NextResponse.json({ success: true, report });
+                return secureJson({ success: true, report });
             }
 
             if (reportType === 'consolidated_net_worth') {
@@ -214,18 +193,18 @@ export async function GET(request: Request) {
                 const reportingCurrency = url.searchParams.get('reporting_currency') || 'AUD';
                 const scopeType = (url.searchParams.get('scope_type') || 'individual') as ScopeType;
                 if (!targetEntityId) {
-                    return NextResponse.json({ error: 'Missing required parameter: entity_id' }, { status: 400 });
+                    return secureJson({ error: 'Missing required parameter: entity_id' }, { status: 400 });
                 }
                 const report = getConsolidatedNetWorth(db, targetEntityId, reportingCurrency, asOfDate, scopeType);
-                return NextResponse.json({ success: true, report });
+                return secureJson({ success: true, report });
             }
 
             if (reportType === 'cash_flow') {
                 if (!entityId) {
-                    return NextResponse.json({ error: 'Missing required parameter: entity_id' }, { status: 400 });
+                    return secureJson({ error: 'Missing required parameter: entity_id' }, { status: 400 });
                 }
                 const report = getActualCashFlowStatement(db, entityId, startDate, endDate);
-                return NextResponse.json({ success: true, report });
+                return secureJson({ success: true, report });
             }
 
             // If no specific report_type given under view=reports, return aggregated reports
@@ -233,7 +212,7 @@ export async function GET(request: Request) {
                 const scopeNetWorth = getScopeNetWorth(db, entityId, 'individual', asOfDate);
                 const cashFlow = getActualCashFlowStatement(db, entityId, startDate, endDate);
                 const incomeExpenses = getPeriodIncomeAndExpenses(db, entityId, startDate, endDate);
-                return NextResponse.json({
+                return secureJson({
                     success: true,
                     reports: {
                         scope_net_worth: scopeNetWorth,
@@ -250,7 +229,7 @@ export async function GET(request: Request) {
         if (entityId && entityId !== 'all') {
             const entity = getEntity(db, entityId);
             if (!entity) {
-                return NextResponse.json({ error: `Entity not found: ${entityId}` }, { status: 404 });
+                return secureJson({ error: `Entity not found: ${entityId}` }, { status: 404 });
             }
 
             const accounts = listAccounts(db, entityId);
@@ -267,12 +246,12 @@ export async function GET(request: Request) {
 
             const netWorth = getEntityNetWorth(db, entityId, asOfDate);
             const incomeExpenses = getPeriodIncomeAndExpenses(db, entityId, startDate, endDate);
-            const totalCount = countTransactions(db, { entityId, startDate, endDate });
+            const totalCount = countTransactions(db, { entityId, accountId, startDate, endDate, intent });
             const transactions = includeTransactions
-                ? listTransactions(db, { entityId, startDate, endDate, limit: fetchLimit, offset: fetchOffset })
+                ? listTransactions(db, { entityId, accountId, startDate, endDate, intent, limit: fetchLimit, offset: fetchOffset })
                 : undefined;
 
-            return NextResponse.json({
+            return secureJson({
                 success: true,
                 entity,
                 accounts: accountsWithBalances,
@@ -296,14 +275,14 @@ export async function GET(request: Request) {
             };
         });
 
-        const totalCount = countTransactions(db, { startDate, endDate });
+        const totalCount = countTransactions(db, { accountId, startDate, endDate, intent });
         const transactions = includeTransactions
-            ? listTransactions(db, { startDate, endDate, limit: fetchLimit, offset: fetchOffset })
+            ? listTransactions(db, { accountId, startDate, endDate, intent, limit: fetchLimit, offset: fetchOffset })
             : undefined;
 
         // Note: Full cross-entity consolidation rules are complex (e.g. investments vs underlying assets).
         // For the MVP "Everything" view, we return null for net_worth to prompt the UI to show component totals instead of a misleading grand total.
-        return NextResponse.json({
+        return secureJson({
             success: true,
             entities,
             accounts: accountsWithBalances,
@@ -314,18 +293,20 @@ export async function GET(request: Request) {
         });
     } catch (error: any) {
         console.error('Accounting API GET Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to fetch accounting data' }, { status: 500 });
+        return secureJson({ error: error.message || 'Failed to fetch accounting data' }, { status: 500 });
     }
 }
 
 export async function POST(request: Request) {
+    const securityCheck = validateLocalSecurity(request);
+    if (securityCheck) return securityCheck;
     try {
         const db = getDb();
         initAccountingSchema(db); // Idempotent schema check
 
         const body = await request.json().catch(() => null);
         if (!body || typeof body !== 'object') {
-            return NextResponse.json({ error: 'Request body must be a valid JSON object' }, { status: 400 });
+            return secureJson({ error: 'Request body must be a valid JSON object' }, { status: 400 });
         }
 
         const { action } = body;
@@ -334,21 +315,21 @@ export async function POST(request: Request) {
         if (action === 'create_entity') {
             const { entity } = body;
             if (!entity) {
-                return NextResponse.json({ error: 'Missing entity payload' }, { status: 400 });
+                return secureJson({ error: 'Missing entity payload' }, { status: 400 });
             }
             const created = createEntity(db, entity);
-            return NextResponse.json({ success: true, entity: created }, { status: 201 });
+            return secureJson({ success: true, entity: created }, { status: 201 });
         }
 
         // 2. Create Account (with optional atomic opening balance)
         if (action === 'create_account') {
             const { account } = body;
             if (!account) {
-                return NextResponse.json({ error: 'Missing account payload' }, { status: 400 });
+                return secureJson({ error: 'Missing account payload' }, { status: 400 });
             }
             const result = createAccount(db, account);
             const balance = getAccountBalance(db, result.account.id);
-            return NextResponse.json({
+            return secureJson({
                 success: true,
                 account: {
                     ...result.account,
@@ -363,11 +344,11 @@ export async function POST(request: Request) {
         if (action === 'update_account') {
             const { account_id, expected_revision, updates } = body;
             if (!account_id || expected_revision === undefined || !updates) {
-                return NextResponse.json({ error: 'Missing account_id, expected_revision, or updates' }, { status: 400 });
+                return secureJson({ error: 'Missing account_id, expected_revision, or updates' }, { status: 400 });
             }
             const updated = updateAccount(db, account_id, expected_revision, updates);
             const balance = getAccountBalance(db, updated.id);
-            return NextResponse.json({
+            return secureJson({
                 success: true,
                 account: {
                     ...updated,
@@ -377,83 +358,92 @@ export async function POST(request: Request) {
             });
         }
 
+        if (action === 'set_opening_balance') {
+            const { account_id, amount_cents, date } = body;
+            if (!account_id || typeof amount_cents !== 'number' || !date) {
+                return secureJson({ error: 'Missing or invalid parameters for set_opening_balance' }, { status: 400 });
+            }
+            setAccountOpeningBalance(db, account_id, amount_cents, date);
+            return secureJson({ success: true }, { status: 200 });
+        }
+
         // 4. Record Daily Events (M1-FLOW-02, M1-FLOW-03, M1-FLOW-04, M1-FLOW-05)
         if (action === 'record_income') {
             const { payload } = body;
-            if (!payload) return NextResponse.json({ error: 'Missing income payload' }, { status: 400 });
+            if (!payload) return secureJson({ error: 'Missing income payload' }, { status: 400 });
             const tx = recordIncome(db, payload);
-            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+            return secureJson({ success: true, transaction: tx }, { status: 201 });
         }
 
         if (action === 'record_expense') {
             const { payload } = body;
-            if (!payload) return NextResponse.json({ error: 'Missing expense payload' }, { status: 400 });
+            if (!payload) return secureJson({ error: 'Missing expense payload' }, { status: 400 });
             const tx = recordExpense(db, payload);
-            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+            return secureJson({ success: true, transaction: tx }, { status: 201 });
         }
 
         if (action === 'record_transfer') {
             const { payload } = body;
-            if (!payload) return NextResponse.json({ error: 'Missing transfer payload' }, { status: 400 });
+            if (!payload) return secureJson({ error: 'Missing transfer payload' }, { status: 400 });
             const tx = recordTransfer(db, payload);
-            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+            return secureJson({ success: true, transaction: tx }, { status: 201 });
         }
 
         if (action === 'record_card_repayment') {
             const { payload } = body;
-            if (!payload) return NextResponse.json({ error: 'Missing credit card repayment payload' }, { status: 400 });
+            if (!payload) return secureJson({ error: 'Missing credit card repayment payload' }, { status: 400 });
             const tx = recordCreditCardRepayment(db, payload);
-            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+            return secureJson({ success: true, transaction: tx }, { status: 201 });
         }
 
         if (action === 'record_loan_repayment') {
             const { payload } = body;
-            if (!payload) return NextResponse.json({ error: 'Missing loan repayment payload' }, { status: 400 });
+            if (!payload) return secureJson({ error: 'Missing loan repayment payload' }, { status: 400 });
             const tx = recordLoanRepayment(db, payload);
-            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+            return secureJson({ success: true, transaction: tx }, { status: 201 });
         }
 
         // 5. Raw Balanced Transaction Commit
         if (action === 'post_transaction') {
             const { transaction } = body;
-            if (!transaction) return NextResponse.json({ error: 'Missing transaction payload' }, { status: 400 });
+            if (!transaction) return secureJson({ error: 'Missing transaction payload' }, { status: 400 });
             const tx = postTransaction(db, transaction);
-            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+            return secureJson({ success: true, transaction: tx }, { status: 201 });
         }
 
         // 6. Auditable Transaction Correction & Void (M1-DOM-05, T12, T13)
         if (action === 'correct_transaction') {
             const { correction } = body;
-            if (!correction) return NextResponse.json({ error: 'Missing correction payload' }, { status: 400 });
+            if (!correction) return secureJson({ error: 'Missing correction payload' }, { status: 400 });
             const result = correctTransaction(db, correction);
-            return NextResponse.json({ success: true, correction: result });
+            return secureJson({ success: true, correction: result });
         }
 
         // 7. Joint Ownership Allocation (M1-FLOW-07, T7)
         if (action === 'set_ownership') {
             const { account_id, allocations } = body;
             if (!account_id || !allocations) {
-                return NextResponse.json({ error: 'Missing account_id or allocations array' }, { status: 400 });
+                return secureJson({ error: 'Missing account_id or allocations array' }, { status: 400 });
             }
             setAccountOwnership(db, account_id, allocations);
             const updatedOwnership = getAccountOwnership(db, account_id);
-            return NextResponse.json({ success: true, ownership: updatedOwnership });
+            return secureJson({ success: true, ownership: updatedOwnership });
         }
 
         // 8. Dated Non-Cash Asset Valuation Adjustment (M1-FLOW-06, T6)
         if (action === 'record_valuation') {
             const { payload } = body;
-            if (!payload) return NextResponse.json({ error: 'Missing asset valuation payload' }, { status: 400 });
+            if (!payload) return secureJson({ error: 'Missing asset valuation payload' }, { status: 400 });
             const tx = recordAssetValuation(db, payload);
-            return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
+            return secureJson({ success: true, transaction: tx }, { status: 201 });
         }
 
         // 9. Exchange Rate Definition (M1-CALC-03, T8)
         if (action === 'set_exchange_rate') {
             const { rate } = body;
-            if (!rate) return NextResponse.json({ error: 'Missing exchange rate payload' }, { status: 400 });
+            if (!rate) return secureJson({ error: 'Missing exchange rate payload' }, { status: 400 });
             const saved = setExchangeRate(db, rate);
-            return NextResponse.json({ success: true, exchange_rate: saved }, { status: 201 });
+            return secureJson({ success: true, exchange_rate: saved }, { status: 201 });
         }
 
         // 10. Save Draft (M1-DRAFT-01, Clarification 3)
@@ -464,13 +454,13 @@ export async function POST(request: Request) {
         if (action === 'save_draft') {
             const { draft } = body;
             if (!draft || typeof draft !== 'object') {
-                return NextResponse.json({ error: 'Missing draft payload' }, { status: 400 });
+                return secureJson({ error: 'Missing draft payload' }, { status: 400 });
             }
             try {
                 const saved = saveDraft(db, draft);
-                return NextResponse.json({ success: true, draft: saved });
+                return secureJson({ success: true, draft: saved });
             } catch (err: any) {
-                return NextResponse.json({ error: err.message }, { status: 400 });
+                return secureJson({ error: err.message }, { status: 400 });
             }
         }
 
@@ -479,20 +469,20 @@ export async function POST(request: Request) {
         // Discards or cleans up finalized drafts once converted to ledger postings or rejected.
         if (action === 'delete_draft') {
             const { id } = body;
-            if (!id) return NextResponse.json({ error: 'Missing draft id' }, { status: 400 });
+            if (!id) return secureJson({ error: 'Missing draft id' }, { status: 400 });
             deleteDraft(db, id);
-            return NextResponse.json({ success: true, deleted_id: id });
+            return secureJson({ success: true, deleted_id: id });
         }
 
-        return NextResponse.json({ error: `Unsupported action: ${action}` }, { status: 400 });
+        return secureJson({ error: `Unsupported action: ${action}` }, { status: 400 });
     } catch (error: any) {
         if (error instanceof ValidationError) {
-            return NextResponse.json({ error: error.message }, { status: 400 });
+            return secureJson({ error: error.message }, { status: 400 });
         }
         if (error instanceof ConflictError) {
-            return NextResponse.json({ error: error.message }, { status: 409 });
+            return secureJson({ error: error.message }, { status: 409 });
         }
         console.error('Accounting API POST Error:', error);
-        return NextResponse.json({ error: error.message || 'Accounting transaction failed' }, { status: 500 });
+        return secureJson({ error: error.message || 'Accounting transaction failed' }, { status: 500 });
     }
 }

@@ -5,10 +5,10 @@ import { CheckCircle2, Circle, ArrowRight, Trophy } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OnboardingProgress() {
-    const { tasks, progress, completedCount } = useOnboardingProgress();
+    const { tasks, progress, completedCount, isLoading, isError } = useOnboardingProgress();
 
-    // Hide if complete
-    if (progress === 100) return null;
+    // Hide if complete, loading, or error
+    if (isLoading || isError || progress === 100) return null;
 
     return (
         <div className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg animate-in fade-in slide-in-from-top-4 duration-500">
