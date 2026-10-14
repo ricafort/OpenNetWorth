@@ -2,7 +2,7 @@
 
 ## 1. High-Level Architecture
 
-OpenNetWorth is built on a **Sovereign, Local-First Architecture**. All financial data is persisted locally in an **Embedded SQLite Database** (`data/opennetworth.sqlite`) and cached in the client **Local Vault**, and all AI features execute on-device against a **Local LLM** (LM Studio on port 1234 or Ollama on port 11434). Zero sensitive financial metrics leave the local machine.
+OpenNetWorth is built on a **Sovereign, Local-First Architecture**. All financial data is persisted locally in an **Embedded SQLite Database** (`data/opennetworth.sqlite`) and cached in the client **Local Vault**, and all AI features execute on-device against a **Local LLM** (LM Studio on port 1234, Ollama on port 11434, or Strata on port 8080). Zero sensitive financial metrics leave the local machine.
 
 ### Architecture Diagram
 
@@ -12,7 +12,8 @@ OpenNetWorth is built on a **Sovereign, Local-First Architecture**. All financia
 │                                                                                         │
 │  ┌─────────────────────────────────┐           ┌─────────────────────────────────────┐  │
 │  │     Next.js 16 UI Layer         │           │       Local AI Engine Subsystem     │  │
-│  │   (Turbopack + React 19)        │           │    (LM Studio:1234 / Ollama:11434)  │  │
+│  │   (Turbopack + React 19)        │           │  (LM Studio:1234 / Ollama:11434 /   │  │
+│  │                                 │           │        Strata:8080)                 │  │
 │  │                                 │           │                                     │  │
 │  │  • Dashboard & Net Worth Engine │           │  • AI Mentors (Long-Term, Stoic...) │  │
 │  │  • Assets & Liabilities Payoff  │           │  • Natural Language Action Parser   │  │

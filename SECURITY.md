@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability, please report it privately via email rather than opening a public issue.
 
-**Contact**: [Create a private security advisory on GitHub](https://github.com/ricafort/ClearWorth/security/advisories/new)
+**Contact**: [Create a private security advisory on GitHub](https://github.com/ricafort/OpenNetWorth/security/advisories/new)
 
 
 ## Security Policy
