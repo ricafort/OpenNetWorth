@@ -4,12 +4,13 @@
  * Instead of routing sensitive financial portfolios, balances, and net worth data
  * to third-party cloud APIs (like OpenAI or Google Gemini), this service executes
  * all AI mentorship, financial analysis, and natural language command parsing
- * strictly on the user's local machine via Local LLMs (LM Studio, Ollama, LocalAI).
+ * strictly on the user's local machine via Local LLMs (LM Studio, Ollama, Strata, LocalAI).
  *
  * Tricky logic:
- * - Local LLM runners may be listening on port 1234 (LM Studio / OpenAI-compatible)
- *   or port 11434 (Ollama). We implement automated provider detection with short
- *   timeouts so the application dynamically binds to whichever engine is active.
+ * - Local LLM runners may be listening on port 1234 (LM Studio / OpenAI-compatible),
+ *   port 11434 (Ollama), or port 8080 (Strata, OpenAI-compatible at /v1). We implement
+ *   automated provider detection with short timeouts so the application dynamically
+ *   binds to whichever engine is active.
  * - When a local LLM is starting up or temporarily offline, we provide a deterministic
  *   rule-based regex parser fallback for natural language financial actions so the user
  *   experience is never blocked.
@@ -19,9 +20,28 @@
  * - Support local embeddings via nomic-embed-text for local semantic search across transactions.
  */
 
+export interface LocalLlmTextPart {
+    type: 'text';
+    text: string;
+}
+
+export interface LocalLlmImagePart {
+    type: 'image_url';
+    /** Data URI (data:image/png;base64,...) — the OpenAI-compatible wire format. */
+    image_url: { url: string };
+}
+
+export type LocalLlmContentPart = LocalLlmTextPart | LocalLlmImagePart;
+
 export interface LocalLlmMessage {
     role: 'system' | 'user' | 'assistant';
-    content: string;
+    content: string | LocalLlmContentPart[];
+    /**
+     * Ollama-native image payloads (raw base64, no data-URI prefix). Only
+     * consumed by the Ollama branch; OpenAI-compatible servers get image
+     * parts inside `content` instead. Vision is opt-in via Local AI settings.
+     */
+    images?: string[];
 }
 
 export interface LocalLlmConfig {
@@ -33,7 +53,7 @@ export interface LocalLlmConfig {
 
 export interface LocalLlmHealth {
     isAvailable: boolean;
-    provider: 'lmstudio' | 'ollama' | 'openai-compatible' | 'none';
+    provider: 'lmstudio' | 'ollama' | 'strata' | 'openai-compatible' | 'none';
     endpoint: string;
     activeModel: string;
     availableModels: string[];
@@ -53,6 +73,19 @@ export interface ParsedFinancialAction {
 // Default fallback local ports
 const LM_STUDIO_DEFAULT_URL = 'http://127.0.0.1:1234/v1';
 const OLLAMA_DEFAULT_URL = 'http://127.0.0.1:11434';
+const STRATA_DEFAULT_URL = 'http://127.0.0.1:8080/v1';
+const STRATA_DEFAULT_MODEL = 'qwen3.8-flash-next-iq3_s';
+
+/**
+ * Infer the engine label from an endpoint URL using its port convention.
+ * Strata's :8080 is checked first so its OpenAI-compatible /v1 endpoint is labeled correctly.
+ */
+function inferProviderFromUrl(url: string): 'lmstudio' | 'ollama' | 'strata' | 'openai-compatible' {
+    if (url.includes(':8080')) return 'strata';
+    if (url.includes('11434')) return 'ollama';
+    if (url.includes('1234')) return 'lmstudio';
+    return 'openai-compatible';
+}
 
 /**
  * Get active configured local LLM base URL from environment or defaults.
@@ -100,12 +133,13 @@ export async function checkLocalLlmHealth(customUrl?: string): Promise<LocalLlmH
                 models = data.data.map((m: any) => m.id);
             }
 
-            const activeModel = models[0] || (isOllamaNative ? 'llama3.2' : getDefaultModel());
+            const provider = inferProviderFromUrl(probeUrl);
+            const activeModel = models[0] || (isOllamaNative ? 'llama3.2' : provider === 'strata' ? STRATA_DEFAULT_MODEL : getDefaultModel());
             const latencyMs = Date.now() - startTime;
 
             return {
                 isAvailable: true,
-                provider: probeUrl.includes('1234') ? 'lmstudio' : isOllamaNative ? 'ollama' : 'openai-compatible',
+                provider,
                 endpoint: probeUrl,
                 activeModel,
                 availableModels: models,
@@ -119,14 +153,15 @@ export async function checkLocalLlmHealth(customUrl?: string): Promise<LocalLlmH
     // If an explicit customUrl was requested (e.g. user selected Ollama preset or typed a URL),
     // do NOT fall back to other engines on other ports! Report that the requested engine is offline.
     if (customUrl) {
-        const isOllama = probeUrl.includes('11434');
+        const provider = inferProviderFromUrl(probeUrl);
+        const engineName = provider === 'ollama' ? 'Ollama' : provider === 'strata' ? 'Strata' : provider === 'lmstudio' ? 'LM Studio' : 'Local LLM';
         return {
             isAvailable: false,
-            provider: isOllama ? 'ollama' : probeUrl.includes('1234') ? 'lmstudio' : 'openai-compatible',
+            provider,
             endpoint: probeUrl,
-            activeModel: isOllama ? 'llama3.2' : getDefaultModel(),
+            activeModel: provider === 'ollama' ? 'llama3.2' : provider === 'strata' ? STRATA_DEFAULT_MODEL : getDefaultModel(),
             availableModels: [],
-            error: `Could not connect to ${isOllama ? 'Ollama' : 'Local LLM'} at ${probeUrl}. Make sure the service is running.`,
+            error: `Could not connect to ${engineName} at ${probeUrl}. Make sure the service is running.`,
         };
     }
 
@@ -184,14 +219,88 @@ export async function checkLocalLlmHealth(customUrl?: string): Promise<LocalLlmH
         // Not on 11434
     }
 
+    // 4. Probe Strata default on 8080 (OpenAI-compatible API served at /v1)
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
+        const resp = await fetch(`${STRATA_DEFAULT_URL.replace(/\/+$/, '')}/models`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+            const data = await resp.json();
+            const models = Array.isArray(data.data) ? data.data.map((m: any) => m.id) : [];
+            return {
+                isAvailable: true,
+                provider: 'strata',
+                endpoint: STRATA_DEFAULT_URL,
+                activeModel: models[0] || STRATA_DEFAULT_MODEL,
+                availableModels: models,
+                latencyMs: Date.now() - startTime,
+            };
+        }
+    } catch {
+        // Not on 8080
+    }
+
     return {
         isAvailable: false,
         provider: 'none',
         endpoint: probeUrl,
         activeModel: getDefaultModel(),
         availableModels: [],
-        error: 'No local LLM service detected on port 1234 (LM Studio) or port 11434 (Ollama).',
+        error: 'No local LLM service detected on port 1234 (LM Studio), port 11434 (Ollama), or port 8080 (Strata).',
     };
+}
+
+/**
+ * Adapt vision-capable messages to each provider's wire format:
+ * - Ollama-native /api/chat wants plain string content plus a sibling
+ *   `images: [rawBase64]` array — data-URI prefixes are stripped.
+ * - OpenAI-compatible servers want image_url parts inside the content array;
+ *   `images` entries are appended as data-URI parts (assumed image/png when
+ *   the caller gave no mime).
+ * Text-only messages (the overwhelming majority) pass through untouched.
+ */
+function toProviderMessages(messages: LocalLlmMessage[], isOllamaNative: boolean): any[] {
+    return messages.map(m => {
+        if (typeof m.content === 'string') {
+            if (isOllamaNative && m.images && m.images.length > 0) {
+                return { role: m.role, content: m.content, images: m.images };
+            }
+            if (!isOllamaNative && m.images && m.images.length > 0) {
+                const parts: LocalLlmContentPart[] = [
+                    { type: 'text', text: m.content },
+                    ...m.images.map(b64 => ({
+                        type: 'image_url' as const,
+                        image_url: { url: b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}` }
+                    }))
+                ];
+                return { role: m.role, content: parts };
+            }
+            return { role: m.role, content: m.content };
+        }
+
+        if (isOllamaNative) {
+            const text = m.content
+                .filter((p): p is LocalLlmTextPart => p.type === 'text')
+                .map(p => p.text)
+                .join('\n');
+            const images = [
+                ...(m.images || []),
+                ...m.content
+                    .filter((p): p is LocalLlmImagePart => p.type === 'image_url')
+                    .map(p => p.image_url.url.replace(/^data:[^;]+;base64,/, ''))
+            ];
+            return { role: m.role, content: text, ...(images.length > 0 ? { images } : {}) };
+        }
+
+        // OpenAI-compatible: parts pass through as-is.
+        return { role: m.role, content: m.content };
+    });
 }
 
 /**
@@ -208,7 +317,7 @@ export async function queryLocalLlm(
     const maxTokens = config.maxTokens ?? 2048;
 
     if (!health.isAvailable && !config.endpoint) {
-        throw new Error('LOCAL_LLM_OFFLINE: Could not reach Local LLM on port 1234 or 11434.');
+        throw new Error('LOCAL_LLM_OFFLINE: Could not reach Local LLM on port 1234, 11434, or 8080.');
     }
 
     // Standard OpenAI-Compatible payload (works on LM Studio, LocalAI, Ollama /v1)
@@ -217,15 +326,13 @@ export async function queryLocalLlm(
         ? `${endpoint.replace(/\/+$/, '')}/api/chat`
         : `${endpoint.replace(/\/+$/, '')}/chat/completions`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for local inference
-
     try {
+        const wireMessages = toProviderMessages(messages, isOllamaNative);
         let body: any;
         if (isOllamaNative) {
             body = {
                 model,
-                messages,
+                messages: wireMessages,
                 stream: false,
                 options: {
                     temperature,
@@ -235,22 +342,43 @@ export async function queryLocalLlm(
         } else {
             body = {
                 model,
-                messages,
+                messages: wireMessages,
                 temperature,
                 max_tokens: maxTokens,
                 stream: false,
             };
         }
 
-        const res = await fetch(targetUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
+        // 3-minute ceiling: a 20-30B local model can legitimately take well over a
+        // minute to generate a 2k-token answer from a facts-heavy mentor prompt.
+        // A truly offline engine is still detected fast by the health probe above,
+        // so this ceiling only affects engines that are up but slow.
+        const postWithTimeout = () => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 180000);
+            return fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            }).finally(() => clearTimeout(timeoutId));
+        };
 
-        if (!res.ok) {
+        let res = await postWithTimeout();
+
+        // LM Studio answers HTTP 500 when its queue is still recovering from a
+        // previous generation. One grace-period retry keeps a busy-but-alive engine
+        // from falling back to the offline template mid-board.
+        if (!res.ok && (res.status === 500 || res.status === 502 || res.status === 503)) {
+            const busyStatus = res.status;
+            console.warn(`Local LLM busy (HTTP ${busyStatus}), retrying once in 3s...`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            res = await postWithTimeout();
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Local LLM busy: first attempt HTTP ${busyStatus}, retry HTTP ${res.status}: ${errText}`);
+            }
+        } else if (!res.ok) {
             const errText = await res.text();
             throw new Error(`Local LLM responded with HTTP ${res.status}: ${errText}`);
         }
@@ -279,7 +407,7 @@ export async function queryLocalLlm(
 
         return content;
     } catch (err: any) {
-        clearTimeout(timeoutId);
+        // No timer to clear here: postWithTimeout clears its own in its finally().
         if (err.name === 'AbortError') {
             throw new Error('Local LLM generation timed out. Your model may still be loading or generating.');
         }

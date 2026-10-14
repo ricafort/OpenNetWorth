@@ -17,7 +17,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Cpu, CheckCircle2, AlertTriangle, RefreshCw, Server, Zap, ExternalLink, ShieldCheck } from 'lucide-react';
+import { X, Cpu, CheckCircle2, AlertTriangle, RefreshCw, Server, Zap, Layers, ExternalLink, ShieldCheck, Eye } from 'lucide-react';
 
 interface LocalAiSettingsModalProps {
     isOpen: boolean;
@@ -27,7 +27,9 @@ interface LocalAiSettingsModalProps {
 export interface LocalAiConfig {
     endpoint: string;
     model: string;
-    provider: 'auto' | 'lmstudio' | 'ollama' | 'custom';
+    provider: 'auto' | 'lmstudio' | 'ollama' | 'strata' | 'custom';
+    /** Opt-in: send chat-attached images to the local model (requires a vision-capable model). */
+    visionEnabled?: boolean;
 }
 
 const STORAGE_KEY = 'opennetworth_local_ai_config';
@@ -105,19 +107,24 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
         }
     };
 
-    const handlePresetSelect = (preset: 'lmstudio' | 'ollama') => {
+    const handlePresetSelect = (preset: 'lmstudio' | 'ollama' | 'strata') => {
         let newEndpoint = 'http://127.0.0.1:1234/v1';
         let defaultModel = 'qwen3.8-27b-gsq-rco';
 
         if (preset === 'ollama') {
             newEndpoint = 'http://127.0.0.1:11434';
             defaultModel = 'llama3.2';
+        } else if (preset === 'strata') {
+            newEndpoint = 'http://127.0.0.1:8080/v1';
+            defaultModel = 'qwen3.8-flash-next-iq3_s';
         }
 
         const newConfig: LocalAiConfig = {
             endpoint: newEndpoint,
             model: defaultModel,
-            provider: preset
+            provider: preset,
+            // Engine switches must not silently flip the vision opt-in.
+            visionEnabled: config.visionEnabled
         };
 
         setConfig(newConfig);
@@ -191,14 +198,16 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
                                     <p className="text-xs font-bold uppercase tracking-wider">
                                         {status?.isAvailable
                                             ? `${(status.provider || 'Local LLM').toUpperCase()} Connected`
-                                            : `${(status?.provider || (config.endpoint.includes('11434') ? 'Ollama' : 'LM Studio')).toUpperCase()} Offline`}
+                                            : `${(status?.provider || (config.endpoint.includes('11434') ? 'Ollama' : config.endpoint.includes(':8080') ? 'Strata' : 'LM Studio')).toUpperCase()} Offline`}
                                     </p>
                                     <p className="text-xs opacity-90">
                                         {status?.isAvailable
                                             ? `Engine: ${status.provider.toUpperCase()} (${status.latencyMs ?? 0}ms latency)`
                                             : (status?.error || (config.endpoint.includes('11434')
                                                 ? 'Ollama not detected on port 11434. Run `ollama run llama3.2` in terminal.'
-                                                : 'LM Studio not detected on port 1234. Start Local Server in LM Studio.'))}
+                                                : config.endpoint.includes(':8080')
+                                                    ? 'Strata not detected on port 8080. Start Strata — its About tab shows the local server address.'
+                                                    : 'LM Studio not detected on port 1234. Start Local Server in LM Studio.'))}
                                     </p>
                                 </div>
                             </div>
@@ -218,7 +227,7 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2 block">
                             Quick Engine Presets
                         </label>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <button
                                 type="button"
                                 onClick={() => handlePresetSelect('lmstudio')}
@@ -252,6 +261,23 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
                                 </div>
                                 <span className="text-[11px] text-muted-foreground">Native or CLI engine</span>
                             </button>
+
+                            <button
+                                type="button"
+                                onClick={() => handlePresetSelect('strata')}
+                                className={`p-3.5 rounded-2xl border-2 text-left transition-all flex flex-col gap-1 ${config.endpoint.includes(':8080')
+                                    ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 shadow-sm'
+                                    : 'border-border bg-card hover:bg-muted/40 text-foreground'
+                                    }`}
+                            >
+                                <div className="flex items-center justify-between w-full">
+                                    <span className="font-bold text-sm flex items-center gap-1.5">
+                                        <Layers size={14} className="text-emerald-600" /> Strata
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground font-mono">:8080</span>
+                                </div>
+                                <span className="text-[11px] text-muted-foreground">OpenAI + Anthropic API</span>
+                            </button>
                         </div>
                     </div>
 
@@ -267,7 +293,7 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
                             placeholder="http://127.0.0.1:1234/v1"
                             className="w-full px-4 py-2.5 bg-muted/30 text-foreground border border-border rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                         />
-                        <p className="text-[11px] text-muted-foreground">Default LM Studio port is 1234. Ollama default is 11434.</p>
+                        <p className="text-[11px] text-muted-foreground">Default LM Studio port is 1234, Ollama is 11434, Strata is 8080 (use the /v1 OpenAI endpoint).</p>
                     </div>
 
                     {/* Model Selection */}
@@ -291,7 +317,7 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
                                     type="text"
                                     value={config.model}
                                     onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                                    placeholder={config.endpoint.includes('11434') ? "llama3.2 or mistral" : "qwen3.8-27b-gsq-rco"}
+                                    placeholder={config.endpoint.includes('11434') ? "llama3.2 or mistral" : config.endpoint.includes(':8080') ? "qwen3.8-flash-next-iq3_s" : "qwen3.8-27b-gsq-rco"}
                                     className="w-full px-4 py-2.5 bg-muted/30 text-foreground border border-border rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                 />
                                 {config.endpoint.includes('11434') && (
@@ -323,6 +349,33 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
                         </p>
                     </div>
 
+                    {/* Vision opt-in */}
+                    <div className="p-4 rounded-2xl border border-border bg-muted/30 flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-violet-600/10 text-violet-600 rounded-xl shrink-0">
+                                <Eye size={18} />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-foreground">Image understanding (vision)</p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                                    When on, images attached in Mentor chat are sent to your local model for analysis.
+                                    Only enable this with a vision-capable model (e.g. llama3.2-vision, qwen2.5-vl).
+                                    Off by default — images still display in chat but are never analyzed. Still 100% local.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={config.visionEnabled === true}
+                            aria-label="Enable image understanding"
+                            onClick={() => setConfig({ ...config, visionEnabled: !(config.visionEnabled === true) })}
+                            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${config.visionEnabled === true ? 'bg-violet-600' : 'bg-border'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${config.visionEnabled === true ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+
                     {/* Helpful instructions accordion */}
                     <div className="p-4 bg-muted/40 rounded-2xl border border-border/80 space-y-2 text-xs text-muted-foreground">
                         <p className="font-bold text-foreground flex items-center gap-1.5">
@@ -331,6 +384,7 @@ export default function LocalAiSettingsModal({ isOpen, onClose }: LocalAiSetting
                         <ul className="list-disc pl-4 space-y-1 leading-relaxed">
                             <li><strong>LM Studio:</strong> Open LM Studio &rarr; Start the Local Server on port 1234 &rarr; Load your preferred model.</li>
                             <li><strong>Ollama:</strong> Open terminal &rarr; run <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-foreground">ollama run llama3.2</code> (or mistral, qwen2.5, phi4).</li>
+                            <li><strong>Strata:</strong> Launch Strata &rarr; open <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-foreground">http://127.0.0.1:8080</code> &rarr; the About tab lists the OpenAI endpoint (<code className="bg-muted px-1.5 py-0.5 rounded font-mono text-foreground">/v1</code>) and loaded model name.</li>
                         </ul>
                     </div>
                 </div>

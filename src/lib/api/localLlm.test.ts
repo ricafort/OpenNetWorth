@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { ruleBasedParseIntent } from './localLlm';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { ruleBasedParseIntent, checkLocalLlmHealth } from './localLlm';
 
 describe('Local LLM Rule-Based Intent Parser', () => {
     it('should parse asset additions correctly', () => {
@@ -49,5 +49,30 @@ describe('Local LLM Rule-Based Intent Parser', () => {
         const res = ruleBasedParseIntent('What is compound interest?');
         expect(res.action).toBeNull();
         expect(res.confidence).toBe(0);
+    });
+});
+
+describe('Local LLM Engine Detection (Strata)', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('should detect Strata on port 8080 as an OpenAI-compatible engine', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ data: [{ id: 'qwen3.8-flash-next-iq3_s' }] }),
+        })));
+
+        const health = await checkLocalLlmHealth('http://127.0.0.1:8080/v1');
+        expect(health.isAvailable).toBe(true);
+        expect(health.provider).toBe('strata');
+        expect(health.activeModel).toBe('qwen3.8-flash-next-iq3_s');
+    });
+
+    it('should report Strata offline when port 8080 is unreachable', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
+
+        const health = await checkLocalLlmHealth('http://127.0.0.1:8080/v1');
+        expect(health.isAvailable).toBe(false);
+        expect(health.provider).toBe('strata');
+        expect(health.error).toContain('Strata');
     });
 });
