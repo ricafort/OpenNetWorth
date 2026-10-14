@@ -1,5 +1,5 @@
 /**
- * Milestone 1 Bank CSV Import Modal (Slice 1E)
+ * Milestone 1 Bank CSV Import Modal
  * 
  * Why this component exists:
  * Provides the interactive user interface for uploading/pasting bank CSV files,
@@ -13,8 +13,10 @@
  *   instantly in-browser using `parseCsvWithMapping` so the user sees exactly how the data will
  *   be interpreted before submitting.
  * - Non-destructive: Unsupported rows are flagged with error badges and never guessed.
+ * - Eligible account filtering: Includes checking, savings, cash, and credit card accounts while
+ *   excluding non-bank asset classes (real estate, vehicles, investments).
  * 
- * TODO: Support drag-and-drop folder uploads of monthly statements in Slice 1G.
+ * TODO: Support drag-and-drop folder uploads of monthly statements in Milestone 2.
  */
 
 'use client';
@@ -86,19 +88,29 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Filter liquid accounts (assets)
-    const liquidAccounts = useMemo(() => {
-        return accounts.filter(a => a.type === 'asset');
+    // Filter eligible payment and bank accounts
+    // Why this exists:
+    // Restricts bank CSV import targets to deposit/checking/cash accounts and credit cards.
+    // Non-payment asset accounts (e.g. properties, superannuation, vehicles) are excluded.
+    // Tricky logic:
+    // Credit cards are liabilities (type === 'liability' && sub_type === 'credit_card'),
+    // while transaction/deposit accounts are assets (type === 'asset' && ['checking', 'savings', 'cash'].includes(sub_type)).
+    // TODO: In Milestone 2, support importing line-item brokerage trade CSVs into investment accounts.
+    const eligibleAccounts = useMemo(() => {
+        return accounts.filter(a =>
+            (a.type === 'asset' && ['checking', 'savings', 'cash'].includes(a.sub_type)) ||
+            (a.type === 'liability' && a.sub_type === 'credit_card')
+        );
     }, [accounts]);
 
     // Set initial account and entity based on context
     useEffect(() => {
         if (!isOpen) return;
 
-        let currentAccount = liquidAccounts.find(a => a.id === targetAccountId);
+        let currentAccount = eligibleAccounts.find(a => a.id === targetAccountId);
         
         if (initialAccountId && !currentAccount) {
-            currentAccount = liquidAccounts.find(a => a.id === initialAccountId);
+            currentAccount = eligibleAccounts.find(a => a.id === initialAccountId);
             if (currentAccount) {
                 setTargetAccountId(currentAccount.id);
             }
@@ -111,10 +123,10 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
             currentAccount = undefined;
         }
 
-        if (!currentAccount && liquidAccounts.length > 0) {
-            let defaultAcc = liquidAccounts[0];
+        if (!currentAccount && eligibleAccounts.length > 0) {
+            let defaultAcc = eligibleAccounts[0];
             if (isConstrainedOwner) {
-                const entityAcc = liquidAccounts.find(a => a.entity_id === initialEntityId);
+                const entityAcc = eligibleAccounts.find(a => a.entity_id === initialEntityId);
                 if (entityAcc) {
                     defaultAcc = entityAcc;
                 } else {
@@ -132,7 +144,7 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
         } else if (currentAccount) {
             setSelectedEntityId(currentAccount.entity_id);
         }
-    }, [liquidAccounts, targetAccountId, initialEntityId, isOpen]);
+    }, [eligibleAccounts, targetAccountId, initialEntityId, isOpen]);
 
     // Fetch saved mappings on mount
     useEffect(() => {
@@ -475,12 +487,12 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
                                         onChange={e => {
                                             const accId = e.target.value;
                                             setTargetAccountId(accId);
-                                            const acc = liquidAccounts.find(a => a.id === accId);
+                                            const acc = eligibleAccounts.find(a => a.id === accId);
                                             if (acc) setSelectedEntityId(acc.entity_id);
                                         }}
                                         className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
                                     >
-                                        {liquidAccounts.map(acc => {
+                                        {eligibleAccounts.map(acc => {
                                             const entityName = entities.find(e => e.id === acc.entity_id)?.name || 'Unknown Entity';
                                             return (
                                                 <option key={acc.id} value={acc.id}>

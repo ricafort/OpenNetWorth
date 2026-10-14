@@ -11,7 +11,8 @@ interface BalanceCheckModalProps {
     observationId?: string; // If provided, fetches this specific observation. Otherwise fetches the latest.
     documentId?: string | null;
     onActionImport: () => void; // Passed from parent to open import workflow
-    onActionSetup: () => void; // Passed from parent to review account setup
+    onActionSetup: () => void; // Passed from parent to review account setup / set starting balance
+    onActionRecordBalance?: () => void; // Passed from parent to open manual observation entry
     onActionReview: (startDate?: string, endDate?: string) => void; // Passed from parent to review transactions
 }
 
@@ -23,6 +24,7 @@ export const BalanceCheckModal: React.FC<BalanceCheckModalProps> = ({
     documentId,
     onActionImport,
     onActionSetup,
+    onActionRecordBalance,
     onActionReview
 }) => {
     const [isLoading, setIsLoading] = useState(false);
@@ -125,16 +127,83 @@ export const BalanceCheckModal: React.FC<BalanceCheckModalProps> = ({
                     )}
 
                     {error && !isLoading && (
-                        <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3">
-                            <AlertCircle className="w-10 h-10 text-rose-500" />
-                            <p className="text-sm font-medium text-rose-700 dark:text-rose-400">{error}</p>
-                            <button onClick={fetchReconciliation} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
-                                Try again <ArrowRight size={14} />
-                            </button>
+                        <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 max-w-sm mx-auto py-4">
+                            <AlertCircle className="w-10 h-10 text-amber-500" />
+                            <div>
+                                <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                                    {error.toLowerCase().includes('no saved observation') || error.toLowerCase().includes('no observation')
+                                        ? 'No Statement or Balance Recorded'
+                                        : 'Unable to Check Balance'}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                    {error.toLowerCase().includes('no saved observation') || error.toLowerCase().includes('no observation')
+                                        ? 'This account has no statement balance or recorded valuation to compare against. Add a statement or record an opening balance.'
+                                        : error}
+                                </p>
+                            </div>
+                            {/* Why this exists:
+                                If an account has no observation, retrying the check will only fail again.
+                                Offering Add Statement, Record current balance, and Set starting balance provides direct user recovery paths.
+                                Tricky logic:
+                                Separates "Record current balance" (opens UpdateBalancesModal in manual mode) from
+                                "Set starting balance" (opens Edit Account opening balance setup).
+                                Closes this modal and invokes the corresponding parent handler preserving account context.
+                                TODO: In Milestone 2, pass accountId pre-selected into the opening modal.
+                            */}
+                            {error.toLowerCase().includes('no saved observation') || error.toLowerCase().includes('no observation') ? (
+                                <div className="flex items-center gap-2 pt-2 flex-wrap justify-center">
+                                    <button
+                                        onClick={() => {
+                                            onClose();
+                                            onActionImport();
+                                        }}
+                                        className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                    >
+                                        <FileText size={14} />
+                                        <span>Add Statement</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onClose();
+                                            if (onActionRecordBalance) {
+                                                onActionRecordBalance();
+                                            } else {
+                                                onActionSetup();
+                                            }
+                                        }}
+                                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <Wallet size={14} />
+                                        <span>Record current balance</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onClose();
+                                            onActionSetup();
+                                        }}
+                                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <History size={14} />
+                                        <span>Set starting balance</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <button onClick={fetchReconciliation} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer">
+                                    Try again <ArrowRight size={14} />
+                                </button>
+                            )}
                         </div>
                     )}
 
-                    {!isLoading && !error && reconciliation && (
+                    {!isLoading && !error && reconciliation && (() => {
+                        const isStatement = Boolean(
+                            reconciliation.source_document_name ||
+                            reconciliation.document_id ||
+                            reconciliation.source_type === 'document' ||
+                            (reconciliation.reported_balance_kind === 'statement_closing_balance' && reconciliation.source_type !== 'manual')
+                        );
+
+                        return (
                         <div className="space-y-6">
                             {/* Outcome Header */}
                             <div className="flex items-start gap-4">
@@ -147,7 +216,9 @@ export const BalanceCheckModal: React.FC<BalanceCheckModalProps> = ({
                                             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                                                 Balances match as of {reconciliation.effective_date}
                                             </h3>
-                                            <p className="text-sm text-slate-500 mt-1">Based on your recorded transactions.</p>
+                                            <p className="text-sm text-slate-500 mt-1">
+                                                Based on your recorded transactions.
+                                            </p>
                                         </>
                                     )}
                                     {reconciliation.status === 'discrepancy' && (
@@ -156,7 +227,7 @@ export const BalanceCheckModal: React.FC<BalanceCheckModalProps> = ({
                                                 There is a difference of {formatDiff(Math.abs(reconciliation.diff_cents), reconciliation.currency)}
                                             </h3>
                                             <p className="text-sm text-slate-500 mt-1">
-                                                The reported statement balance is {reconciliation.diff_cents > 0 ? 'higher' : 'lower'} than your recorded ledger balance.
+                                                The reported {isStatement ? 'statement balance' : 'observation balance'} is {reconciliation.diff_cents > 0 ? 'higher' : 'lower'} than your recorded ledger balance.
                                             </p>
                                         </>
                                     )}
@@ -206,21 +277,19 @@ export const BalanceCheckModal: React.FC<BalanceCheckModalProps> = ({
                                     </div>
                                 )}
                                 <div className="flex justify-between items-center">
-                                    <span className="text-slate-500">Statement Date</span>
+                                    <span className="text-slate-500">{isStatement ? 'Statement Date' : 'Observation Date'}</span>
                                     <span className="font-semibold text-slate-900 dark:text-slate-100">{reconciliation.effective_date}</span>
                                 </div>
-                                {reconciliation.source_document_name && (
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-slate-500">Source</span>
-                                        <span className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]" title={reconciliation.source_document_name}>
-                                            {reconciliation.source_document_name}
-                                        </span>
-                                    </div>
-                                )}
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500">Source</span>
+                                    <span className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]" title={reconciliation.source_document_name || (isStatement ? 'Statement Document' : 'Manual Observation')}>
+                                        {reconciliation.source_document_name || (isStatement ? 'Statement Document' : 'Manual Observation')}
+                                    </span>
+                                </div>
                                 {reconciliation.status === 'discrepancy' && (
                                     <>
                                         <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                                            <span className="text-slate-500">Statement closing balance</span>
+                                            <span className="text-slate-500">{isStatement ? 'Statement closing balance' : 'Recorded observation balance'}</span>
                                             <span className="font-semibold text-slate-900 dark:text-slate-100">
                                                 {formatMoney({ amount_cents: reconciliation.reported_amount_cents, currency: reconciliation.currency as CurrencyCode })}
                                             </span>
@@ -262,19 +331,34 @@ export const BalanceCheckModal: React.FC<BalanceCheckModalProps> = ({
                                 )}
 
                                 {reconciliation.status === 'insufficient_history' && (
-                                    <button 
-                                        onClick={() => { onClose(); onActionSetup(); }}
-                                        className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 rounded-xl text-left transition"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <Wallet className="w-5 h-5 text-indigo-500" />
-                                            <div>
-                                                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Review account setup</div>
-                                                <div className="text-xs text-slate-500">Set an opening balance to establish history.</div>
+                                    <>
+                                        <button 
+                                            onClick={() => { onClose(); onActionSetup(); }}
+                                            className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 rounded-xl text-left transition"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <History className="w-5 h-5 text-indigo-500" />
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Set starting balance</div>
+                                                    <div className="text-xs text-slate-500">Review account setup to establish an opening balance.</div>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <ArrowRight className="w-4 h-4 text-slate-400" />
-                                    </button>
+                                            <ArrowRight className="w-4 h-4 text-slate-400" />
+                                        </button>
+                                        <button 
+                                            onClick={() => { onClose(); (onActionRecordBalance || onActionSetup)(); }}
+                                            className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 rounded-xl text-left transition"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <Wallet className="w-5 h-5 text-indigo-500" />
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Record current balance</div>
+                                                    <div className="text-xs text-slate-500">Log a balance observation for this account.</div>
+                                                </div>
+                                            </div>
+                                            <ArrowRight className="w-4 h-4 text-slate-400" />
+                                        </button>
+                                    </>
                                 )}
 
                                 {(reconciliation.status === 'discrepancy' || reconciliation.status === 'matched') && (
@@ -294,23 +378,40 @@ export const BalanceCheckModal: React.FC<BalanceCheckModalProps> = ({
                                 )}
 
                                 {(reconciliation.status === 'discrepancy') && (
-                                    <button 
-                                        onClick={() => { onClose(); onActionImport(); }}
-                                        className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 rounded-xl text-left transition"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <Plus className="w-5 h-5 text-indigo-500" />
-                                            <div>
-                                                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Import missing transactions</div>
-                                                <div className="text-xs text-slate-500">Add transactions from your statement to fix the difference.</div>
+                                    isStatement ? (
+                                        <button 
+                                            onClick={() => { onClose(); onActionImport(); }}
+                                            className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 rounded-xl text-left transition"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <Plus className="w-5 h-5 text-indigo-500" />
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Import missing transactions</div>
+                                                    <div className="text-xs text-slate-500">Add transactions from your statement to fix the difference.</div>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <ArrowRight className="w-4 h-4 text-slate-400" />
-                                    </button>
+                                            <ArrowRight className="w-4 h-4 text-slate-400" />
+                                        </button>
+                                    ) : (
+                                        <button 
+                                            onClick={() => { onClose(); (onActionRecordBalance || onActionSetup)(); }}
+                                            className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 rounded-xl text-left transition"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <Wallet className="w-5 h-5 text-indigo-500" />
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Update balance observation</div>
+                                                    <div className="text-xs text-slate-500">Review or re-record the manual balance observation.</div>
+                                                </div>
+                                            </div>
+                                            <ArrowRight className="w-4 h-4 text-slate-400" />
+                                        </button>
+                                    )
                                 )}
                             </div>
                         </div>
-                    )}
+                        );
+                    })()}
                 </div>
             </div>
         </div>

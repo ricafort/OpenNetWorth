@@ -231,12 +231,115 @@ export function resolveAccountBalanceInfo(
         };
     }
 
-    const ledger = getAccountBalance(db, acc.id, effectiveDate);
+    // Why this exists:
+    // Distinguishes recorded transaction movement from a supported account balance.
+    // An account with no opening balance basis and no accepted balance observation has an unknown
+    // starting position. Merely aggregating subsequent transactions cannot establish an authoritative
+    // account balance.
+    // Tricky logic:
+    // 1. Explicit zero (opening_balance_cents === 0) or clearing accounts start at known $0.00.
+    // 2. Unknown opening (opening_balance_cents === null) + no transactions MUST remain unknown.
+    // 3. A statement observation anchors the balance at its effective date; subsequent transactions
+    //    add to that anchor. The summary must NEVER return an unanchored transaction sum.
+    // 4. Future observations (> asOfDate) and non-valuation kinds (e.g. available_balance) CANNOT
+    //    establish an earlier ledger starting basis.
+    // 5. No unexplained automatic adjustments are fabricated.
+    // TODO: In Milestone 2, provide one-click prompt on unrecorded accounts to record initial statement.
+    const hasExplicitOpening = (acc.opening_balance_cents !== null && acc.opening_balance_cents !== undefined);
+    let hasOpeningTx = false;
+    if (!hasExplicitOpening) {
+        const tx = db.prepare(`
+            SELECT 1 FROM m1_transactions t
+            JOIN m1_journal_entries j ON j.transaction_id = t.id
+            WHERE j.account_id = ? AND t.status = 'posted'
+              AND (t.origin = 'opening_balance' OR EXISTS (
+                  SELECT 1 FROM m1_journal_entries j2
+                  JOIN m1_accounts a2 ON j2.account_id = a2.id
+                  WHERE j2.transaction_id = t.id AND a2.type = 'equity'
+              ))
+            LIMIT 1
+        `).get(acc.id);
+        hasOpeningTx = Boolean(tx);
+    }
+
+    let isClearing = false;
+    try {
+        const clearingRow = db.prepare(`
+            SELECT 1 FROM m1_reimbursement_workflows
+            WHERE due_from_account_id = ? OR due_to_account_id = ?
+            LIMIT 1
+        `).get(acc.id, acc.id);
+        isClearing = Boolean(clearingRow);
+    } catch {
+        // Table may not exist in minimal test fixtures
+    }
+
+    if (hasExplicitOpening || hasOpeningTx || isClearing) {
+        const ledger = getAccountBalance(db, acc.id, effectiveDate);
+        return {
+            balance_cents: ledger.balance_cents,
+            is_unknown: false,
+            formatted_balance: ledger.formatted_balance,
+            as_of_date: ledger.as_of_date
+        };
+    }
+
+    const targetDate = effectiveDate || getLocalTodayCalendarDate();
+    const tableExists = (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_balance_observations'").get() as any)?.cnt > 0;
+    if (tableExists) {
+        const placeholders = VALUATION_BALANCE_KINDS.map(() => '?').join(', ');
+        const row = db.prepare(`
+            SELECT amount_cents, effective_date FROM m1_balance_observations
+            WHERE account_id = ?
+              AND review_status = 'accepted'
+              AND effective_date <= ?
+              AND balance_kind IN (${placeholders})
+              AND (is_component_of_total = 0 OR is_component_of_total IS NULL)
+            ORDER BY effective_date DESC, created_at DESC, id DESC
+            LIMIT 1
+        `).get(acc.id, targetDate, ...VALUATION_BALANCE_KINDS) as any;
+
+        if (row && row.amount_cents !== undefined && row.amount_cents !== null) {
+            const accountRow = db.prepare('SELECT type FROM m1_accounts WHERE id = ?').get(acc.id) as any;
+            const accountType = accountRow?.type || 'asset';
+            const isDebitNormal = accountType === 'asset' || accountType === 'expense';
+
+            const subRows = db.prepare(`
+                SELECT j.amount_cents FROM m1_journal_entries j
+                JOIN m1_transactions t ON j.transaction_id = t.id
+                WHERE j.account_id = ? AND t.date > ? AND t.date <= ? AND t.status = 'posted'
+            `).all(acc.id, row.effective_date, targetDate) as { amount_cents: number }[];
+
+            let subNet = 0;
+            for (const sr of subRows) subNet += sr.amount_cents;
+            const subChange = isDebitNormal ? subNet : -subNet;
+            const finalCents = row.amount_cents + subChange;
+
+            return {
+                balance_cents: finalCents,
+                is_unknown: false,
+                formatted_balance: formatMoney({ amount_cents: finalCents, currency }),
+                as_of_date: targetDate
+            };
+        }
+    }
+
+    // Why this returns unknown:
+    // Fulfills Closing Batch Requirement 1:
+    // "Remove resolveAccountBalanceInfo's known-balance fallback when transactions exist without a supported starting basis.
+    //  Do not infer opening history from transaction descriptions.
+    //  Assert identical unknown/known states across shared summary, Accounts and report calculations."
+    // An account without an explicit opening basis, opening equity entry, or statement observation
+    // has an unsupported starting position. Even if transactions exist, it must remain unknown.
+    // Tricky logic:
+    // Strictly requires an established opening basis or accepted valuation observation.
+    // Transaction movement alone cannot establish a known balance without an anchor.
+    // TODO: In Milestone 2, provide an in-line prompt to record an opening statement.
     return {
-        balance_cents: ledger.balance_cents,
-        is_unknown: false,
-        formatted_balance: ledger.formatted_balance,
-        as_of_date: ledger.as_of_date
+        balance_cents: null,
+        is_unknown: true,
+        formatted_balance: 'Unknown (Needs balance)',
+        as_of_date: null
     };
 }
 
@@ -1219,25 +1322,23 @@ export function getActualCashFlowStatement(
             let asOfDate: string | null = null;
             let isUnknown = false;
 
-            if (acc.tracking_mode === 'balance') {
-                if (balInfo.is_unknown) {
-                    basis = 'unknown';
-                    balanceCents = null;
-                    formattedBalance = 'Unknown';
-                    asOfDate = null;
-                    isUnknown = true;
-                    unknownCount++;
-                } else {
-                    basis = 'observation';
-                    balanceCents = balInfo.balance_cents;
-                    formattedBalance = balInfo.formatted_balance;
-                    asOfDate = balInfo.as_of_date || null;
-                    balanceOnlyCount++;
-                    anyObservedFound = true;
-                    totalObserved = (totalObserved || 0) + (balanceCents || 0);
-                    anyKnownFound = true;
-                    totalCombinedKnown = (totalCombinedKnown || 0) + (balanceCents || 0);
-                }
+            if (balInfo.is_unknown) {
+                basis = 'unknown';
+                balanceCents = null;
+                formattedBalance = 'Unknown';
+                asOfDate = null;
+                isUnknown = true;
+                unknownCount++;
+            } else if (acc.tracking_mode === 'balance') {
+                basis = 'observation';
+                balanceCents = balInfo.balance_cents;
+                formattedBalance = balInfo.formatted_balance;
+                asOfDate = balInfo.as_of_date || null;
+                balanceOnlyCount++;
+                anyObservedFound = true;
+                totalObserved = (totalObserved || 0) + (balanceCents || 0);
+                anyKnownFound = true;
+                totalCombinedKnown = (totalCombinedKnown || 0) + (balanceCents || 0);
             } else {
                 basis = 'ledger';
                 balanceCents = balInfo.balance_cents;

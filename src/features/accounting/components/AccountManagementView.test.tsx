@@ -1,5 +1,18 @@
 /**
  * @vitest-environment happy-dom
+ * 
+ * Why this test exists:
+ * Verifies AccountManagementView UI integration for:
+ * - Opening categorization rules modal per account.
+ * - Closing Batch Item 3 (Functional Record Balance recovery): opens manual observation flow
+ *   preserving the target account (even for accounts with an existing opening balance),
+ *   and reopens the balance check modal after save to verify the updated balance.
+ * 
+ * Tricky logic:
+ * Simulates the modal handoff sequence: click "Check balance" -> click "Record Balance" ->
+ * enter balance in UpdateBalancesModal -> on save, recheck target account in BalanceCheckModal.
+ * 
+ * TODO: Add e2e test covering CSV statement upload inside the check balance modal.
  */
 import React, { act } from 'react';
 import ReactDOM from 'react-dom/client';
@@ -7,8 +20,39 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AccountManagementView } from './AccountManagementView';
 import { Entity, Account } from '@/lib/domain/accounting/types';
 
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
 vi.mock('./BalanceCheckModal', () => ({
-    BalanceCheckModal: () => <div data-testid="mock-balance-modal" />
+    BalanceCheckModal: ({ isOpen, onClose, accountId, onActionSetup, onActionRecordBalance }: any) => {
+        if (!isOpen) return null;
+        return (
+            <div data-testid="mock-balance-modal">
+                <span data-testid="check-account-id">{accountId}</span>
+                <button onClick={onActionRecordBalance} data-testid="record-balance-btn">Record current balance</button>
+                <button onClick={onActionSetup} data-testid="set-starting-balance-btn">Set starting balance</button>
+                <button onClick={onClose} data-testid="check-close-btn">Close</button>
+            </div>
+        );
+    }
+}));
+
+vi.mock('@/features/sync/components/UpdateBalancesModal', () => ({
+    default: ({ isOpen, onClose, initialMode, initialAccountId }: any) => {
+        if (!isOpen) return null;
+        return (
+            <div data-testid="mock-update-balances-modal">
+                <span data-testid="update-mode">{initialMode}</span>
+                <span data-testid="update-account-id">{initialAccountId}</span>
+                <button
+                    onClick={() => onClose({ balancesUpdated: 1, accountId: initialAccountId })}
+                    data-testid="update-save-btn"
+                >
+                    Save
+                </button>
+                <button onClick={() => onClose()} data-testid="update-close-btn">Cancel</button>
+            </div>
+        );
+    }
 }));
 
 vi.mock('./CategorizationRulesModal', () => ({
@@ -149,5 +193,85 @@ describe('AccountManagementView', () => {
         expect(container.querySelector('[data-testid="mock-rules-modal"]')).not.toBeNull();
         expect(container.querySelector('[data-testid="modal-account-id"]')?.textContent).toBe('acc-2');
         expect(container.querySelector('[data-testid="modal-account-name"]')?.textContent).toBe('Credit Card');
+    });
+
+    it('implements Functional Record Balance recovery: opens manual entry with preserved account and rechecks on save', async () => {
+        await act(async () => {
+            root.render(
+                <AccountManagementView 
+                    entities={mockEntities}
+                    selectedEntityId="all"
+                />
+            );
+        });
+
+        // 1. Initial render: no modals open
+        expect(container.querySelector('[data-testid="mock-balance-modal"]')).toBeNull();
+        expect(container.querySelector('[data-testid="mock-update-balances-modal"]')).toBeNull();
+
+        // 2. Click "Check balance" on acc-1 (Checking Account)
+        const checkButtons = Array.from(container.querySelectorAll('button')).filter(b => b.textContent === 'Check balance');
+        expect(checkButtons.length).toBeGreaterThan(0);
+
+        act(() => {
+            checkButtons[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        // 3. BalanceCheckModal is open with preserved accountId = acc-1
+        expect(container.querySelector('[data-testid="mock-balance-modal"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="check-account-id"]')?.textContent).toBe('acc-1');
+
+        // 4. Click "Record current balance" action within BalanceCheckModal
+        act(() => {
+            container.querySelector('[data-testid="record-balance-btn"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        // 5. BalanceCheckModal closes and UpdateBalancesModal opens in manual mode preserving acc-1
+        expect(container.querySelector('[data-testid="mock-balance-modal"]')).toBeNull();
+        expect(container.querySelector('[data-testid="mock-update-balances-modal"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="update-mode"]')?.textContent).toBe('manual');
+        expect(container.querySelector('[data-testid="update-account-id"]')?.textContent).toBe('acc-1');
+
+        // 6. Enter amount/date and click save
+        await act(async () => {
+            container.querySelector('[data-testid="update-save-btn"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        // 7. BalanceCheckModal automatically reopens with acc-1 to display the rechecked balance!
+        expect(container.querySelector('[data-testid="mock-update-balances-modal"]')).toBeNull();
+        expect(container.querySelector('[data-testid="mock-balance-modal"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="check-account-id"]')?.textContent).toBe('acc-1');
+    });
+
+    it('implements Set starting balance recovery: opens edit account modal with preserved account context to establish opening balance', async () => {
+        await act(async () => {
+            root.render(
+                <AccountManagementView 
+                    entities={mockEntities}
+                    selectedEntityId="all"
+                />
+            );
+        });
+
+        // 1. Click "Check balance" on acc-2 (Credit Card)
+        const checkButtons = Array.from(container.querySelectorAll('button')).filter(b => b.textContent === 'Check balance');
+        act(() => {
+            checkButtons[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        // 2. BalanceCheckModal is open for acc-2
+        expect(container.querySelector('[data-testid="mock-balance-modal"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="check-account-id"]')?.textContent).toBe('acc-2');
+
+        // 3. Click "Set starting balance"
+        act(() => {
+            container.querySelector('[data-testid="set-starting-balance-btn"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        // 4. BalanceCheckModal closes and Edit Account modal opens preserving account details
+        expect(container.querySelector('[data-testid="mock-balance-modal"]')).toBeNull();
+        expect(container.textContent).toContain('Edit account');
+        const nameInput = container.querySelector('input[type="text"]') as HTMLInputElement;
+        expect(nameInput?.value).toBe('Credit Card');
     });
 });

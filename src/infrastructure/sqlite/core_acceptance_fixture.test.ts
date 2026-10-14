@@ -116,7 +116,7 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
             ]
         });
 
-        // 2. Household AUD savings: 0.00
+        // 2. Household AUD savings: explicit 0.00 opening balance
         accHhSavings = createAccount(testDb, {
             id: 'acc-hh-sav',
             entity_id: entHousehold.id,
@@ -124,7 +124,9 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
             type: 'asset',
             sub_type: 'savings',
             currency: 'AUD',
-            tracking_mode: 'transactions'
+            tracking_mode: 'transactions',
+            opening_balance_cents: 0,
+            opening_date: '2026-09-01'
         }).account;
 
         // Household Expenses Account

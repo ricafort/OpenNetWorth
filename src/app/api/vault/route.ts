@@ -90,6 +90,7 @@ function assertValidCalendarDateLocal(dateStr: any, context: string): void {
 
 import { CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
+import { initMentorChatSchema } from '@/lib/domain/mentor/schema';
 
 function secureJson(data: any, init?: ResponseInit): NextResponse {
     return applySensitiveHeaders(NextResponse.json(data, init));
@@ -220,6 +221,10 @@ export async function GET(request: Request) {
             const statement_reviews = tableExists('m1_statement_reviews') ? db.prepare('SELECT * FROM m1_statement_reviews').all() : [];
             const categorization_rules = tableExists('m1_categorization_rules') ? db.prepare('SELECT * FROM m1_categorization_rules').all() : [];
 
+            // Mentor chat conversations (optional: only added to the snapshot when non-empty)
+            const mentor_sessions = tableExists('m1_mentor_sessions') ? db.prepare('SELECT * FROM m1_mentor_sessions').all() : [];
+            const mentor_messages = tableExists('m1_mentor_messages') ? db.prepare('SELECT * FROM m1_mentor_messages ORDER BY session_id, seq ASC').all() : [];
+
             const snapshot: any = {
                 assets,
                 liabilities,
@@ -260,6 +265,14 @@ export async function GET(request: Request) {
             }
             if (categorization_rules.length > 0) {
                 snapshot.categorization_rules = categorization_rules;
+            }
+            // Mentor chats travel with backups only when they exist — keeps older
+            // backups byte-identical and restores backward-compatible.
+            if (mentor_sessions.length > 0) {
+                snapshot.mentor_sessions = mentor_sessions;
+            }
+            if (mentor_messages.length > 0) {
+                snapshot.mentor_messages = mentor_messages;
             }
 
             return snapshot;
@@ -1180,12 +1193,12 @@ export async function POST(request: Request) {
                             id, personal_entity_id, business_entity_id, currency,
                             due_from_account_id, due_to_account_id, draft_id, evidence_document_id,
                             personal_transaction_id, business_transaction_id, personal_reimbursement_tx_id, business_reimbursement_tx_id,
-                            amount_cents, status, created_at, updated_at
+                            amount_cents, status, last_undo_request, created_at, updated_at
                         ) VALUES (
                             @id, @personal_entity_id, @business_entity_id, @currency,
                             @due_from_account_id, @due_to_account_id, @draft_id, @evidence_document_id,
                             @personal_transaction_id, @business_transaction_id, @personal_reimbursement_tx_id, @business_reimbursement_tx_id,
-                            @amount_cents, @status, @created_at, @updated_at
+                            @amount_cents, @status, @last_undo_request, @created_at, @updated_at
                         )
                     `);
                     for (const w of rawVault.reimbursement_workflows) {
@@ -1204,6 +1217,7 @@ export async function POST(request: Request) {
                             business_reimbursement_tx_id: w.business_reimbursement_tx_id || null,
                             amount_cents: Number(w.amount_cents),
                             status: w.status,
+                            last_undo_request: w.last_undo_request || null,
                             created_at: w.created_at || new Date().toISOString(),
                             updated_at: w.updated_at || new Date().toISOString()
                         });
@@ -1446,6 +1460,70 @@ export async function POST(request: Request) {
                             coverage_summary_json: typeof r.coverage_summary_json === 'string' ? r.coverage_summary_json : JSON.stringify(r.coverage_summary || {}),
                             created_at: r.created_at || new Date().toISOString(),
                             updated_at: r.updated_at || new Date().toISOString()
+                        });
+                    }
+                }
+
+                // Insert mentor chat sessions (OPTIONAL collection — never required in a
+                // backup, so older backups restore untouched. Mentor tables are also absent
+                // from the global m1_ wipe above: existing chats survive restores of backups
+                // that carry no mentor data, and are replaced only when the backup has any.)
+                if (Array.isArray(rawVault.mentor_sessions) || Array.isArray(rawVault.mentor_messages)) {
+                    initMentorChatSchema(db);
+                    db.prepare('DELETE FROM m1_mentor_messages').run();
+                    db.prepare('DELETE FROM m1_mentor_sessions').run();
+
+                    const insertMentorSession = db.prepare(`
+                        INSERT INTO m1_mentor_sessions (id, title, created_at, updated_at)
+                        VALUES (@id, @title, @created_at, @updated_at)
+                    `);
+                    for (const s of Array.isArray(rawVault.mentor_sessions) ? rawVault.mentor_sessions : []) {
+                        if (!s || typeof s !== 'object' || typeof s.id !== 'string' || !s.id) continue;
+                        insertMentorSession.run({
+                            id: s.id,
+                            title: typeof s.title === 'string' && s.title.trim() ? s.title.slice(0, 120) : 'New conversation',
+                            created_at: typeof s.created_at === 'string' ? s.created_at : new Date().toISOString(),
+                            updated_at: typeof s.updated_at === 'string' ? s.updated_at : new Date().toISOString()
+                        });
+                    }
+
+                    const insertMentorMessage = db.prepare(`
+                        INSERT INTO m1_mentor_messages (
+                            id, session_id, seq, role, content, mentor_id, mentor_name,
+                            action_intent_json, facts_json, pending_intent_json, action_intent_resolved, attachments_json, created_at
+                        ) VALUES (
+                            @id, @session_id, @seq, @role, @content, @mentor_id, @mentor_name,
+                            @action_intent_json, @facts_json, @pending_intent_json, @action_intent_resolved, @attachments_json, @created_at
+                        )
+                    `);
+                    const allowedMentorRoles = new Set(['user', 'mentor', 'consensus', 'action_confirm']);
+                    const seqBySession = new Map<string, number>();
+                    for (const m of Array.isArray(rawVault.mentor_messages) ? rawVault.mentor_messages : []) {
+                        if (!m || typeof m !== 'object') continue;
+                        if (typeof m.session_id !== 'string' || !m.session_id) continue;
+                        if (!allowedMentorRoles.has(m.role)) continue; // drop malformed roles rather than failing the whole restore
+                        const sessionExists = db.prepare('SELECT id FROM m1_mentor_sessions WHERE id = ?').get(m.session_id);
+                        if (!sessionExists) continue; // orphaned message — FK would abort the transaction
+                        const nextSeq = Number.isInteger(m.seq) && m.seq >= 0
+                            ? m.seq
+                            : (seqBySession.get(m.session_id) ?? 0);
+                        seqBySession.set(m.session_id, nextSeq + 1);
+                        insertMentorMessage.run({
+                            id: typeof m.id === 'string' && m.id ? m.id : crypto.randomUUID(),
+                            session_id: m.session_id,
+                            seq: nextSeq,
+                            role: m.role,
+                            content: typeof m.content === 'string' ? m.content : null,
+                            mentor_id: typeof m.mentor_id === 'string' ? m.mentor_id : null,
+                            mentor_name: typeof m.mentor_name === 'string' ? m.mentor_name : null,
+                            action_intent_json: typeof m.action_intent_json === 'string' ? m.action_intent_json : null,
+                            facts_json: typeof m.facts_json === 'string' ? m.facts_json : null,
+                            pending_intent_json: typeof m.pending_intent_json === 'string' ? m.pending_intent_json : null,
+                            action_intent_resolved: m.action_intent_resolved === 'confirmed' || m.action_intent_resolved === 'cancelled'
+                                ? m.action_intent_resolved
+                                : null,
+                            attachments_json: typeof m.attachments_json === 'string' ? m.attachments_json : null,
+                            created_at: typeof m.created_at === 'string' ? m.created_at : new Date().toISOString()
                         });
                     }
                 }

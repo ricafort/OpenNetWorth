@@ -21,6 +21,7 @@ import { Plus, Wallet, CreditCard, Shield, AlertTriangle, CheckCircle2, RefreshC
 import { Account, AccountSubType, AccountType, CurrencyCode, Entity, formatMoney, parseToCents } from '@/lib/domain/accounting/types';
 import { BalanceCheckModal } from './BalanceCheckModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
+import UpdateBalancesModal from '@/features/sync/components/UpdateBalancesModal';
 
 /**
  * Format entity types into user-friendly labels without losing trust/household distinctions.
@@ -64,6 +65,7 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [checkBalanceAccountId, setCheckBalanceAccountId] = useState<string | null>(null);
+    const [recordBalanceAccountId, setRecordBalanceAccountId] = useState<string | null>(null);
     const [rulesAccountId, setRulesAccountId] = useState<{ id: string, name: string } | null>(null);
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
 
@@ -744,8 +746,32 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                     // Navigate to inbox with account preselected
                     window.location.href = `/accounting?view=inbox&accountId=${checkBalanceAccountId}`;
                 }}
+                onActionRecordBalance={() => {
+                    // Why this exists:
+                    // Fulfills Closing Batch Requirement 2:
+                    // "Record current balance" opens the manual observation flow (UpdateBalancesModal with initialMode="manual"),
+                    // preserving the selected account context and refreshing the balance check upon saving.
+                    // Tricky logic:
+                    // Stashes checkBalanceAccountId into recordBalanceAccountId, closes BalanceCheckModal,
+                    // and opens UpdateBalancesModal in manual mode targeting this exact account.
+                    // When the user finishes entering the balance observation and saving, the modal reopens BalanceCheckModal
+                    // to immediately show the rechecked balance.
+                    // TODO: In Milestone 2, support inline quick-edit without opening a full modal.
+                    const targetId = checkBalanceAccountId;
+                    setRecordBalanceAccountId(targetId);
+                    setCheckBalanceAccountId(null);
+                }}
                 onActionSetup={() => {
-                    const acc = accounts.find(a => a.id === checkBalanceAccountId);
+                    // Why this exists:
+                    // Fulfills Closing Batch Requirement 2:
+                    // "Set starting balance" opens the opening-balance setup flow (Edit Account modal),
+                    // pre-populating account details and focusing on the dated opening balance fields.
+                    // Tricky logic:
+                    // Looks up the target account from the accounts list by checkBalanceAccountId,
+                    // closes BalanceCheckModal, and invokes handleEditAccount(acc) with account context.
+                    // TODO: In Milestone 2, auto-focus the opening balance input when opened from here.
+                    const targetId = checkBalanceAccountId;
+                    const acc = accounts.find(a => a.id === targetId);
                     setCheckBalanceAccountId(null);
                     if (acc) {
                         handleEditAccount(acc);
@@ -759,6 +785,23 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                     window.location.href = url;
                 }}
             />
+
+            {recordBalanceAccountId && (
+                <UpdateBalancesModal
+                    isOpen={!!recordBalanceAccountId}
+                    initialMode="manual"
+                    initialAccountId={recordBalanceAccountId}
+                    onClose={async (summary) => {
+                        const targetId = recordBalanceAccountId;
+                        setRecordBalanceAccountId(null);
+                        if (summary && summary.balancesUpdated > 0) {
+                            await fetchData(selectedEntityId);
+                            // Reopen balance check modal so user immediately sees rechecked balance!
+                            setCheckBalanceAccountId(targetId);
+                        }
+                    }}
+                />
+            )}
 
             <CategorizationRulesModal
                 isOpen={rulesAccountId !== null}
