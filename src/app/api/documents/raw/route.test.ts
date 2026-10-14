@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { NextRequest } from 'next/server';
 import { GET } from './route';
 import { getDb, initSchema } from '@/infrastructure/sqlite/db';
 import { initDocumentSchema } from '@/lib/domain/document/schema';
@@ -18,13 +19,21 @@ describe('Raw Document API Route', () => {
     });
 
     it('returns 400 if id is missing', async () => {
-        const req = new Request('http://localhost/api/documents/raw');
+        const req = new NextRequest('http://localhost/api/documents/raw');
         const res = await GET(req);
         expect(res.status).toBe(400);
     });
 
+    it('blocks foreign-origin requests with 403 (raw docs can contain statements/receipts)', async () => {
+        const req = new NextRequest('http://localhost/api/documents/raw?id=doc_csv_123', {
+            headers: { host: 'localhost:4000', origin: 'https://evil.example' }
+        });
+        const res = await GET(req);
+        expect(res.status).toBe(403);
+    });
+
     it('returns 404 if document is not found', async () => {
-        const req = new Request('http://localhost/api/documents/raw?id=missing');
+        const req = new NextRequest('http://localhost/api/documents/raw?id=missing');
         const res = await GET(req);
         expect(res.status).toBe(404);
     });
@@ -36,7 +45,7 @@ describe('Raw Document API Route', () => {
             VALUES (?, 'test.pdf', 'hash1', 'SGVsbG8gUERGLg==', 'application/pdf', 10, '2026-01-01')
         `).run(id);
 
-        const req = new Request(`http://localhost/api/documents/raw?id=${id}`);
+        const req = new NextRequest(`http://localhost/api/documents/raw?id=${id}`);
         const res = await GET(req);
         
         expect(res.status).toBe(200);
@@ -54,7 +63,7 @@ describe('Raw Document API Route', () => {
             VALUES (?, 'test.csv', 'hash2', 'Header\\nValue', 'text/csv', 12, '2026-01-01')
         `).run(id);
 
-        const req = new Request(`http://localhost/api/documents/raw?id=${id}`);
+        const req = new NextRequest(`http://localhost/api/documents/raw?id=${id}`);
         const res = await GET(req);
         
         expect(res.status).toBe(200);
