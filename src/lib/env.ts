@@ -11,10 +11,11 @@ const envSchema = z.object({
     GEMINI_API_KEY: z.string().optional(),
 
     // Local LLM Configuration (OpenNetWorth Local AI Engine)
-    // Supports LM Studio (default: http://127.0.0.1:1234/v1), Ollama (http://127.0.0.1:11434), or OpenAI-compatible local endpoints
+    // Supports LM Studio (default: http://127.0.0.1:1234/v1), Ollama (http://127.0.0.1:11434),
+    // Strata (http://127.0.0.1:8080/v1), or other OpenAI-compatible local endpoints
     LOCAL_LLM_URL: z.string().url().default("http://127.0.0.1:1234/v1"),
     LOCAL_LLM_MODEL: z.string().default("qwen3.8-27b-gsq-rco"),
-    LOCAL_LLM_PROVIDER: z.enum(['auto', 'lmstudio', 'ollama', 'custom']).default('auto'),
+    LOCAL_LLM_PROVIDER: z.enum(['auto', 'lmstudio', 'ollama', 'strata', 'custom']).default('auto'),
 
     // Bank Integrations
     PLAID_CLIENT_ID: z.string().optional(),
