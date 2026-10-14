@@ -59,3 +59,6 @@ Thumbs.db
 # Assessor temp and caches
 samples/**/temp/
 samples/**/node-compile-cache/
+
+# Local scratch / debug artifacts (never commit)
+/scratch/
