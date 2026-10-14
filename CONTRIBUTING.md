@@ -10,7 +10,7 @@ Welcome to the **OpenNetWorth** contributor community! This guide is for develop
 - **UI Library**: [React 19](https://react.dev/)
 - **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
 - **Local Database**: [SQLite](https://sqlite.org/) via `better-sqlite3` (`data/opennetworth.sqlite`)
-- **AI Mentorship**: Local LLMs via [LM Studio](https://lmstudio.ai/) (`:1234`) or [Ollama](https://ollama.ai/) (`:11434`)
+- **AI Mentorship**: Local LLMs via [LM Studio](https://lmstudio.ai/) (`:1234`), [Ollama](https://ollama.ai/) (`:11434`), or [Strata](http://127.0.0.1:8080) (`:8080`, OpenAI-compatible `/v1`)
 - **State Management**: React Hooks & Context + [TanStack Query](https://tanstack.com/query)
 - **Testing**: [Vitest](https://vitest.dev/)
 
@@ -31,7 +31,7 @@ Welcome to the **OpenNetWorth** contributor community! This guide is for develop
 ### Prerequisites
 - Node.js 18+ (LTS recommended)
 - Git installed
-- *(Optional)* [LM Studio](https://lmstudio.ai/) on port 1234 or [Ollama](https://ollama.ai/) on port 11434 for local AI mentorship
+- *(Optional)* [LM Studio](https://lmstudio.ai/) on port 1234, [Ollama](https://ollama.ai/) on port 11434, or [Strata](http://127.0.0.1:8080) on port 8080 for local AI mentorship
 
 ### Installation
 ```bash
