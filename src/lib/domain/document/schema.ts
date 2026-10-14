@@ -26,6 +26,7 @@ export const DOCUMENT_SCHEMA_DDL = `
         byte_size INTEGER NOT NULL,
         storage_path TEXT,
         raw_content TEXT, -- Stored raw file text/content for offline durability
+        extracted_text TEXT, -- Plain-text extraction (text/CSV passthrough, PDF text layer) for mentor chat context
         created_at TEXT NOT NULL
     );
 
@@ -121,6 +122,12 @@ export function migrateDocumentSchema(db: Database.Database): void {
             const hasRawContent = columns.some(c => c.name === 'raw_content');
             if (!hasRawContent) {
                 db.prepare("ALTER TABLE m1_documents ADD COLUMN raw_content TEXT").run();
+            }
+            // Mentor chat attachments store a plain-text extraction alongside the raw
+            // bytes so /api/mentor can ground answers in file content without re-parsing.
+            const hasExtractedText = columns.some(c => c.name === 'extracted_text');
+            if (!hasExtractedText) {
+                db.prepare("ALTER TABLE m1_documents ADD COLUMN extracted_text TEXT").run();
             }
         }
 
