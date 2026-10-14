@@ -1,40 +1,17 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, Sector } from 'recharts';
 import { Asset } from '@/features/assets/types';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
 import { AlertCircle, Scale } from 'lucide-react';
+import { classifyCategory } from '@/features/assets/utils/classifyCategory';
 
 interface AssetAllocationChartProps {
     assets?: Asset[];
-}
-
-/**
- * Normalizes granular account subtypes into standard asset allocation categories.
- * 
- * Why this function exists:
- * Maps diverse banking, brokerage, property, and legacy asset classifications
- * into consistent visual buckets (Cash, Investment, Real Estate, Crypto, Vehicle, Other).
- * 
- * Tricky logic:
- * Handles both double-entry `account_sub_type` (snake_case) and legacy `Asset.type` values.
- * 
- * TODO: In Milestone 2, allow user-defined allocation taxonomy mapping.
- */
-function classifyCategory(subType?: string, type?: string): string {
-    const raw = subType || type || 'other';
-    const s = raw.toLowerCase().trim();
-    if (['cash', 'checking', 'savings', 'bank'].includes(s)) return 'Cash';
-    if (['brokerage', 'investment', 'retirement', 'superannuation', 'pension', 'stock', 'etf'].includes(s)) return 'Investment';
-    if (['property', 'real_estate', 'real estate', 'land'].includes(s)) return 'Real Estate';
-    if (['crypto', 'cryptocurrency', 'bitcoin'].includes(s)) return 'Crypto';
-    if (['vehicle', 'car', 'automobile'].includes(s)) return 'Vehicle';
-    if (['precious_metals', 'precious metals', 'gold'].includes(s)) return 'Precious Metals';
-    return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 /**
@@ -206,18 +183,20 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
         };
     }, [sourceState, modernAssetAccounts, activeCurrency, availableCurrencies, baseCurrency, fallbackLegacyAssets]);
 
-    // Define colors per asset category
-    const COLORS: Record<string, string> = {
-        'Cash': '#3b82f6',         // blue-500
-        'Investment': '#10b981',   // emerald-500
-        'Real Estate': '#f59e0b',  // amber-500
-        'Crypto': '#8b5cf6',       // violet-500
-        'Vehicle': '#64748b',      // slate-500
-        'Precious Metals': '#eab308', // yellow-500
-        'Other': '#94a3b8'         // slate-400
+    // Vivid two-stop gradients per asset category. The donut slices and the legend chips share
+    // the same gradient, so each legend row reads as a direct key for its ring segment.
+    // High-saturation light→dark stops keep adjacent slices distinguishable on both themes
+    // and give the ring depth instead of flat fills.
+    const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
+        'Cash': ['#22d3ee', '#2563eb'],            // cyan → blue
+        'Investment': ['#34d399', '#059669'],      // mint → emerald
+        'Real Estate': ['#fbbf24', '#ea580c'],     // amber → orange
+        'Crypto': ['#c084fc', '#7c3aed'],          // orchid → violet
+        'Vehicle': ['#94a3b8', '#475569'],         // slate
+        'Precious Metals': ['#fde047', '#d97706'], // gold
+        'Other': ['#cbd5e1', '#94a3b8']            // light slate
     };
-
-    const DEFAULT_COLOR = '#cbd5e1';
+    const DEFAULT_GRADIENT: [string, string] = ['#a5b4fc', '#6366f1']; // indigo for custom categories
 
     // Loading state
     if (sourceState.mode === 'loading') {
@@ -284,21 +263,56 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
             )}
 
             {isMounted ? (
-                <div className="w-full h-56">
+                // flex-1 lets the donut grow with taller grid cells (was a fixed h-56,
+                // which left dead space under the chart in h:3 widgets). px-2 keeps the
+                // donut clear of the card border: the right-side legend consumes chart
+                // width, so an oversized radius was clipping the donut's left edge.
+                <div className="w-full flex-1 min-h-56 px-2">
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
+                            <defs>
+                                {data.map((entry, index) => {
+                                    const [from, to] = CATEGORY_GRADIENTS[entry.name] || DEFAULT_GRADIENT;
+                                    return (
+                                        <linearGradient key={`grad-${index}`} id={`alloc-grad-${index}`} x1="0" y1="0" x2="1" y2="1">
+                                            <stop offset="0%" stopColor={from} />
+                                            <stop offset="100%" stopColor={to} />
+                                        </linearGradient>
+                                    );
+                                })}
+                            </defs>
                             <Pie
                                 data={data}
-                                cx="40%"
+                                cx="42%"
                                 cy="50%"
-                                innerRadius="55%"
-                                outerRadius="78%"
-                                paddingAngle={4}
+                                innerRadius="58%"
+                                outerRadius="84%"
+                                paddingAngle={3}
+                                cornerRadius={6}
+                                stroke="none"
                                 dataKey="value"
+                                activeShape={(props: any) => (
+                                    // Intentional hover feedback: the slice grows slightly with its
+                                    // own gradient — replaces recharts' default active outline,
+                                    // which ignored the theme.
+                                    <Sector
+                                        {...props}
+                                        cornerRadius={6}
+                                        outerRadius={(props.outerRadius || 0) + 6}
+                                        fill={`url(#alloc-grad-${props.index})`}
+                                        stroke="none"
+                                    />
+                                )}
                             >
-                                {data.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[entry.name] || DEFAULT_COLOR} />
-                                ))}
+                                {data.map((entry, index) => {
+                                    const [, to] = CATEGORY_GRADIENTS[entry.name] || DEFAULT_GRADIENT;
+                                    // `color` (not just `fill`) feeds the tooltip payload: a raw
+                                    // url(#…) fill is invalid as a text/indicator color, which made
+                                    // the tooltip render dark-on-dark in the dark theme.
+                                    return (
+                                        <Cell key={`cell-${index}`} fill={`url(#alloc-grad-${index})`} color={to} />
+                                    );
+                                })}
                             </Pie>
                             <Tooltip
                                 formatter={(value: number | string | undefined) => {
@@ -313,28 +327,52 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
                                     color: 'var(--card-foreground)',
                                     boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                                 }}
+                                itemStyle={{ color: 'var(--card-foreground)', fontWeight: 600 }}
+                                labelStyle={{ color: 'var(--muted-foreground)', marginBottom: '2px' }}
                             />
+                            {/* Custom legend: gradient chips mirror the ring slices, names/values
+                                use full-foreground weight for contrast, and each percentage gets
+                                a tinted badge in its slice color instead of muted gray text. */}
                             <Legend
                                 layout="vertical"
                                 verticalAlign="middle"
                                 align="right"
-                                formatter={(value: string) => {
-                                    const item = data.find(d => d.name === value);
-                                    if (!item || grandTotal === 0) return value;
-                                    const pct = ((item.value / grandTotal) * 100).toFixed(1);
-                                    return (
-                                        <span className="text-xs font-medium text-foreground">
-                                            {value}: <span className="font-bold">{formatCurrency(item.value, displayCurrency)}</span> ({pct}%)
-                                        </span>
-                                    );
-                                }}
-                                wrapperStyle={{ fontSize: '11px', paddingLeft: '8px' }}
+                                content={() => (
+                                    <div className="flex flex-col gap-2.5 pl-4 pr-1">
+                                        {data.map((entry, index) => {
+                                            const [from, to] = CATEGORY_GRADIENTS[entry.name] || DEFAULT_GRADIENT;
+                                            const pct = grandTotal > 0 ? ((entry.value / grandTotal) * 100).toFixed(1) : '0';
+                                            return (
+                                                <div key={entry.name} className="flex items-center gap-2.5">
+                                                    <span
+                                                        className="w-3.5 h-3.5 rounded-md shrink-0"
+                                                        style={{ background: `linear-gradient(135deg, ${from}, ${to})` }}
+                                                    />
+                                                    <span className="text-sm font-bold text-foreground">{entry.name}</span>
+                                                    <span className="text-sm font-semibold text-foreground/80 tabular-nums">
+                                                        {formatCurrency(entry.value, displayCurrency)}
+                                                    </span>
+                                                    <span
+                                                        className="text-[11px] font-black px-1.5 py-0.5 rounded-md tabular-nums"
+                                                        style={{ color: to, backgroundColor: `${to}22` }}
+                                                    >
+                                                        {pct}%
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                wrapperStyle={{ paddingLeft: '4px' }}
                             />
                         </PieChart>
                     </ResponsiveContainer>
+                    {/* Center total label removed: at this donut's size the figure spilled over
+                        the ring and collided with the hover tooltip. The Total Assets stat card
+                        above already carries the figure; the footer keeps the holdings count. */}
                 </div>
             ) : (
-                <div className="h-56 w-full bg-slate-50/50 rounded-2xl animate-pulse" />
+                <div className="flex-1 min-h-56 w-full bg-slate-50/50 rounded-2xl animate-pulse" />
             )}
 
             {/* Incomplete FX notice if applicable */}
@@ -344,15 +382,15 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
                 </div>
             )}
 
+            {/* Footer shows only the holdings count: the legend already itemizes every slice
+                value, and the Total Assets stat card carries the grand total — repeating
+                "Total:" here was redundant. */}
             <div className="text-[10px] text-muted-foreground px-2 pt-2 border-t border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
                 <span>
                     Includes {totalCount} {totalCount === 1 ? 'holding' : 'holdings'}
                     {sourceState.mode === 'modern_usable' && sourceState.hasExcludedLegacy && (
                         <span className="ml-1 text-muted-foreground/80 italic">(legacy records excluded)</span>
                     )}
-                </span>
-                <span className="font-medium text-foreground">
-                    Total: {formatCurrency(grandTotal, displayCurrency)}
                 </span>
             </div>
         </div>

@@ -55,7 +55,9 @@ export default function TravelPowerCard({ netWorthUSD }: Props) {
             </div>
 
             <div>
-                <div className="flex items-center justify-between mb-3 z-10 relative">
+                {/* pr-6 keeps the Scenario Benchmark badge clear of the grid collapse
+                    toggle, which sits inside the card's top-right corner. */}
+                <div className="flex items-center justify-between mb-3 z-10 relative pr-6">
                     <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2 text-indigo-100">
                         <Compass size={14} className="text-indigo-300" /> Travel Runway Simulator
                     </h3>

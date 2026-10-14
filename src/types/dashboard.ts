@@ -32,6 +32,10 @@ export interface DashboardConfig {
         xxs: WidgetLayout[];
     };
     hiddenWidgets: string[];
+    // Widget ids rendered as a compact one-row bar instead of their full content.
+    // Persisted alongside hiddenWidgets; absent in pre-collapse saved configs, so
+    // DashboardContext normalizes it to [] on load.
+    collapsedWidgets: string[];
     version: number;
 }
 

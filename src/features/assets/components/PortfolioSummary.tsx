@@ -9,9 +9,13 @@ interface PortfolioSummaryProps {
     currencyCode?: CurrencyCode;
     accountValuations?: any[];
     isAuthoritativeMode?: boolean;
+    // Optional caption override for the Portfolio Value card. The dashboard Growth Engine passes
+    // a note clarifying this figure repeats the Investment slice of the Asset Allocation donut,
+    // so it reads as a drill-down instead of a competing second headline total.
+    valueContextNote?: string;
 }
 
-export default function PortfolioSummary({ analysis, privacyBlur = false, currencyCode = 'USD', accountValuations = [], isAuthoritativeMode = false }: PortfolioSummaryProps) {
+export default function PortfolioSummary({ analysis, privacyBlur = false, currencyCode = 'USD', accountValuations = [], isAuthoritativeMode = false, valueContextNote }: PortfolioSummaryProps) {
     const blurClass = 'privacy-value';
 
     const totalsByCurrency = new Map<string, number>();
@@ -80,7 +84,9 @@ export default function PortfolioSummary({ analysis, privacyBlur = false, curren
                             </button>
                         </span>
                     ) : accountValuations.length > 0 ? (
-                        <span className="text-green-600 dark:text-green-400">Combined Value</span>
+                        <span className={valueContextNote ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}>
+                            {valueContextNote || 'Combined Value'}
+                        </span>
                     ) : hasLiveQuotes ? (
                         <span className="text-green-600 dark:text-green-400">Saved prices</span>
                     ) : (
@@ -143,7 +149,9 @@ export default function PortfolioSummary({ analysis, privacyBlur = false, curren
                         : <span className="text-lg text-muted-foreground">Income estimate unavailable</span>}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                    / year in dividends (est.)
+                    {analysis.estimatedAnnualDividends > 0 || analysis.hasDividendData
+                        ? 'per year in dividends (est.)'
+                        : 'Add dividend data to estimate income.'}
                 </div>
             </div>
         </div>

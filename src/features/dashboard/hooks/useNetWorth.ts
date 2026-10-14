@@ -145,6 +145,9 @@ export function useNetWorth() {
 
     return {
         ...metrics,
+        // Exposed so consumers (e.g. the Achievements widget) can inspect authoritative account
+        // evidence without issuing a second summary fetch. Additive — existing callers unaffected.
+        sourceState,
         isLoading: sourceState.isLoading
     };
 }

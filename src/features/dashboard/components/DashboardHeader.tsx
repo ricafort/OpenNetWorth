@@ -5,7 +5,7 @@ import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useOnboarding } from '@/features/onboarding/context/OnboardingContext';
 import { useProfile } from '@/contexts/ProfileContext';
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, User, Moon, Sun, ChevronDown, RotateCcw, Check, PlayCircle, Settings, Gamepad2, LayoutGrid, Globe, Cpu, ShieldCheck, Scale } from 'lucide-react';
+import { LogOut, User, Moon, Sun, ChevronDown, RotateCcw, Check, PlayCircle, Settings, Gamepad2, LayoutGrid, Globe, Cpu, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import CurrencySelector from '@/components/ui/CurrencySelector';
@@ -28,7 +28,7 @@ export default function DashboardHeader() {
     useEffect(() => {
         const updateAiText = () => {
             const cfg = getSavedLocalAiConfig();
-            setAiStatusText(cfg.endpoint.includes('1234') ? 'LM Studio' : cfg.endpoint.includes('11434') ? 'Ollama' : 'Local AI');
+            setAiStatusText(cfg.endpoint.includes('1234') ? 'LM Studio' : cfg.endpoint.includes('11434') ? 'Ollama' : cfg.endpoint.includes(':8080') ? 'Strata' : 'Local AI');
         };
         updateAiText();
         window.addEventListener('opennetworth_ai_config_updated', updateAiText);
@@ -125,19 +125,14 @@ export default function DashboardHeader() {
                             <Gamepad2 size={20} />
                         </button>
 
-                        <button
-                            onClick={() => {
-                                setModalInitialMode('paste');
-                                setModalAccountId(undefined);
-                                setIsBalancesModalOpen(true);
-                            }}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl shadow-sm transition-all group"
-                            title="Update Account Balances (Super, Trading, Bank)"
-                        >
-                            <Scale size={14} className="group-hover:rotate-12 transition-transform" />
-                            <span className="hidden sm:inline">Update Balances</span>
-                        </button>
-
+                        {/* Why this button was removed:
+                            The primary 'Update Balances' button lives directly inside the AccountFreshnessCard.
+                            Removing this duplicate button keeps the dashboard clean and prevents user confusion.
+                            Tricky logic:
+                            UpdateBalancesModal and the global 'opennetworth_open_balance_update' listener
+                            are preserved below so any secondary triggers continue to work seamlessly.
+                            TODO: In Milestone 2, move global modal mounts to a dedicated ModalRoot provider.
+                        */}
                         {/* Local AI Runner Pill */}
                         <button
                             onClick={() => setIsLocalAiOpen(true)}

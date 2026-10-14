@@ -13,6 +13,7 @@ interface DashboardContextType {
     updateLayout: (layout: DashboardConfig) => void;
     hideWidget: (id: string) => void;
     showWidget: (id: string) => void;
+    toggleWidgetCollapsed: (id: string) => void;
     resetLayout: () => void;
 
     // UI Triggers
@@ -29,10 +30,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const [layout, setLayout] = useState<DashboardConfig>(getDefaultLayout());
 
     useEffect(() => {
-        // Ensure consistent hydration - only load from storage on client mount
+        // Ensure consistent hydration - only load from storage on client mount.
+        // Why the version check: when the shipped default grid changes (version bump in
+        // widgetRegistry), stale saved grids would keep the old cramped layout forever.
+        // A mismatch falls back to the new default; users can re-customize via Customize.
+        const def = getDefaultLayout();
         const saved = loadDashboardLayout();
-        if (saved) {
-            setLayout(saved);
+        if (saved && saved.version === def.version) {
+            // Saved configs from before the collapse feature lack collapsedWidgets;
+            // normalize so every consumer can rely on the field.
+            setLayout({ ...saved, collapsedWidgets: saved.collapsedWidgets ?? [] });
+        } else {
+            setLayout(def);
         }
     }, []);
 
@@ -60,6 +69,17 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         updateLayout(newLayout);
     };
 
+    const toggleWidgetCollapsed = (id: string) => {
+        const current = layout.collapsedWidgets ?? [];
+        const newLayout = {
+            ...layout,
+            collapsedWidgets: current.includes(id)
+                ? current.filter(wId => wId !== id)
+                : [...current, id]
+        };
+        updateLayout(newLayout);
+    };
+
     const resetLayout = () => {
         const def = getDefaultLayout();
         updateLayout(def);
@@ -75,7 +95,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     return (
         <DashboardContext.Provider value={{
-            isEditMode, setIsEditMode, layout, updateLayout, hideWidget, showWidget, resetLayout,
+            isEditMode, setIsEditMode, layout, updateLayout, hideWidget, showWidget, toggleWidgetCollapsed, resetLayout,
             openSettings, closeSettings, isSettingsOpen
         }}>
             {children}

@@ -117,7 +117,7 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
         const isRecorded = Boolean(snap.currency);
 
         return (
-            <div className="h-64 flex flex-col items-center justify-center bg-muted/30 rounded-2xl p-6 text-center border border-dashed border-border">
+            <div className="h-full min-h-64 flex flex-col items-center justify-center bg-muted/30 rounded-2xl p-6 text-center border border-dashed border-border">
                 <div className="p-3 bg-blue-500/10 text-blue-600 rounded-full mb-3">
                     <History size={24} />
                 </div>
@@ -129,7 +129,8 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
                         </p>
                         <p className="text-xs text-muted-foreground mt-1 max-w-sm">
                             Recorded on <span className="font-semibold text-foreground">{formatFullDate(snap.date)}</span>: Net Worth of{' '}
-                            <span className="font-bold text-foreground">{snap.netWorth.toLocaleString()}</span> (unrecorded currency).
+                            <span className="font-bold text-foreground">{formatCurrency(snap.netWorth, baseCurrency)}</span>{' '}
+                            <span className="text-[10px]">({baseCurrency} assumed — currency was not recorded at snapshot time)</span>.
                         </p>
                     </>
                 ) : (
@@ -185,13 +186,15 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
                     margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
                     <defs>
+                        {/* Brighter line colors (#3b82f6 / #f43f5e) and heavier area washes than
+                            before — the darker blue/rose were low-contrast on the dark theme. */}
                         <linearGradient id="colorNetWorth" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="colorLiabilities" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#e11d48" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#e11d48" stopOpacity={0} />
+                            <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
                         </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
@@ -229,25 +232,32 @@ export default function NetWorthChart({ data, timeRange }: NetWorthChartProps) {
                     <Legend
                         verticalAlign="top"
                         align="right"
-                        wrapperStyle={{ fontSize: '12px', paddingBottom: '8px' }}
+                        wrapperStyle={{
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            color: 'var(--foreground)',
+                            paddingBottom: '8px'
+                        }}
                     />
                     <Area
                         type="monotone"
                         name="Total Liabilities"
                         dataKey="totalLiabilities"
-                        stroke="#e11d48"
+                        stroke="#f43f5e"
                         fill="url(#colorLiabilities)"
                         fillOpacity={1}
-                        strokeWidth={2}
+                        strokeWidth={2.5}
+                        activeDot={{ r: 5, strokeWidth: 2, stroke: 'var(--card)' }}
                     />
                     <Area
                         type="monotone"
                         name="Net Worth"
                         dataKey="netWorth"
-                        stroke="#2563eb"
+                        stroke="#3b82f6"
                         fill="url(#colorNetWorth)"
                         fillOpacity={1}
-                        strokeWidth={2}
+                        strokeWidth={2.5}
+                        activeDot={{ r: 5, strokeWidth: 2, stroke: 'var(--card)' }}
                     />
                 </AreaChart>
             </ResponsiveContainer>

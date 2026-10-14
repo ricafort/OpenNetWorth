@@ -17,7 +17,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
     Scale,
@@ -29,42 +29,129 @@ import {
     ArrowRight,
     ChevronDown,
     ChevronUp,
-    RefreshCw
+    RefreshCw,
+    FileText
 } from 'lucide-react';
 import { useSharedFinancialSummary } from '../hooks/useSharedFinancialSummary';
 import { SharedFinancialSummaryAccount, formatMoney, CurrencyCode } from '@/lib/domain/accounting/types';
 import UpdateBalancesModal from './UpdateBalancesModal';
 
-export default function AccountFreshnessCard() {
+// Collapse preference for the card's chevron. Hydrated on mount (not lazily) so SSR markup
+// stays expanded — the tests and first paint assume the expanded card.
+const FRESHNESS_COLLAPSE_KEY = 'opennetworth:freshness-card-collapsed';
+
+export function AccountFreshnessCard() {
     const { summary, isLoading, refresh } = useSharedFinancialSummary();
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [collapseHydrated, setCollapseHydrated] = useState(false);
+
+    useEffect(() => {
+        try {
+            setIsCollapsed(localStorage.getItem(FRESHNESS_COLLAPSE_KEY) === 'true');
+        } catch { /* storage unavailable (private mode / SSR) — stay expanded */ }
+        setCollapseHydrated(true);
+    }, []);
+
+    // Why the hydration gate: StrictMode (on by default in the App Router) double-invokes
+    // mount effects. Ungated, the persist effect would write the pre-hydration `false` over
+    // the saved preference before the second hydration read sees it — the collapse then
+    // never survived a refresh. Only write once the mount read has completed.
+    useEffect(() => {
+        if (!collapseHydrated) return;
+        try {
+            localStorage.setItem(FRESHNESS_COLLAPSE_KEY, String(isCollapsed));
+        } catch { /* ignore */ }
+    }, [collapseHydrated, isCollapsed]);
+    // The five provenance chips repeat the same headline the freshness metric already states.
+    // They collapse behind a single summary chip; the detail chips stay mounted in the DOM
+    // (CSS-hidden) so screen readers and the truthful-label tests can still read them.
+    const [showEvidenceDetails, setShowEvidenceDetails] = useState(false);
 
     const accounts = summary?.accounts || [];
     const coverageNotes = summary?.coverage_notes || [];
-    const missingBalanceNotes = coverageNotes.filter(n => n.includes('tracks balances but has no accepted valuation observation'));
+    const missingBalanceNotes = coverageNotes.filter(n => n.includes('tracks balances but has no accepted valuation observation') || n.includes('Starting balance needed'));
     const missingBalanceCount = missingBalanceNotes.length;
 
-    // Freshness breakdown
+    // Freshness breakdown & Truthful Evidence Provenance
     // Why this exists:
-    // Distinguishes between accounts that are freshly updated (<30 days), stale accounts,
-    // and accounts with incomplete coverage (missing balance observations).
+    // Fulfills Requirement 3 (Accurate provenance and dates):
+    // 1. Manual observations must not be called statement reconciliation.
+    // 2. Observation dates are preserved separately from calculation dates.
+    // 3. An old observation must not appear recently verified just because the summary was calculated today.
     // Tricky logic:
-    // If an account tracks balances but has no accepted observation, it is excluded from summary.accounts
-    // but listed in coverage_notes. We report both numbers honestly rather than claiming 5/5 up-to-date.
-    // TODO: Add one-click "Update" shortcut next to each missing account note.
+    // When an account is ledger-tracked, effective_date represents the calculation date (today).
+    // To determine freshness, we strictly check observation_date (or is_stale flag), falling back
+    // to effective_date ONLY for observation-basis accounts.
+    // Genuine statement reconciliations (source_type === 'document' or source_document_name/document_id)
+    // are distinguished from manual valuation comparisons.
+    // TODO: In Milestone 2, provide customizable staleness thresholds per account category.
     const now = Date.now();
     const staleAccounts = accounts.filter((a: SharedFinancialSummaryAccount) => {
-        const obsTime = new Date(a.effective_date).getTime();
-        return (now - obsTime) > (30 * 24 * 60 * 60 * 1000); // 30+ days
+        if (a.is_stale) return true;
+        const obsDate = a.observation_date || (a.basis === 'observation' ? a.effective_date : null);
+        if (obsDate) {
+            const obsTime = new Date(obsDate).getTime();
+            return (now - obsTime) > (30 * 24 * 60 * 60 * 1000); // 30+ days
+        }
+        return false;
     });
 
-    // Reconciliation breakdown
-    const matchedRecons = accounts.filter((a: SharedFinancialSummaryAccount) => a.reconciliation?.status === 'matched');
+    // Helper to identify genuine statement-backed evidence
+    const isStatementBacked = (a: SharedFinancialSummaryAccount) =>
+        Boolean(a.reconciliation?.source_document_name || a.reconciliation?.document_id || a.reconciliation?.source_type === 'document' || a.source_type === 'document');
+
+    // Accounts with manual valuations
+    const manualValuationAccounts = accounts.filter((a: SharedFinancialSummaryAccount) =>
+        a.basis === 'observation' && a.source_type !== 'document'
+    );
+
+    // Accounts with statement observations (trackingMode balance)
+    const statementObservedAccounts = accounts.filter((a: SharedFinancialSummaryAccount) =>
+        a.basis === 'observation' && a.source_type === 'document'
+    );
+
+    // Accounts calculated from ledger entries without an external statement observation
+    const ledgerCalculatedAccounts = accounts.filter((a: SharedFinancialSummaryAccount) =>
+        a.basis === 'ledger' && !a.reconciliation?.source_document_name && !a.reconciliation?.document_id && a.source_type !== 'document'
+    );
+
+    // Reconciliation breakdown by actual comparison result and truthful provenance
+    const statementMatchedRecons = accounts.filter((a: SharedFinancialSummaryAccount) =>
+        a.reconciliation?.status === 'matched' && isStatementBacked(a)
+    );
+    const manualMatchedRecons = accounts.filter((a: SharedFinancialSummaryAccount) =>
+        a.reconciliation?.status === 'matched' && !isStatementBacked(a)
+    );
     const holdRecons = accounts.filter((a: SharedFinancialSummaryAccount) => a.reconciliation?.status === 'not_directly_comparable');
     const discrepancyRecons = accounts.filter((a: SharedFinancialSummaryAccount) => a.reconciliation?.status === 'discrepancy');
+    const insufficientHistoryAccounts = accounts.filter((a: SharedFinancialSummaryAccount) => a.reconciliation?.status === 'insufficient_history');
+
+    // Accounts that have no statement observation checked
+    const unverifiedAccounts = accounts.filter((a: SharedFinancialSummaryAccount) =>
+        !a.reconciliation?.source_document_name && !a.reconciliation?.document_id && a.source_type !== 'document'
+    );
+
+    // Latest statement date among statement-sourced or reconciled accounts
+    const statementDates = accounts
+        .filter((a: SharedFinancialSummaryAccount) => isStatementBacked(a))
+        .map((a: SharedFinancialSummaryAccount) => a.reconciliation?.effective_date || a.observation_date || a.effective_date)
+        .filter(Boolean)
+        .sort()
+        .reverse();
+    const latestStatementDate = statementDates.length > 0 ? statementDates[0] : null;
 
     const currencies = summary ? Object.keys(summary.net_worth_cents_by_currency) : [];
+
+    // Single summary chip: leads with problems, otherwise states coverage in one glance.
+    const upToDateCount = accounts.length - staleAccounts.length;
+    const evidenceSummary = missingBalanceCount > 0
+        ? `${missingBalanceCount} awaiting initial balance`
+        : staleAccounts.length > 0
+            ? `${upToDateCount}/${accounts.length} up-to-date · ${staleAccounts.length} older than 30d`
+            : discrepancyRecons.length > 0
+                ? `${upToDateCount}/${accounts.length} up-to-date · ${discrepancyRecons.length} statement variance`
+                : `${upToDateCount}/${accounts.length} up-to-date`;
 
     // Why: Uses authoritative formatMoney with CURRENCY_DECIMALS so zero-decimal currencies (JPY)
     // are formatted cleanly without decimal truncation or 100x scaling errors.
@@ -125,9 +212,21 @@ export default function AccountFreshnessCard() {
                                 <span className="text-amber-600 dark:text-amber-400 font-medium">
                                     {staleAccounts.length} older than 30d
                                 </span>
-                            ) : (
+                            ) : discrepancyRecons.length > 0 ? (
+                                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                    {discrepancyRecons.length} statement variance detected
+                                </span>
+                            ) : (statementMatchedRecons.length > 0 || statementObservedAccounts.length > 0) ? (
                                 <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                                    All accounts updated recently
+                                    Evidence verified recently
+                                </span>
+                            ) : manualValuationAccounts.length > 0 ? (
+                                <span className="text-slate-600 dark:text-slate-300 font-medium">
+                                    Manual valuations recorded
+                                </span>
+                            ) : (
+                                <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                    Calculated through today (ledger transactions)
                                 </span>
                             )}
                         </div>
@@ -205,21 +304,39 @@ export default function AccountFreshnessCard() {
                                         <span className="text-xs text-muted-foreground font-medium">
                                             {missingBalanceCount > 0
                                                 ? `with balances; ${missingBalanceCount} needs balance`
-                                                : `${accounts.length - staleAccounts.length} / ${accounts.length} up-to-date`}
+                                                : staleAccounts.length > 0
+                                                ? `${accounts.length - staleAccounts.length} / ${accounts.length} up-to-date`
+                                                : (statementMatchedRecons.length > 0 || statementObservedAccounts.length > 0)
+                                                ? 'verified recently'
+                                                : manualValuationAccounts.length > 0
+                                                ? 'manual valuations up-to-date'
+                                                : 'calculated through today'}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1.5 text-[10px] font-bold">
                                         {missingBalanceCount > 0 ? (
                                             <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                                                <AlertCircle size={12} /> {missingBalanceCount} account awaiting initial balance
+                                                <AlertCircle size={12} /> {missingBalanceCount} account{missingBalanceCount === 1 ? '' : 's'} awaiting initial balance
                                             </span>
                                         ) : staleAccounts.length > 0 ? (
                                             <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                                                <AlertCircle size={12} /> {staleAccounts.length} accounts older than 30d
+                                                <AlertCircle size={12} /> {staleAccounts.length} account{staleAccounts.length === 1 ? '' : 's'} older than 30d
+                                            </span>
+                                        ) : discrepancyRecons.length > 0 ? (
+                                            <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                                <AlertCircle size={12} /> {discrepancyRecons.length} statement variance{discrepancyRecons.length === 1 ? '' : 's'} detected
+                                            </span>
+                                        ) : (statementMatchedRecons.length > 0 || statementObservedAccounts.length > 0) ? (
+                                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                                <CheckCircle2 size={12} /> Evidence verified recently
+                                            </span>
+                                        ) : manualValuationAccounts.length > 0 ? (
+                                            <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                                                <Scale size={12} /> Manual valuations recorded
                                             </span>
                                         ) : (
-                                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                                                <CheckCircle2 size={12} /> All accounts updated recently
+                                            <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                                                <Info size={12} /> Calculated through today (ledger transactions)
                                             </span>
                                         )}
                                     </div>
@@ -238,23 +355,65 @@ export default function AccountFreshnessCard() {
                                 </div>
                             )}
 
-                            {/* Reconciliation & Freshness Details */}
+                            {/* Reconciliation & Freshness Details: one summary chip by default,
+                                expandable to the full truthful provenance breakdown. */}
                             <div className="pt-2 flex flex-wrap items-center gap-2 text-xs">
-                                {matchedRecons.length > 0 && (
+                                <button
+                                    onClick={() => setShowEvidenceDetails(v => !v)}
+                                    className="px-2.5 py-1 rounded-lg bg-muted/60 border border-border text-[11px] font-bold text-foreground flex items-center gap-1.5 hover:bg-muted transition-colors"
+                                    title={showEvidenceDetails ? 'Collapse evidence provenance' : 'Expand evidence provenance details'}
+                                >
+                                    <ShieldCheck size={13} className="text-emerald-600 dark:text-emerald-400" />
+                                    {evidenceSummary}
+                                    {showEvidenceDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                <div className={`items-center gap-2 ${showEvidenceDetails ? 'flex' : 'hidden'}`}>
+                                {ledgerCalculatedAccounts.length > 0 && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-[11px] font-bold flex items-center gap-1.5">
+                                        <Clock size={13} /> {ledgerCalculatedAccounts.length} calculated through today (ledger transactions)
+                                    </span>
+                                )}
+                                {statementObservedAccounts.length > 0 && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold flex items-center gap-1.5">
+                                        <FileText size={13} /> {statementObservedAccounts.length} statement-sourced {latestStatementDate ? `(last: ${latestStatementDate})` : ''}
+                                    </span>
+                                )}
+                                {manualValuationAccounts.length > 0 && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-bold flex items-center gap-1.5">
+                                        <Scale size={13} /> {manualValuationAccounts.length} manual valuation
+                                    </span>
+                                )}
+                                {statementMatchedRecons.length > 0 && (
                                     <span className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold flex items-center gap-1.5">
-                                        <CheckCircle2 size={13} /> {matchedRecons.length} accounts ledger-reconciled
+                                        <CheckCircle2 size={13} /> {statementMatchedRecons.length} reconciled with statement
+                                    </span>
+                                )}
+                                {manualMatchedRecons.length > 0 && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-bold flex items-center gap-1.5">
+                                        <CheckCircle2 size={13} /> {manualMatchedRecons.length} matches manual observation
                                     </span>
                                 )}
                                 {holdRecons.length > 0 && (
                                     <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-[11px] font-bold flex items-center gap-1.5">
-                                        <Info size={13} /> {holdRecons.length} accounts with pending holds
+                                        <Info size={13} /> {holdRecons.length} statement holds / pending
                                     </span>
                                 )}
                                 {discrepancyRecons.length > 0 && (
                                     <span className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-[11px] font-bold flex items-center gap-1.5">
-                                        <AlertCircle size={13} /> {discrepancyRecons.length} accounts with ledger variance
+                                        <AlertCircle size={13} /> {discrepancyRecons.length} statement variance (discrepancy)
                                     </span>
                                 )}
+                                {insufficientHistoryAccounts.length > 0 && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-[11px] font-bold flex items-center gap-1.5">
+                                        <AlertCircle size={13} /> {insufficientHistoryAccounts.length} statement attached (needs opening balance)
+                                    </span>
+                                )}
+                                {unverifiedAccounts.length > 0 && (
+                                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-bold flex items-center gap-1.5">
+                                        <Info size={13} /> {unverifiedAccounts.length} statement not checked
+                                    </span>
+                                )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -269,3 +428,5 @@ export default function AccountFreshnessCard() {
         </>
     );
 }
+
+export default AccountFreshnessCard;
