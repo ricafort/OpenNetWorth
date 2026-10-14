@@ -62,3 +62,12 @@ samples/**/node-compile-cache/
 
 # Local scratch / debug artifacts (never commit)
 /scratch/
+/.next-unified-test/
+
+# Personal financial data seed scripts (real records — never commit)
+/scripts/seed_actual_tax_data.ts
+/scripts/record_statement_balances.ts
+/scripts/seed_ph_condo.ts
+/scripts/seed_tax_expenses.ts
+/scripts/seed_recurring_budgets.ts
+/scripts/reclassify_receivables.ts
