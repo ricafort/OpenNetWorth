@@ -1,7 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { User } from 'lucide-react';
+import { MentorChatAttachment, MentorChatMessage, MentorHistoryTurn, MentorSessionSummary } from '@/features/mentors/types';
+import { copyToClipboard } from '@/lib/utils/clipboard';
+import { downloadBlob, safeFilename } from '@/lib/utils/download';
+import { sessionToJson, sessionToMarkdown } from '@/features/mentors/utils/chatExport';
 import MentorSettings from '@/features/dashboard/modals/MentorSettings';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useAssetsQuery } from '@/features/assets/hooks/useAssetsQuery';
@@ -39,16 +43,217 @@ export const MentorsPage = () => {
         liabilities: totalLiabilities
     };
 
-    // Chat State
-    const [chat, setChat] = useState<{
-        role: 'user' | 'mentor' | 'consensus' | 'action_confirm';
-        content?: string;
-        mentorId?: string;
-        mentorName?: string;
-        actionIntent?: any;
-        facts?: any;
-        pendingIntent?: any;
-    }[]>([]);
+    // Chat State — every message carries a stable id + createdAt so bubbles can be
+    // copied, deleted, regenerated, and persisted/restored without index keys.
+    const [chat, setChat] = useState<MentorChatMessage[]>([]);
+
+    // Session persistence — conversations live in SQLite (m1_mentor_sessions /
+    // m1_mentor_messages) via /api/mentor/sessions. `hydrated` gates the persist
+    // effect until the initial restore finishes so we never overwrite the latest
+    // stored session with the empty startup state.
+    const [sessions, setSessions] = useState<MentorSessionSummary[]>([]);
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const [hydrated, setHydrated] = useState(false);
+
+    // Attachments chosen but not yet sent — uploaded to m1_documents immediately via
+    // /api/mentor/attachments, then attached to the next user message.
+    const [pendingAttachments, setPendingAttachments] = useState<MentorChatAttachment[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const newMessage = (partial: Omit<MentorChatMessage, 'id' | 'createdAt'>): MentorChatMessage => ({
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        ...partial
+    });
+
+    const refreshSessions = async () => {
+        try {
+            const resp = await fetch('/api/mentor/sessions');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (Array.isArray(data.sessions)) setSessions(data.sessions);
+        } catch (e) {
+            console.error('Failed to refresh mentor chat history:', e);
+        }
+    };
+
+    // On mount: list sessions and restore the most recently updated one.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const resp = await fetch('/api/mentor/sessions');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const list: MentorSessionSummary[] = Array.isArray(data.sessions) ? data.sessions : [];
+                if (!cancelled) setSessions(list);
+                if (list.length > 0) {
+                    const detailResp = await fetch(`/api/mentor/sessions?id=${encodeURIComponent(list[0].id)}`);
+                    if (!detailResp.ok) return;
+                    const detail = await detailResp.json();
+                    if (!cancelled && Array.isArray(detail.messages)) {
+                        setChat(detail.messages);
+                        setCurrentSessionId(list[0].id);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to restore mentor chat:', e);
+            } finally {
+                if (!cancelled) setHydrated(true);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // Debounced full-replace persist of the current chat. Skipped before hydration
+    // and for empty chats so New Chat never leaves an empty session behind.
+    useEffect(() => {
+        if (!hydrated || chat.length === 0) return;
+        const timer = setTimeout(async () => {
+            try {
+                const firstUser = chat.find(m => m.role === 'user' && m.content);
+                const resp = await fetch('/api/mentor/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...(currentSessionId ? { id: currentSessionId } : {}),
+                        title: (firstUser?.content || 'New conversation').slice(0, 60),
+                        messages: chat
+                    })
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.session?.id) {
+                    setCurrentSessionId(prev => prev ?? data.session.id);
+                }
+                void refreshSessions();
+            } catch (e) {
+                console.error('Failed to persist mentor chat:', e);
+            }
+        }, 800);
+        return () => clearTimeout(timer);
+    }, [chat, currentSessionId, hydrated]);
+
+    const handleNewChat = () => {
+        if (isLoading) return;
+        setChat([]);
+        setCurrentSessionId(null);
+        setInput('');
+        setPendingAttachments([]);
+    };
+
+    const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+    const handleAttachFiles = async (files: FileList) => {
+        const room = 4 - pendingAttachments.length;
+        if (room <= 0) {
+            alert('At most 4 files per message.');
+            return;
+        }
+        const chosen = Array.from(files).slice(0, room);
+        const oversized = chosen.filter(f => f.size > MAX_ATTACHMENT_BYTES);
+        if (oversized.length > 0) {
+            alert(`File exceeds 10 MB limit: ${oversized.map(f => f.name).join(', ')}`);
+        }
+        const accepted = chosen.filter(f => f.size > 0 && f.size <= MAX_ATTACHMENT_BYTES);
+        if (accepted.length === 0) return;
+
+        setIsUploading(true);
+        try {
+            const payload = await Promise.all(accepted.map(f => new Promise<{ filename: string; mimeType: string; dataBase64: string }>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve({
+                    filename: f.name,
+                    mimeType: f.type || 'application/octet-stream',
+                    dataBase64: String(reader.result).split(',')[1] || ''
+                });
+                reader.onerror = () => reject(new Error(`Could not read ${f.name}`));
+                reader.readAsDataURL(f);
+            })));
+
+            const resp = await fetch('/api/mentor/attachments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: payload })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                alert(data.error || 'Failed to attach files.');
+                return;
+            }
+            setPendingAttachments(prev => [...prev, ...(data.attachments || [])].slice(0, 4));
+            if (Array.isArray(data.disclosures) && data.disclosures.length > 0) {
+                console.info('Attachment disclosures:', data.disclosures);
+            }
+        } catch (e) {
+            console.error('Failed to upload attachments:', e);
+            alert('Failed to attach files.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleRemovePendingAttachment = (id: string) => {
+        setPendingAttachments(prev => prev.filter(a => a.id !== id));
+    };
+
+    const handleSelectSession = async (id: string) => {
+        if (isLoading || id === currentSessionId) return;
+        try {
+            const resp = await fetch(`/api/mentor/sessions?id=${encodeURIComponent(id)}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (Array.isArray(data.messages)) {
+                setChat(data.messages);
+                setCurrentSessionId(id);
+            }
+        } catch (e) {
+            console.error('Failed to load mentor session:', e);
+        }
+    };
+
+    // ---- Export (Markdown / JSON) — pure serializers + downloadBlob, no server round-trip
+    const exportTranscript = (title: string, messages: MentorChatMessage[], format: 'markdown' | 'json') => {
+        const date = new Date().toISOString().split('T')[0];
+        const base = `${safeFilename(title, 'mentor-chat')}-${date}`;
+        if (format === 'markdown') {
+            downloadBlob(sessionToMarkdown(title, messages), `${base}.md`, 'text/markdown');
+        } else {
+            downloadBlob(sessionToJson(title, messages), `${base}.json`, 'application/json');
+        }
+    };
+
+    const handleExportChat = (format: 'markdown' | 'json') => {
+        if (chat.length === 0) return;
+        const firstUser = chat.find(m => m.role === 'user' && m.content);
+        exportTranscript((firstUser?.content || 'Mentor conversation').slice(0, 60), chat, format);
+    };
+
+    const handleExportSession = async (id: string, format: 'markdown' | 'json') => {
+        try {
+            const resp = await fetch(`/api/mentor/sessions?id=${encodeURIComponent(id)}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!Array.isArray(data.messages)) return;
+            exportTranscript(data.session?.title || 'Mentor conversation', data.messages, format);
+        } catch (e) {
+            console.error('Failed to export mentor session:', e);
+        }
+    };
+
+    const handleDeleteSession = async (id: string) => {
+        if (!confirm('Delete this conversation? This cannot be undone.')) return;
+        try {
+            await fetch(`/api/mentor/sessions?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+            if (id === currentSessionId) {
+                setChat([]);
+                setCurrentSessionId(null);
+            }
+            await refreshSessions();
+        } catch (e) {
+            console.error('Failed to delete mentor session:', e);
+        }
+    };
 
     const allMentors = [...STATIC_MENTORS, ...customMentors];
     const activeMentors = allMentors.filter(m => selectedMentorIds.includes(m.id));
@@ -158,14 +363,15 @@ export const MentorsPage = () => {
                 else if (intent.action === 'add_goal') savedName = 'New Goal';
             }
 
-            setChat(prev => {
-                const filtered = prev.filter(msg => msg.role !== 'action_confirm');
-                return [...filtered, {
-                    role: 'mentor',
-                    mentorName: 'System',
-                    content: `✅ Successfully added **${savedName}** to your dashboard.`
-                }];
-            });
+            // Mark the card resolved (kept in the transcript) instead of removing it —
+            // the persisted session then restores it as a static "confirmed" chip, so a
+            // refresh can never offer to re-add the same asset.
+            markActionConfirmResolved('confirmed');
+            setChat(prev => [...prev, newMessage({
+                role: 'mentor',
+                mentorName: 'System',
+                content: `✅ Successfully added **${savedName}** to your dashboard.`
+            })]);
 
         } catch (e) {
             console.error(e);
@@ -174,32 +380,83 @@ export const MentorsPage = () => {
     };
 
     const handleActionCancel = () => {
-        setChat(prev => prev.filter(msg => msg.role !== 'action_confirm'));
+        markActionConfirmResolved('cancelled');
     };
 
-    const handleSend = async (overrideMessage?: string, resolvedPendingContext?: any, resolvedEntityId?: string) => {
-        const userMsg = overrideMessage || input;
-        if (!userMsg.trim()) return;
-
-        const currentSelectedIds = [...selectedMentorIds];
-        if (!overrideMessage) setInput('');
-        
-        let pendingContextToUse = resolvedPendingContext;
-        if (!pendingContextToUse) {
-            const lastMsg = chat[chat.length - 1];
-            if (lastMsg?.role === 'mentor' && lastMsg.pendingIntent) {
-                pendingContextToUse = lastMsg.pendingIntent;
+    /** Resolves the most recent unanswered action_confirm bubble (there is at most one live at a time). */
+    const markActionConfirmResolved = (resolution: 'confirmed' | 'cancelled') => {
+        setChat(prev => {
+            let idx = -1;
+            for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].role === 'action_confirm' && !prev[i].actionIntentResolved) { idx = i; break; }
             }
-        }
+            if (idx === -1) return prev;
+            return prev.map((m, i) => (i === idx ? { ...m, actionIntentResolved: resolution } : m));
+        });
+    };
 
-        setChat(prev => [...prev, { role: 'user', content: userMsg }]);
+    /** The last ≤8 conversational turns before `uptoIndex`, mapped to LLM roles. */
+    const buildHistory = (uptoIndex: number): MentorHistoryTurn[] =>
+        chat
+            .slice(0, uptoIndex)
+            .filter(m => (m.role === 'user' || m.role === 'mentor' || m.role === 'consensus') && m.content)
+            .slice(-8)
+            .map(m => ({
+                role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+                content: m.content!
+            }));
+
+    const fetchMentorReply = async (
+        mentor: any,
+        userMsg: string,
+        history: MentorHistoryTurn[],
+        pendingContextToUse: any,
+        resolvedEntityId: string | undefined,
+        localConfig: any,
+        attachments?: MentorChatAttachment[]
+    ) => {
+        // Strip non-serializable React JSX icon property to avoid circular structure JSON serialization error
+        const { icon, ...serializableMentor } = mentor;
+
+        const resp = await fetch('/api/mentor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mentor: serializableMentor,
+                mode,
+                userContext: {
+                    netWorth: metrics.netWorth,
+                    totalAssets: metrics.assets,
+                    totalLiabilities: metrics.liabilities,
+                    currency: baseCurrency
+                },
+                message: userMsg,
+                pendingContext: pendingContextToUse,
+                resolvedEntityId,
+                localConfig,
+                // Additive optional field: prior turns so the persona can hold a conversation.
+                ...(history.length ? { history } : {}),
+                // Additive optional field: m1_documents ids whose extracted text grounds this turn.
+                ...(attachments && attachments.length ? { attachments } : {})
+            })
+        });
+        const data = await resp.json();
+        const reply = data.response?.trim() || data.error || 'No advice could be generated at this time. Please ensure your Local LLM is active.';
+        return { content: reply, facts: data.facts, pendingIntent: data.pending_intent };
+    };
+
+    // Runs the full board for one user message: action-parse check first, then the
+    // selected mentors in parallel, then the synthetic consensus summary. Shared by
+    // handleSend and handleRegenerate so a regenerated answer goes through the same path.
+    const runBoard = async (
+        userMsg: string,
+        history: MentorHistoryTurn[],
+        pendingContextToUse: any,
+        resolvedEntityId: string | undefined,
+        currentSelectedIds: string[],
+        turnAttachments?: MentorChatAttachment[]
+    ) => {
         setIsLoading(true);
-
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('has_used_mentors', 'true');
-            window.dispatchEvent(new Event('storage'));
-        }
-
         try {
             const { getSavedLocalAiConfig } = await import('@/components/ui/LocalAiSettingsModal');
             const localConfig = getSavedLocalAiConfig();
@@ -212,62 +469,145 @@ export const MentorsPage = () => {
             const intent = await parseResp.json();
 
             if (intent.action && intent.confidence > 0.7 && ['add_asset', 'add_liability', 'add_goal'].includes(intent.action)) {
-                setChat(prev => [...prev, { role: 'action_confirm', actionIntent: intent }]);
-                setIsLoading(false);
+                setChat(prev => [...prev, newMessage({ role: 'action_confirm', actionIntent: intent })]);
                 return;
             }
 
             const selectedMentors = allMentors.filter(m => currentSelectedIds.includes(m.id));
 
-            const responses = await Promise.all(
-                selectedMentors.map(async (m) => {
-                    // Strip non-serializable React JSX icon property to avoid circular structure JSON serialization error
-                    const { icon, ...serializableMentor } = m;
-
-                    const resp = await fetch('/api/mentor', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            mentor: serializableMentor,
-                            mode,
-                            userContext: {
-                                netWorth: metrics.netWorth,
-                                totalAssets: metrics.assets,
-                                totalLiabilities: metrics.liabilities,
-                                currency: baseCurrency
-                            },
-                            message: userMsg,
-                            pendingContext: pendingContextToUse,
-                            resolvedEntityId,
-                            localConfig
-                        })
-                    });
-                    const data = await resp.json();
-                    const reply = data.response?.trim() || data.error || 'No advice could be generated at this time. Please ensure your Local LLM is active.';
-                    return { id: m.id, name: m.name, content: reply, facts: data.facts, pendingIntent: data.pending_intent };
-                })
-            );
-
-            responses.forEach(res => {
-                setChat(prev => [...prev, { role: 'mentor', mentorId: res.id, mentorName: res.name, content: res.content, facts: res.facts, pendingIntent: res.pendingIntent }]);
-            });
+            // One mentor at a time: local engines (LM Studio, Ollama) serialize GPU work
+            // anyway, and 4 concurrent completions make LM Studio return instant 500s or
+            // jam past the 60s client timeout — which surfaced as offline-fallback answers
+            // (with the "Local LLM is offline" tip) even while the LLM was running.
+            // Each answer lands in the chat as it arrives, so the board fills progressively.
+            const responses: { id: string; name: string; content: string; facts?: any; pendingIntent?: any }[] = [];
+            for (const m of selectedMentors) {
+                const reply = await fetchMentorReply(m, userMsg, history, pendingContextToUse, resolvedEntityId, localConfig, turnAttachments);
+                const res = { id: m.id, name: m.name, ...reply };
+                responses.push(res);
+                setChat(prev => [...prev, newMessage({ role: 'mentor', mentorId: res.id, mentorName: res.name, content: res.content, facts: res.facts, pendingIntent: res.pendingIntent })]);
+            }
 
             if (responses.length > 1) {
                 const consensusMsg = `### Consensus Board Summary\n\nBased on the shared wisdom of ${responses.map(r => r.name).join(', ')}, we find common ground.`;
-                setChat(prev => [...prev, { role: 'consensus', content: consensusMsg }]);
+                setChat(prev => [...prev, newMessage({ role: 'consensus', content: consensusMsg })]);
             }
         } catch (e: any) {
             console.error('Mentors chat error:', e);
-            setChat(prev => [...prev, { role: 'mentor', content: 'Connection error. Ensure your Local LLM (LM Studio on port 1234 or Ollama on port 11434) is running.' }]);
+            setChat(prev => [...prev, newMessage({ role: 'mentor', content: 'Connection error. Ensure your Local LLM (LM Studio on port 1234, Ollama on port 11434, or Strata on port 8080) is running.' })]);
         } finally {
             setIsLoading(false);
         }
     };
 
+    const handleSend = async (overrideMessage?: string, resolvedPendingContext?: any, resolvedEntityId?: string) => {
+        const userMsg = overrideMessage || input;
+        if (!userMsg.trim()) return;
+
+        const currentSelectedIds = [...selectedMentorIds];
+        if (!overrideMessage) setInput('');
+
+        let pendingContextToUse = resolvedPendingContext;
+        if (!pendingContextToUse) {
+            const lastMsg = chat[chat.length - 1];
+            if (lastMsg?.role === 'mentor' && lastMsg.pendingIntent) {
+                pendingContextToUse = lastMsg.pendingIntent;
+            }
+        }
+
+        // History is everything before this new user message (the message itself is
+        // sent as the final `message` field, so it must not appear in history).
+        const history = buildHistory(chat.length);
+        const turnAttachments = pendingAttachments;
+        if (turnAttachments.length > 0) setPendingAttachments([]);
+        setChat(prev => [...prev, newMessage({
+            role: 'user',
+            content: userMsg,
+            ...(turnAttachments.length > 0 ? { attachments: turnAttachments } : {})
+        })]);
+
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('has_used_mentors', 'true');
+            window.dispatchEvent(new Event('storage'));
+        }
+
+        await runBoard(userMsg, history, pendingContextToUse, resolvedEntityId, currentSelectedIds, turnAttachments);
+    };
+
+    // Regenerate targets the last assistant-side bubble. A single mentor reply is
+    // re-asked to just that mentor (with history); a consensus summary re-runs the
+    // whole board — the summary is a synthetic template, so re-running the board is
+    // the only meaningful regeneration for it.
+    const handleRegenerate = async () => {
+        if (isLoading) return;
+
+        let idx = -1;
+        for (let i = chat.length - 1; i >= 0; i--) {
+            if (chat[i].role === 'mentor' || chat[i].role === 'consensus') { idx = i; break; }
+        }
+        if (idx === -1) return;
+
+        let userIdx = -1;
+        for (let i = idx - 1; i >= 0; i--) {
+            if (chat[i].role === 'user') { userIdx = i; break; }
+        }
+        if (userIdx === -1) return;
+
+        const target = chat[idx];
+        const userMsg = chat[userIdx].content || '';
+        const history = buildHistory(userIdx);
+
+        if (target.role === 'mentor' && target.mentorId) {
+            const mentor = allMentors.find(m => m.id === target.mentorId);
+            if (!mentor) return;
+            setIsLoading(true);
+            try {
+                const { getSavedLocalAiConfig } = await import('@/components/ui/LocalAiSettingsModal');
+                const reply = await fetchMentorReply(mentor, userMsg, history, undefined, undefined, getSavedLocalAiConfig(), chat[userIdx].attachments);
+                setChat(prev => prev.map(m => m.id === target.id
+                    ? { ...m, content: reply.content, facts: reply.facts, pendingIntent: reply.pendingIntent, createdAt: new Date().toISOString() }
+                    : m));
+            } catch (e) {
+                console.error('Mentor regenerate error:', e);
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
+
+        // Consensus (or a mentor reply whose mentor is no longer available): replace
+        // the whole assistant-side block that followed the triggering user message.
+        setChat(prev => prev.slice(0, userIdx + 1));
+        await runBoard(userMsg, history, undefined, undefined, [...selectedMentorIds], chat[userIdx].attachments);
+    };
+
+    const handleCopyMessage = async (id: string) => {
+        const msg = chat.find(m => m.id === id);
+        if (!msg?.content) return;
+        await copyToClipboard(msg.content);
+    };
+
+    const handleDeleteMessage = (id: string) => {
+        setChat(prev => prev.filter(m => m.id !== id));
+    };
+
+    // Only the last assistant-side bubble offers Regenerate — older replies stay
+    // copyable/deletable but re-running them would duplicate board answers.
+    const lastAssistantId = useMemo(() => {
+        for (let i = chat.length - 1; i >= 0; i--) {
+            if (chat[i].role === 'mentor' || chat[i].role === 'consensus') return chat[i].id;
+        }
+        return undefined;
+    }, [chat]);
+
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[calc(10vh-160px)] relative">
-            {/* Sidebar */}
-            <MentorList
+        // At lg the grid is pinned to the viewport (LayoutShell's main uses lg:p-10,
+        // so 2 × 2.5rem padding): each column scrolls internally instead of the whole
+        // page scrolling. Below lg the columns stack and flow naturally.
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:h-[calc(100vh-5rem)] relative">
+            {/* Sidebar — scrolls independently of the chat panel on desktop */}
+            <div className="lg:h-full lg:overflow-y-auto lg:pr-2">
+                <MentorList
                 staticMentors={STATIC_MENTORS}
                 customMentors={customMentors}
                 selectedMentorIds={selectedMentorIds}
@@ -275,7 +615,14 @@ export const MentorsPage = () => {
                 onDeleteCustom={handleDeleteCustomMentor}
                 onOpenAddModal={() => setIsModalOpen(true)}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                sessions={sessions}
+                currentSessionId={currentSessionId}
+                onNewChat={handleNewChat}
+                onSelectSession={handleSelectSession}
+                onDeleteSession={handleDeleteSession}
+                onExportSession={handleExportSession}
             />
+            </div>
 
             {/* Main Chat */}
             <ChatInterface
@@ -291,6 +638,15 @@ export const MentorsPage = () => {
                 onSend={handleSend}
                 onActionConfirm={handleActionConfirm}
                 onActionCancel={handleActionCancel}
+                onCopyMessage={handleCopyMessage}
+                onDeleteMessage={handleDeleteMessage}
+                onRegenerate={handleRegenerate}
+                lastAssistantId={lastAssistantId}
+                onExportChat={handleExportChat}
+                pendingAttachments={pendingAttachments}
+                isUploading={isUploading}
+                onAttachFiles={handleAttachFiles}
+                onRemovePendingAttachment={handleRemovePendingAttachment}
                 onResolveIntent={(intent, entityId) => {
                     const entityName = entities.find(e => e.id === entityId)?.name || (entityId === 'all' ? 'All Accounts' : entityId);
                     const pseudoMessage = `Use entity: ${entityName}`;

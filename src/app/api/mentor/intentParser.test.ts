@@ -126,4 +126,103 @@ describe('Mentor intentParser', () => {
         expect(result.endDate).toBe('2026-07-31');
         expect(result.needsClarification).toBeUndefined();
     });
+
+    // Closing Batch: Australian Day-First natural and numeric dates
+    it('parses Day-First Australian natural date "15 March 2026"', () => {
+        const result = parseSpendingIntent('How much was spent on 15 March 2026?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2026-03-15');
+        expect(result.endDate).toBe('2026-03-15');
+        expect(result.periodLabel).toBe('March 15, 2026');
+    });
+
+    it('parses Day-First Australian natural date with ordinal "15th of March"', () => {
+        const result = parseSpendingIntent('How much was spent on the 15th of March?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2026-03-15');
+        expect(result.endDate).toBe('2026-03-15');
+        expect(result.periodLabel).toBe('March 15, 2026');
+    });
+
+    it('parses Australian slash date DD/MM/YYYY (15/03/2026)', () => {
+        const result = parseSpendingIntent('What did I spend on 15/03/2026?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2026-03-15');
+        expect(result.endDate).toBe('2026-03-15');
+    });
+
+    // Closing Batch: Relative dates "yesterday" and "today"
+    it('resolves "yesterday" relative to reference date', () => {
+        const result = parseSpendingIntent('How much did I spend yesterday?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2026-09-21');
+        expect(result.endDate).toBe('2026-09-21');
+        expect(result.periodLabel).toContain('Yesterday (2026-09-21)');
+    });
+
+    it('resolves "today" relative to reference date', () => {
+        const result = parseSpendingIntent('How much did I spend today?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2026-09-22');
+        expect(result.endDate).toBe('2026-09-22');
+        expect(result.periodLabel).toContain('Today (2026-09-22)');
+    });
+
+    // Closing Batch: Full year queries
+    it('resolves full year query "in 2025" to full calendar year without defaulting to current month', () => {
+        const result = parseSpendingIntent('How much did I spend in 2025?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.startDate).toBe('2025-01-01');
+        expect(result.endDate).toBe('2025-12-31');
+        expect(result.periodLabel).toBe('2025');
+    });
+
+    // Closing Batch: Explicit unsupported period asks for clarification
+    it('asks for clarification when an unsupported period (e.g. "last week") is requested', () => {
+        const result = parseSpendingIntent('How much did I spend last week?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.needsClarification).toContain("Queries for 'last week' are not directly supported yet");
+    });
+
+    it('asks for clarification for FY 2025 and Q1 2025 rather than collapsing to calendar year', () => {
+        const fyResult = parseSpendingIntent('How much did I spend in FY 2025?', defaultEntities, referenceDate);
+        expect(fyResult.isSpendingQuery).toBe(true);
+        expect(fyResult.needsClarification).toContain("Queries for 'fy' are not directly supported yet");
+        expect(fyResult.startDate).toBeUndefined();
+
+        const q1Result = parseSpendingIntent('What was spent in Q1 2025?', defaultEntities, referenceDate);
+        expect(q1Result.isSpendingQuery).toBe(true);
+        expect(q1Result.needsClarification).toContain("Queries for 'q1' are not directly supported yet");
+        expect(q1Result.startDate).toBeUndefined();
+    });
+
+    it('resolves plain calendar year "in 2025" without unsupported keywords', () => {
+        const result = parseSpendingIntent('How much did I spend in 2025?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.needsClarification).toBeUndefined();
+        expect(result.startDate).toBe('2025-01-01');
+        expect(result.endDate).toBe('2025-12-31');
+    });
+
+    // Closing Batch: All accounts scope
+    it('sets entityId to "all" when user explicitly queries across all accounts', () => {
+        const result = parseSpendingIntent('How much did I spend across all accounts in July 2026?', defaultEntities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.entityId).toBe('all');
+        expect(result.startDate).toBe('2026-07-01');
+        expect(result.endDate).toBe('2026-07-31');
+    });
+
+    // Closing Batch: Retains business scope when "in total" is present
+    it('retains business scope when user asks "my business ... in total"', () => {
+        const entities = [
+            { id: 'p1', name: 'John Doe', type: 'person' },
+            { id: 'ent-biz', name: 'Acme Corp', type: 'business' }
+        ];
+        const result = parseSpendingIntent('How much did my business spend in total in July 2026?', entities, referenceDate);
+        expect(result.isSpendingQuery).toBe(true);
+        expect(result.entityId).toBe('ent-biz');
+        expect(result.startDate).toBe('2026-07-01');
+        expect(result.endDate).toBe('2026-07-31');
+    });
 });

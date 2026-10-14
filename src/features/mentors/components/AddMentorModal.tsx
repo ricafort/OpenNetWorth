@@ -70,15 +70,15 @@ export default function AddMentorModal({ isOpen, onClose, onAdd }: AddMentorModa
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-card rounded-3xl w-full max-w-lg shadow-2xl border border-border overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="text-xl font-bold text-slate-950">Add Custom Mentor</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                        <X size={20} className="text-slate-500" />
+                <div className="p-6 border-b border-border flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-foreground">Add Custom Mentor</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+                        <X size={20} className="text-muted-foreground" />
                     </button>
                 </div>
                 <div className="p-6 space-y-4">
                     <div>
-                        <label className="block text-xs font-black text-slate-700 uppercase mb-1.5">Mentor Name</label>
+                        <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Mentor Name</label>
                         <div className="flex gap-2">
                             <input
                                 type="text"
@@ -90,7 +90,7 @@ export default function AddMentorModal({ isOpen, onClose, onAdd }: AddMentorModa
                             <button
                                 onClick={handleGenerateProfile}
                                 disabled={isGeneratingProfile || !newMentor.name.trim()}
-                                className="px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                                className="px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-muted text-white rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
                                 title="Generate Profile with AI"
                             >
                                 {isGeneratingProfile ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
@@ -98,7 +98,7 @@ export default function AddMentorModal({ isOpen, onClose, onAdd }: AddMentorModa
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-black text-slate-700 uppercase mb-1.5">Archetype</label>
+                        <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Archetype</label>
                         <input
                             type="text"
                             placeholder="e.g. Value Investing & Discipline"
@@ -108,7 +108,7 @@ export default function AddMentorModal({ isOpen, onClose, onAdd }: AddMentorModa
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-black text-slate-700 uppercase mb-1.5">Short Description</label>
+                        <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">Short Description</label>
                         <input
                             type="text"
                             placeholder="e.g. Focuses on moat-driven businesses and margin of safety."
@@ -118,7 +118,7 @@ export default function AddMentorModal({ isOpen, onClose, onAdd }: AddMentorModa
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-black text-slate-700 uppercase mb-1.5">AI Persona Prompt (Optional)</label>
+                        <label className="block text-xs font-black text-muted-foreground uppercase mb-1.5">AI Persona Prompt (Optional)</label>
                         <textarea
                             placeholder="e.g. Speak with folksy wisdom, emphasize the multi-decade horizon, and avoid short-term noise."
                             rows={3}
@@ -128,8 +128,8 @@ export default function AddMentorModal({ isOpen, onClose, onAdd }: AddMentorModa
                         />
                     </div>
                 </div>
-                <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
-                    <button onClick={onClose} className="flex-1 py-3 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 hover:bg-slate-100 transition-all">
+                <div className="p-6 bg-muted/50 border-t border-border flex gap-3">
+                    <button onClick={onClose} className="flex-1 py-3 px-4 bg-card border border-border rounded-xl font-bold text-foreground hover:bg-muted transition-all">
                         Cancel
                     </button>
                     <button onClick={handleSubmit} className="flex-1 py-3 px-4 bg-slate-950 text-white rounded-xl font-bold hover:bg-black transition-all">

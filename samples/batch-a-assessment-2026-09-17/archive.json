@@ -1208,7 +1208,8 @@
         "byte_size": 171,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n04/07/2025,Waratah Office Supplies pens,-15.00\r\n06/07/2025,Blue Wren Broadband BPAY,-79.88\r\n",
-        "created_at": "2026-09-16T13:06:31.091Z"
+        "created_at": "2026-09-16T13:06:31.091Z",
+        "extracted_text": null
       },
       {
         "id": "doc-68eb1672-7f65-4b03-9628-e25cf54ec6fc",
@@ -1218,7 +1219,8 @@
         "byte_size": 2394,
         "storage_path": null,
         "raw_content": "JVBERi0xLjQKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSIC9GMiAzIDAgUgo+PgplbmRvYmoKMiAwIG9iago8PAovQmFzZUZvbnQgL0hlbHZldGljYSAvRW5jb2RpbmcgL1dpbkFuc2lFbmNvZGluZyAvTmFtZSAvRjEgL1N1YnR5cGUgL1R5cGUxIC9UeXBlIC9Gb250Cj4+CmVuZG9iagozIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhLUJvbGQgL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcgL05hbWUgL0YyIC9TdWJ0eXBlIC9UeXBlMSAvVHlwZSAvRm9udAo+PgplbmRvYmoKNCAwIG9iago8PAovQ29udGVudHMgOCAwIFIgL01lZGlhQm94IFsgMCAwIDU5NS4yNzU2IDg0MS44ODk4IF0gL1BhcmVudCA3IDAgUiAvUmVzb3VyY2VzIDw8Ci9Gb250IDEgMCBSIC9Qcm9jU2V0IFsgL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSSBdCj4+IC9Sb3RhdGUgMCAvVHJhbnMgPDwKCj4+IAogIC9UeXBlIC9QYWdlCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9QYWdlTW9kZSAvVXNlTm9uZSAvUGFnZXMgNyAwIFIgL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0F1dGhvciAoXChhbm9ueW1vdXNcKSkgL0NyZWF0aW9uRGF0ZSAoRDoyMDI2MDkxNTEyMjIxNisxMCcwMCcpIC9DcmVhdG9yIChcKHVuc3BlY2lmaWVkXCkpIC9LZXl3b3JkcyAoKSAvTW9kRGF0ZSAoRDoyMDI2MDkxNTEyMjIxNisxMCcwMCcpIC9Qcm9kdWNlciAoUmVwb3J0TGFiIFBERiBMaWJyYXJ5IC0gXChvcGVuc291cmNlXCkpIAogIC9TdWJqZWN0IChcKHVuc3BlY2lmaWVkXCkpIC9UaXRsZSAoXChhbm9ueW1vdXNcKSkgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iago3IDAgb2JqCjw8Ci9Db3VudCAxIC9LaWRzIFsgNCAwIFIgXSAvVHlwZSAvUGFnZXMKPj4KZW5kb2JqCjggMCBvYmoKPDwKL0ZpbHRlciBbIC9BU0NJSTg1RGVjb2RlIC9GbGF0ZURlY29kZSBdIC9MZW5ndGggOTgyCj4+CnN0cmVhbQpHYXRtOj51VEs7J1JlPDIzIlBsZFNdKy8hRzU+YEFnOC4wI1BjMkxkJG5vSXU1VFA+YkQyI2pBbiEycHQ1WUpcNSlHXz82LGk8XDJmPUJqSkZSZWRqUSwmNmxuVHRjNjY3ZnMkYStsWHA3I18hOGZJZU9IZldSPkInIWBwP2lzMFNqcUpaTSYjQFc1SGBrSzY4Z0trL1BtJDBQNHImWVluOVo1VUdMcmkhQTFfaEkiWWdmKWdGWDdGWj5aRjY0WGtMTjVaYElKN1ZNMipsUXB0LFltI0pLLyY3NlU7b1c1SkRKYGYlZSspZDsobmpcMyEqO3NmXzRtQlM3JydALFAmc0xNR183R1coUy9IXWlhODI8SlUlIy8sM3Q8Z2k6XDQvYVooSztFO0h1b0RGLDVgclxrKF84WmU5RipxKGw7UGRETDI2aC1pbiFdRUY2JmEoJTQ8cStqdWJMNUhBKj47IkxHRig0MmxFPWRIJzA2LyU7YiFtOnBNcU85MVdOXUwuPFgkSF5iTiVnTm5SJ2A4PzppPnRkYyxdbFU6OlRZPWBtZU0idV48S3Erc3NZZEFUYidRLlspalNkXDdgTyNQKT9DaVJCO2szWVRHIXUkLzYlNyldOlFwbyVKRXMkQT5wQUI+OEBFYUttU2BsZUU8Ol1dIUJxYXJMXWlkUnVDK2lRTSVZSUIzIWpeVWdSQkRYUz5BQ04zYjZpTiMnWERGbUZjXyY0XWZMOS9fWWAxRHEiSHVrXllQLGlqNlVlRz1ndHQ/RDJbWWldTjEkUkVcYjxoNnNYUDs8NSt1Z3FjSFY+W1hvcF1Ybi4zS209TE9IcC1aU3FkPHQ3Rjc7aTxOaFh0aktML2Mpbl4qLGw7bD8/dDhsMGJfR1NXOiMkPys4Ry83aWlmWmxkXEcmZzhwdTNVNnJYWDQiOV8zZHFNa2UwM1Nlc14iVlBbZD9VRTRYbFBCLU5LV0MwZF1Xb05iQjRpRklVVmpuSUQ6ZjReZTB0NzhsaiJdX2MzUGhNZkEycDZqKWYxMk0jRys2QCgmYWtVXGhMUVM8WmhQLl1eSy4mTkA8KUJTTUJsa0QrYW9TQ1csVGZTU1ZsV2dqLVdVInBmPEVuIy9PYFwjY250KkdZX2E3VEtOZXRZbC4vNkBqTjVFNEwjR2oyYkZacjl0WS1nUEJTIjA+KDFbXHUlODZyViZYMyg7ZypdVi5dLldfWUxjQ2pTc0QpckUrXkVOPmBoNUlmXUMnMDtTJnR1c3JOOiYmc2gmbjVEMCFWMyIjbXFLUzdjaT5kLV0tNXBkZl9FUn4+ZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgOQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwNjEgMDAwMDAgbiAKMDAwMDAwMDEwMiAwMDAwMCBuIAowMDAwMDAwMjA5IDAwMDAwIG4gCjAwMDAwMDAzMjEgMDAwMDAgbiAKMDAwMDAwMDUyNCAwMDAwMCBuIAowMDAwMDAwNTkyIDAwMDAwIG4gCjAwMDAwMDA4NzIgMDAwMDAgbiAKMDAwMDAwMDkzMSAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9JRCAKWzxhMDAxYmI5MjMwZTgxZTZkNTk5Y2FhYWUxOGJmYjUwNT48YTAwMWJiOTIzMGU4MWU2ZDU5OWNhYWFlMThiZmI1MDU+XQolIFJlcG9ydExhYiBnZW5lcmF0ZWQgUERGIGRvY3VtZW50IC0tIGRpZ2VzdCAob3BlbnNvdXJjZSkKCi9JbmZvIDYgMCBSCi9Sb290IDUgMCBSCi9TaXplIDkKPj4Kc3RhcnR4cmVmCjIwMDMKJSVFT0YK",
-        "created_at": "2026-09-16T13:07:00.782Z"
+        "created_at": "2026-09-16T13:07:00.782Z",
+        "extracted_text": null
       },
       {
         "id": "doc-bbab55a9-e4e0-4ddf-b567-ef40d6717370",
@@ -1228,7 +1230,8 @@
         "byte_size": 174,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n04/07/2025,Waratah Office Supplies pens,-15.00\r\n06/07/2025,Blue Wren Broadband BPAY,-79.88\r\n",
-        "created_at": "2026-09-16T13:09:49.058Z"
+        "created_at": "2026-09-16T13:09:49.058Z",
+        "extracted_text": null
       },
       {
         "id": "doc-dc6d7753-dc92-4ec1-99a0-9c5a28abc87a",
@@ -1238,7 +1241,8 @@
         "byte_size": 78,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n11/07/2025,Waratah Office Supplies toner,-110.00\r\n",
-        "created_at": "2026-09-16T13:09:49.233Z"
+        "created_at": "2026-09-16T13:09:49.233Z",
+        "extracted_text": null
       },
       {
         "id": "doc-a5292d7b-2a19-41a6-8d2c-70487be2748d",
@@ -1248,7 +1252,8 @@
         "byte_size": 85,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n31/02/2025,Impossible date,-22.00\r\n,Missing date,-15.00\r\n",
-        "created_at": "2026-09-16T13:09:49.404Z"
+        "created_at": "2026-09-16T13:09:49.404Z",
+        "extracted_text": null
       },
       {
         "id": "doc-489f65ed-fc94-492a-a8a0-086760f3f955",
@@ -1258,7 +1263,8 @@
         "byte_size": 154,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n07/07/2025,Trailing characters,12oops\r\n08/07/2025,Two decimal separators,1.2.3\r\n09/07/2025,Bad thousands grouping,\"1,2,3.00\"\r\n",
-        "created_at": "2026-09-16T13:09:49.492Z"
+        "created_at": "2026-09-16T13:09:49.492Z",
+        "extracted_text": null
       },
       {
         "id": "doc-c4e47888-7620-4ed8-bc1b-647ec7403591",
@@ -1268,7 +1274,8 @@
         "byte_size": 136,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n",
-        "created_at": "2026-09-16T13:09:49.588Z"
+        "created_at": "2026-09-16T13:09:49.588Z",
+        "extracted_text": null
       },
       {
         "id": "doc-d88db18e-0b2e-4238-a5c3-17af88639365",
@@ -1278,7 +1285,8 @@
         "byte_size": 126,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n07/08/2025,Australian date means 7 August,-12.00\r\n08/07/2025,Australian date means 8 July,-13.00\r\n",
-        "created_at": "2026-09-16T13:09:49.689Z"
+        "created_at": "2026-09-16T13:09:49.689Z",
+        "extracted_text": null
       },
       {
         "id": "doc-973bb7c7-b067-4874-8f31-c0f5e9781107",
@@ -1288,7 +1296,8 @@
         "byte_size": 51,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n03/07/2025,=1+1,-1.00\r\n",
-        "created_at": "2026-09-16T13:09:49.705Z"
+        "created_at": "2026-09-16T13:09:49.705Z",
+        "extracted_text": null
       },
       {
         "id": "doc-e5ee83cf-f30b-4a37-aecc-a1219e3e2e90",
@@ -1298,7 +1307,8 @@
         "byte_size": 68,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n03/07/2025,Fictional JPY purchase,-500\r\n",
-        "created_at": "2026-09-16T13:09:49.720Z"
+        "created_at": "2026-09-16T13:09:49.720Z",
+        "extracted_text": null
       },
       {
         "id": "doc-500fad64-7a5b-4583-a203-d2ba346375ef",
@@ -1308,7 +1318,8 @@
         "byte_size": 130,
         "storage_path": null,
         "raw_content": "﻿Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n04/07/2025,Waratah Office Supplies pens,-15.00\r\n",
-        "created_at": "2026-09-16T13:09:49.735Z"
+        "created_at": "2026-09-16T13:09:49.735Z",
+        "extracted_text": null
       },
       {
         "id": "doc-cc21fba4-ce02-40bc-9086-ed563c9ec09a",
@@ -1318,7 +1329,8 @@
         "byte_size": 2430,
         "storage_path": null,
         "raw_content": "JVBERi0xLjQKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSIC9GMiAzIDAgUgo+PgplbmRvYmoKMiAwIG9iago8PAovQmFzZUZvbnQgL0hlbHZldGljYSAvRW5jb2RpbmcgL1dpbkFuc2lFbmNvZGluZyAvTmFtZSAvRjEgL1N1YnR5cGUgL1R5cGUxIC9UeXBlIC9Gb250Cj4+CmVuZG9iagozIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhLUJvbGQgL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcgL05hbWUgL0YyIC9TdWJ0eXBlIC9UeXBlMSAvVHlwZSAvRm9udAo+PgplbmRvYmoKNCAwIG9iago8PAovQ29udGVudHMgOCAwIFIgL01lZGlhQm94IFsgMCAwIDU5NS4yNzU2IDg0MS44ODk4IF0gL1BhcmVudCA3IDAgUiAvUmVzb3VyY2VzIDw8Ci9Gb250IDEgMCBSIC9Qcm9jU2V0IFsgL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSSBdCj4+IC9Sb3RhdGUgMCAvVHJhbnMgPDwKCj4+IAogIC9UeXBlIC9QYWdlCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9QYWdlTW9kZSAvVXNlTm9uZSAvUGFnZXMgNyAwIFIgL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0F1dGhvciAoXChhbm9ueW1vdXNcKSkgL0NyZWF0aW9uRGF0ZSAoRDoyMDI2MDkxNTEyMjIxNisxMCcwMCcpIC9DcmVhdG9yIChcKHVuc3BlY2lmaWVkXCkpIC9LZXl3b3JkcyAoKSAvTW9kRGF0ZSAoRDoyMDI2MDkxNTEyMjIxNisxMCcwMCcpIC9Qcm9kdWNlciAoUmVwb3J0TGFiIFBERiBMaWJyYXJ5IC0gXChvcGVuc291cmNlXCkpIAogIC9TdWJqZWN0IChcKHVuc3BlY2lmaWVkXCkpIC9UaXRsZSAoXChhbm9ueW1vdXNcKSkgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iago3IDAgb2JqCjw8Ci9Db3VudCAxIC9LaWRzIFsgNCAwIFIgXSAvVHlwZSAvUGFnZXMKPj4KZW5kb2JqCjggMCBvYmoKPDwKL0ZpbHRlciBbIC9BU0NJSTg1RGVjb2RlIC9GbGF0ZURlY29kZSBdIC9MZW5ndGggMTAxNwo+PgpzdHJlYW0KR2F0bTo/I3VKcCdSZl9aMyJQbkpGT2lpJl5sV3NnW0crRXJDViltI2NIYks+JFpfc08rJ29OM2pQVERAXyZLOmhnXjE9PChgNWoiRjcuV2wvZjUmLF5MZWQyK2BSLmtMJE0kQGlWSlFGWixBdCZMQUFuY2ElZVY8M11tbyovOnVtZTs8N09sIW1fPW0oc1QxMl8mW0BgJjBCTFRFS149MycjLSo8amEyZVAuUE9YZEpnbixoMVYwYCIhTS06NkJWU1QpLnFGc3I/IkkzXC5ZaF9LZV1OPkZIT0I5WGluX0NiJWhgakxLUlU5dWc7bUolcEwqPUVQUG44Nl9eb0NwJ1pDWnA5RklxL0dmY0FpW3MiayFFPz5PKj5zPDNNOiZgY3IoVzpkMSguYERQODxzZmdhWFUkQU1wKGVZITtTRjFRZnFrIkpGOVgkQFFdRCpfO1dVdDZoYFlsbUxwPEdTbmtsPShSTihdR0c2NUBabj9CaEkkJ0NGbmRhdDtLaTkvXkcuV0BjXEU+U3BcYyU7anBgIXJDSFdtVDBMRkRGVEZCUkdPUUdGOEBbP0VYOSlAOD5EUVxQViYqKy46XVBmNFwqTVNfaHBIUyxhbkdqTEMuQi0tWEdcRW9hX2EuVTtqKj0kX1xNYUM6M2ZBcilPVkdOWVw8bzZxSzlwYi9hKXRTbF4zPyQqcW9ZdDtlNzAtT1QyNExiMUY9am4pVGsvcWovZGc6PVwyZC1gaztUPGE7MFxeb0tFKEZKcW1UP2lnR2pzLjAiUChiV2JvJCtiLmduY1xRbDRSOi9SQTMobVEzK2o/OyxIMmJVdSdHJCssZFpPLW1hazRWO2hYKSNGbFRWPUBIZ0AnI1RdYiQxP3ApUCRWQHAjU1xRYEduZXBNLmlzR0otOiJUNlopNFg+YTRXQzlwQ3VDczY1WVNUSy45bChrTTc9MDc0RV4iTUpEZD9VRTRRLiJNPj1ja1BKV2sjJXE0aipjazhBQixoKjsxVSdwZEcuYycuOiNJQWUtPUBDbThfOD1JNz9Rb2wzOydnLT5JNlFAMU9RVGc3PTlwcFAuWWk3NDpVXz5nNCVAUC1kdFI5cVc6XGtDQTpERShaYFpfR1dDTXFiaGdUMismXzAuaS0xVEtgNz9NT1coOSw0UkghSVFTUmlpSGhuJzAnQTwhRG5tNWdbNTRpT0VcIlUvayspUWJDbjchakAnVzclKWV1ZF5ESzg5WVpHIi5ONSprai5FKVs7RT1aI14hSiNwa2IxLTEmNitCZSFrTVM8Nzg5XDY2I0g4Ni0tVWZNYV8zJ0E3M0ZiP2NXXSM5byssVWYsJilPOVhXODdNLUMoImtiOX4+ZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgOQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwNjEgMDAwMDAgbiAKMDAwMDAwMDEwMiAwMDAwMCBuIAowMDAwMDAwMjA5IDAwMDAwIG4gCjAwMDAwMDAzMjEgMDAwMDAgbiAKMDAwMDAwMDUyNCAwMDAwMCBuIAowMDAwMDAwNTkyIDAwMDAwIG4gCjAwMDAwMDA4NzIgMDAwMDAgbiAKMDAwMDAwMDkzMSAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9JRCAKWzwzMDk4MjBjNDJlNzMyMTNiN2JmYjc2ZGRiNjYyZmI3OT48MzA5ODIwYzQyZTczMjEzYjdiZmI3NmRkYjY2MmZiNzk+XQolIFJlcG9ydExhYiBnZW5lcmF0ZWQgUERGIGRvY3VtZW50IC0tIGRpZ2VzdCAob3BlbnNvdXJjZSkKCi9JbmZvIDYgMCBSCi9Sb290IDUgMCBSCi9TaXplIDkKPj4Kc3RhcnR4cmVmCjIwMzkKJSVFT0YK",
-        "created_at": "2026-09-16T13:09:49.806Z"
+        "created_at": "2026-09-16T13:09:49.806Z",
+        "extracted_text": null
       },
       {
         "id": "doc-241e0f69-4c3d-4a26-9bc1-a35124080fd2",
@@ -1328,7 +1340,8 @@
         "byte_size": 169,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n04/07/2025,Waratah Office Supplies pens,-15.00\r\n06/07/2025,Blue Wren Broadband BPAY,-79.88",
-        "created_at": "2026-09-16T13:10:25.325Z"
+        "created_at": "2026-09-16T13:10:25.325Z",
+        "extracted_text": null
       },
       {
         "id": "doc-8e61d81f-9f07-457a-83cf-eefdd102c78f",
@@ -1338,7 +1351,8 @@
         "byte_size": 73,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n11/07/2025,Waratah Office Supplies toner,-110.00",
-        "created_at": "2026-09-16T13:10:25.396Z"
+        "created_at": "2026-09-16T13:10:25.396Z",
+        "extracted_text": null
       },
       {
         "id": "doc-d90ddeab-40a9-44d8-84bb-8fa918a0473d",
@@ -1348,7 +1362,8 @@
         "byte_size": 80,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n31/02/2025,Impossible date,-22.00\r\n,Missing date,-15.00",
-        "created_at": "2026-09-16T13:10:25.439Z"
+        "created_at": "2026-09-16T13:10:25.439Z",
+        "extracted_text": null
       },
       {
         "id": "doc-91b40449-6452-4b48-9b30-785e26835bc5",
@@ -1358,7 +1373,8 @@
         "byte_size": 149,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n07/07/2025,Trailing characters,12oops\r\n08/07/2025,Two decimal separators,1.2.3\r\n09/07/2025,Bad thousands grouping,\"1,2,3.00\"",
-        "created_at": "2026-09-16T13:10:25.534Z"
+        "created_at": "2026-09-16T13:10:25.534Z",
+        "extracted_text": null
       },
       {
         "id": "doc-0553a612-3f41-4c7c-8053-d0b30ccc1ab8",
@@ -1368,7 +1384,8 @@
         "byte_size": 131,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00",
-        "created_at": "2026-09-16T13:10:25.612Z"
+        "created_at": "2026-09-16T13:10:25.612Z",
+        "extracted_text": null
       },
       {
         "id": "doc-83aa9555-1164-4723-b5bb-0faf9ea2a18c",
@@ -1378,7 +1395,8 @@
         "byte_size": 121,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n07/08/2025,Australian date means 7 August,-12.00\r\n08/07/2025,Australian date means 8 July,-13.00",
-        "created_at": "2026-09-16T13:10:25.685Z"
+        "created_at": "2026-09-16T13:10:25.685Z",
+        "extracted_text": null
       },
       {
         "id": "doc-8c7eb681-c8a4-47a2-97a9-499e4c13b4d0",
@@ -1388,7 +1406,8 @@
         "byte_size": 46,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,=1+1,-1.00",
-        "created_at": "2026-09-16T13:10:25.698Z"
+        "created_at": "2026-09-16T13:10:25.698Z",
+        "extracted_text": null
       },
       {
         "id": "doc-d5a30025-736f-4b4a-9057-e913bd7a11cc",
@@ -1398,7 +1417,8 @@
         "byte_size": 63,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Fictional JPY purchase,-500",
-        "created_at": "2026-09-16T13:10:25.710Z"
+        "created_at": "2026-09-16T13:10:25.710Z",
+        "extracted_text": null
       },
       {
         "id": "doc-424deb43-6c0b-48b8-9bbe-18ff7011aa83",
@@ -1408,7 +1428,8 @@
         "byte_size": 125,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n04/07/2025,Waratah Office Supplies pens,-15.00",
-        "created_at": "2026-09-16T13:10:25.723Z"
+        "created_at": "2026-09-16T13:10:25.723Z",
+        "extracted_text": null
       },
       {
         "id": "doc-0252ed10-676b-4cda-8f69-e0b7a5dea5ea",
@@ -1418,7 +1439,8 @@
         "byte_size": 75,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n11/07/2025,Waratah Office Supplies toner,-110.00\r\n",
-        "created_at": "2026-09-16T13:11:20.881Z"
+        "created_at": "2026-09-16T13:11:20.881Z",
+        "extracted_text": null
       },
       {
         "id": "doc-3f155da0-bddc-4211-a3c2-d1db98ba8611",
@@ -1428,7 +1450,8 @@
         "byte_size": 82,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n31/02/2025,Impossible date,-22.00\r\n,Missing date,-15.00\r\n",
-        "created_at": "2026-09-16T13:11:20.911Z"
+        "created_at": "2026-09-16T13:11:20.911Z",
+        "extracted_text": null
       },
       {
         "id": "doc-7f42a0f9-f7dc-4e05-861c-62fe8bd45780",
@@ -1438,7 +1461,8 @@
         "byte_size": 151,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n07/07/2025,Trailing characters,12oops\r\n08/07/2025,Two decimal separators,1.2.3\r\n09/07/2025,Bad thousands grouping,\"1,2,3.00\"\r\n",
-        "created_at": "2026-09-16T13:11:21.006Z"
+        "created_at": "2026-09-16T13:11:21.006Z",
+        "extracted_text": null
       },
       {
         "id": "doc-e0c80f10-a848-49a5-8300-b078cd7dc0d7",
@@ -1448,7 +1472,8 @@
         "byte_size": 133,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n",
-        "created_at": "2026-09-16T13:11:21.091Z"
+        "created_at": "2026-09-16T13:11:21.091Z",
+        "extracted_text": null
       },
       {
         "id": "doc-a3f5cb0b-7cdf-4d58-9e1f-5b2ebb01cd88",
@@ -1458,7 +1483,8 @@
         "byte_size": 123,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n07/08/2025,Australian date means 7 August,-12.00\r\n08/07/2025,Australian date means 8 July,-13.00\r\n",
-        "created_at": "2026-09-16T13:11:21.162Z"
+        "created_at": "2026-09-16T13:11:21.162Z",
+        "extracted_text": null
       },
       {
         "id": "doc-7d25a23d-e7a1-4d92-9814-84b016153072",
@@ -1468,7 +1494,8 @@
         "byte_size": 48,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,=1+1,-1.00\r\n",
-        "created_at": "2026-09-16T13:11:21.175Z"
+        "created_at": "2026-09-16T13:11:21.175Z",
+        "extracted_text": null
       },
       {
         "id": "doc-4ff32fa7-8eb2-4dc2-89aa-d0b84cfc4330",
@@ -1478,7 +1505,8 @@
         "byte_size": 65,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Fictional JPY purchase,-500\r\n",
-        "created_at": "2026-09-16T13:11:21.189Z"
+        "created_at": "2026-09-16T13:11:21.189Z",
+        "extracted_text": null
       },
       {
         "id": "doc-c3d18c08-3b1f-4ad7-a8bb-022892c30117",
@@ -1488,7 +1516,8 @@
         "byte_size": 127,
         "storage_path": null,
         "raw_content": "Date,Description,Amount\r\n03/07/2025,Waratah Office Supplies paper ream,-22.00\r\n04/07/2025,Waratah Office Supplies pens,-15.00\r\n",
-        "created_at": "2026-09-16T13:11:21.203Z"
+        "created_at": "2026-09-16T13:11:21.203Z",
+        "extracted_text": null
       }
     ],
     "csv_mappings": [
