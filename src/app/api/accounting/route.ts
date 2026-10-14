@@ -57,6 +57,17 @@ import {
     listTransactions,
     countTransactions
 } from '@/lib/domain/accounting/transactionService';
+import {
+    processPersonallyPaidBusinessExpense,
+    matchReimbursement,
+    getCandidateReimbursementTransactions,
+    ProcessPersonallyPaidExpenseInput,
+    MatchReimbursementInput,
+    undoPersonallyPaidBusinessExpense,
+    UndoPersonallyPaidExpenseInput,
+    undoReimbursementMatch,
+    UndoReimbursementMatchInput
+} from '@/features/reimbursement/reimbursementService';
 import { saveDraft, getDrafts, deleteDraft } from '@/lib/domain/accounting/draftService';
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ScopeType, formatMoney, Account } from '@/lib/domain/accounting/types';
@@ -113,6 +124,123 @@ export async function GET(request: Request) {
         if (view === 'drafts') {
             const drafts = getDrafts(db, entityId && entityId !== 'all' ? { entity_id: entityId } : undefined);
             return NextResponse.json({ success: true, drafts });
+        }
+
+        if (view === 'reimbursements') {
+            let workflows;
+            if (entityId && entityId !== 'all') {
+                workflows = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE personal_entity_id = ? OR business_entity_id = ? ORDER BY created_at DESC').all(entityId, entityId) as any[];
+            } else {
+                workflows = db.prepare('SELECT * FROM m1_reimbursement_workflows ORDER BY created_at DESC').all() as any[];
+            }
+            return secureJson({ success: true, workflows });
+        }
+
+        if (view === 'reimbursement_candidates') {
+            const workflowId = url.searchParams.get('workflow_id');
+            const leg = url.searchParams.get('leg') as 'personal' | 'business';
+            if (!workflowId || (leg !== 'personal' && leg !== 'business')) {
+                return secureJson({ error: 'Missing workflow_id or invalid leg' }, { status: 400 });
+            }
+
+            try {
+                const candidates = getCandidateReimbursementTransactions(db, workflowId, leg);
+                return secureJson({ success: true, candidates });
+            } catch (err: any) {
+                return secureJson({ error: err.message || 'Failed to fetch candidate transactions' }, { status: 404 });
+            }
+        }
+
+
+
+        if (view === 'reimbursement_undo_preview') {
+            const workflowId = url.searchParams.get('workflow_id');
+            if (!workflowId) return secureJson({ error: 'Missing workflow_id' }, { status: 400 });
+            
+            const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(workflowId) as any;
+            if (!wf) return secureJson({ error: 'Workflow not found' }, { status: 404 });
+            
+            // "Find the correction associated with this workflow's business reclassification and use its immediately preceding expense category."
+            const corrections = db.prepare('SELECT * FROM m1_transaction_corrections WHERE transaction_id = ? ORDER BY timestamp DESC').all(wf.personal_transaction_id) as any[];
+            const reclassCorrection = corrections.find(c => c.reason === 'Reclassified as personally paid business expense');
+            
+            let originalCategoryAccountId = null;
+            if (reclassCorrection) {
+                const snapshot = JSON.parse(reclassCorrection.previous_state);
+                const postings = snapshot.postings || [];
+                // It was an expense, so we look for the debit leg that is an expense account
+                const debitPosting = postings.find((p: any) => p.amount_cents > 0);
+                if (debitPosting) {
+                    const acc = db.prepare('SELECT type, entity_id, currency FROM m1_accounts WHERE id = ?').get(debitPosting.account_id) as any;
+                    // Validate it's still a valid personal expense account with matching currency
+                    if (acc && acc.type === 'expense' && acc.entity_id === wf.personal_entity_id && acc.currency === wf.currency) {
+                        originalCategoryAccountId = debitPosting.account_id;
+                    }
+                }
+            }
+            
+            const persTx = db.prepare('SELECT date, description, revision FROM m1_transactions WHERE id = ?').get(wf.personal_transaction_id) as any;
+            const busTx = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+            
+            return secureJson({ 
+                success: true, 
+                original_category_account_id: originalCategoryAccountId,
+                purchase_date: persTx?.date,
+                purchase_description: persTx?.description,
+                expected_personal_revision: persTx?.revision,
+                expected_business_revision: busTx?.revision
+            });
+        }
+
+        if (view === 'reimbursement_undo_match_preview') {
+            const workflowId = url.searchParams.get('workflow_id');
+            if (!workflowId) return secureJson({ error: 'Missing workflow_id' }, { status: 400 });
+            
+            const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(workflowId) as any;
+            if (!wf) return secureJson({ error: 'Workflow not found' }, { status: 404 });
+            
+            const persTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(wf.personal_reimbursement_tx_id) as any;
+            const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(wf.business_reimbursement_tx_id) as any;
+            
+            const isPersonalManual = persTx?.idempotency_key === `reimb-match-pers-${wf.id}`;
+            const isBusinessManual = busTx?.idempotency_key === `reimb-match-bus-${wf.id}`;
+
+            const getOriginalTreatment = (tx: any) => {
+                if (!tx) return null;
+                const correction = db.prepare('SELECT previous_state FROM m1_transaction_corrections WHERE transaction_id = ? AND reason = ? ORDER BY timestamp DESC LIMIT 1').get(tx.id, 'Matched to reimbursement workflow') as any;
+                if (correction) {
+                    const snapshot = JSON.parse(correction.previous_state);
+                    return snapshot.postings || [];
+                }
+                return null;
+            };
+
+            const getBankLegAccount = (tx: any, clearingAccId: string) => {
+                if (!tx) return null;
+                const postings = db.prepare('SELECT account_id FROM m1_journal_entries WHERE transaction_id = ?').all(tx.id) as any[];
+                const bankLeg = postings.find(p => p.account_id !== clearingAccId);
+                return bankLeg ? bankLeg.account_id : null;
+            };
+
+            return secureJson({ 
+                success: true, 
+                is_personal_manual: isPersonalManual,
+                is_business_manual: isBusinessManual,
+                personal_amount: wf.amount_cents,
+                business_amount: wf.amount_cents,
+                expected_personal_revision: persTx?.revision,
+                expected_business_revision: busTx?.revision,
+                expected_personal_tx_id: persTx?.id,
+                expected_business_tx_id: busTx?.id,
+                personal_date: persTx?.date,
+                business_date: busTx?.date,
+                personal_description: persTx?.description,
+                business_description: busTx?.description,
+                personal_original_postings: !isPersonalManual ? getOriginalTreatment(persTx) : null,
+                business_original_postings: !isBusinessManual ? getOriginalTreatment(busTx) : null,
+                personal_bank_account_id: isPersonalManual ? getBankLegAccount(persTx, wf.due_from_account_id) : null,
+                business_bank_account_id: isBusinessManual ? getBankLegAccount(busTx, wf.due_to_account_id) : null
+            });
         }
 
         // Slice 1D: View-specific queries
@@ -415,6 +543,11 @@ export async function POST(request: Request) {
         if (action === 'correct_transaction') {
             const { correction } = body;
             if (!correction) return secureJson({ error: 'Missing correction payload' }, { status: 400 });
+            
+            if ('is_internal_reimbursement_operation' in correction) {
+                delete correction.is_internal_reimbursement_operation;
+            }
+
             const result = correctTransaction(db, correction);
             return secureJson({ success: true, correction: result });
         }
@@ -472,6 +605,50 @@ export async function POST(request: Request) {
             if (!id) return secureJson({ error: 'Missing draft id' }, { status: 400 });
             deleteDraft(db, id);
             return secureJson({ success: true, deleted_id: id });
+        }
+
+        if (action === 'process_personally_paid_expense') {
+            const { payload } = body;
+            if (!payload) return secureJson({ error: 'Missing payload' }, { status: 400 });
+            try {
+                const wf = processPersonallyPaidBusinessExpense(db, payload as ProcessPersonallyPaidExpenseInput);
+                return secureJson({ success: true, workflow: wf }, { status: 201 });
+            } catch (err: any) {
+                return secureJson({ error: err.message }, { status: 400 });
+            }
+        }
+
+        if (action === 'undo_personally_paid_expense') {
+            const { payload } = body;
+            if (!payload) return secureJson({ error: 'Missing payload' }, { status: 400 });
+            try {
+                const wf = undoPersonallyPaidBusinessExpense(db, payload as UndoPersonallyPaidExpenseInput);
+                return secureJson({ success: true, workflow: wf }, { status: 200 });
+            } catch (err: any) {
+                return secureJson({ error: err.message }, { status: 400 });
+            }
+        }
+
+        if (action === 'match_reimbursement') {
+            const { payload } = body;
+            if (!payload) return secureJson({ error: 'Missing payload' }, { status: 400 });
+            try {
+                const wf = matchReimbursement(db, payload as MatchReimbursementInput);
+                return secureJson({ success: true, workflow: wf }, { status: 201 });
+            } catch (err: any) {
+                return secureJson({ error: err.message }, { status: 400 });
+            }
+        }
+
+        if (action === 'undo_reimbursement_match') {
+            const { payload } = body;
+            if (!payload) return secureJson({ error: 'Missing payload' }, { status: 400 });
+            try {
+                const wf = undoReimbursementMatch(db, payload as UndoReimbursementMatchInput);
+                return secureJson({ success: true, workflow: wf }, { status: 200 });
+            } catch (err: any) {
+                return secureJson({ error: err.message }, { status: 400 });
+            }
         }
 
         return secureJson({ error: `Unsupported action: ${action}` }, { status: 400 });

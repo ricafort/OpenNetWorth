@@ -143,6 +143,7 @@ export interface CorrectTransactionInput {
     operation: 'void' | 'edit';
     reason: string;
     performed_by: string;
+    is_internal_reimbursement_operation?: boolean;
     new_data?: {
         description?: string;
         payee_or_payer?: string | null;
@@ -1521,6 +1522,18 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
         throw new ConflictError(
             `Transaction correction conflict: expected revision ${input.expected_revision}, but database is at revision ${tx.revision}.`
         );
+    }
+
+    if (!input.is_internal_reimbursement_operation) {
+        const activeWorkflow = db.prepare(`
+            SELECT id FROM m1_reimbursement_workflows 
+            WHERE (personal_transaction_id = ? OR business_transaction_id = ? OR personal_reimbursement_tx_id = ? OR business_reimbursement_tx_id = ?)
+            AND status != 'void'
+        `).get(input.transaction_id, input.transaction_id, input.transaction_id, input.transaction_id);
+
+        if (activeWorkflow) {
+            throw new ValidationError('Ordinary edits or voids cannot be applied to transactions linked to an active reimbursement workflow. Please use the workflow correction mechanisms instead.');
+        }
     }
 
     const previousPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(input.transaction_id) as any[];

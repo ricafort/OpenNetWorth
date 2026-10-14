@@ -34,7 +34,7 @@ import {
     multiplyMoneyRatio,
     CURRENCY_DECIMALS
 } from './types';
-import { listAccounts, getEntity } from './accountService';
+import { listAccounts, getEntity, listEntities } from './accountService';
 import { getAccountBalance } from './balanceService';
 import { getLatestValuationObservation, getReconciliationComparison, getLatestObservation } from './balanceObservationService';
 import { getLocalTodayCalendarDate } from '../calendarDate';
@@ -60,15 +60,19 @@ export function getSharedFinancialSummary(
     const coverageNotes: string[] = [];
     const accountsIncluded: SharedFinancialSummaryAccount[] = [];
     // Why this exists:
-    // Tracks accounts that track balances but lack an accepted observation on or before asOfDate.
+    // Tracks accounts that track balances but lack an accepted observation on or before asOfDate,
+    // or accounts tracking transactions that have no established opening basis or observation.
     // Allows dashboard widgets, assets, and liabilities views to qualify incomplete headline totals honestly
     // without assuming zero balances or commingling assets with debts.
     const unrecordedAccounts: Array<{
         id: string;
         name: string;
         currency: CurrencyCode;
+        entity_id?: string;
+        entity_name?: string;
         account_type?: import('./types').AccountType;
         account_sub_type?: import('./types').AccountSubType;
+        reason?: string;
     }> = [];
 
     const totalAssetsCentsByCurrency: Record<CurrencyCode, number> = {};
@@ -80,9 +84,13 @@ export function getSharedFinancialSummary(
         map[curr] = (map[curr] || 0) + amount;
     };
 
-    // 1. Fetch eligible accounts
-    // When scoped to an entity, we query all accounts and check direct ownership or m1_account_ownership allocations
+    // 1. Fetch eligible accounts and entity dictionary for owner disambiguation
     const allAccounts = listAccounts(db);
+    const entities = listEntities(db);
+    const entityMap = new Map<string, string>();
+    for (const e of entities) {
+        entityMap.set(e.id, e.name);
+    }
 
     // Also fetch ownership mappings for the scope entity if applicable
     const ownershipMap = new Map<string, number>();
@@ -95,6 +103,18 @@ export function getSharedFinancialSummary(
         for (const o of ownerships) {
             ownershipMap.set(o.account_id, o.share_percentage);
         }
+    }
+
+    // Collect clearing account IDs (inter-entity receivables/payables) which start at zero
+    const clearingAccountIds = new Set<string>();
+    try {
+        const clearingRows = db.prepare(`SELECT due_from_account_id, due_to_account_id FROM m1_reimbursement_workflows`).all() as any[];
+        for (const r of clearingRows) {
+            if (r.due_from_account_id) clearingAccountIds.add(r.due_from_account_id);
+            if (r.due_to_account_id) clearingAccountIds.add(r.due_to_account_id);
+        }
+    } catch {
+        // Workflow table may not exist in minimal test fixtures
     }
 
     for (const account of allAccounts) {
@@ -129,6 +149,10 @@ export function getSharedFinancialSummary(
         let balanceKind = undefined;
         let reconciliation = undefined;
 
+        let sourceType: 'manual' | 'table_paste' | 'document' | 'api' | undefined = undefined;
+        let documentId: string | null | undefined = undefined;
+        let observationDate: string | null = null;
+
         if (trackingMode === 'balance') {
             // Mode A: Track Balances via dated observations
             basis = 'observation';
@@ -140,8 +164,11 @@ export function getSharedFinancialSummary(
                     id: account.id,
                     name: account.name,
                     currency: account.currency,
+                    entity_id: account.entity_id,
+                    entity_name: entityMap.get(account.entity_id) || 'Household',
                     account_type: account.type,
-                    account_sub_type: account.sub_type
+                    account_sub_type: account.sub_type,
+                    reason: 'missing_observation'
                 });
                 coverageNotes.push(`Account "${account.name}" (${account.currency}) tracks balances but has no accepted valuation observation on or before ${asOfDate}.`);
                 continue;
@@ -150,6 +177,9 @@ export function getSharedFinancialSummary(
             accountAmountCents = observation.amount_cents;
             balanceKind = observation.balance_kind;
             effectiveDate = observation.effective_date;
+            observationDate = observation.effective_date;
+            sourceType = observation.source_type;
+            documentId = observation.document_id;
 
             // Mark stale if older than 45 days
             const obsTime = new Date(observation.effective_date).getTime();
@@ -159,15 +189,118 @@ export function getSharedFinancialSummary(
             }
         } else {
             // Mode B: Track Transactions via double-entry ledger calculation
-            basis = 'ledger';
-            const ledgerBalance = getAccountBalance(db, account.id, asOfDate);
-            accountAmountCents = ledgerBalance.balance_cents;
-            effectiveDate = asOfDate;
+            // Why this exists:
+            // Distinguishes recorded transaction movement from a supported account balance.
+            // An account with no opening balance basis and no accepted balance observation has an unknown
+            // starting position. Merely aggregating subsequent transactions cannot establish an authoritative
+            // account balance.
+            // Tricky logic:
+            // 1. Explicit zero (opening_balance_cents === 0) or clearing accounts start at known $0.00.
+            // 2. Unknown opening (opening_balance_cents === null) + no transactions MUST remain unknown.
+            // 3. Opening history is never inferred from arbitrary transaction descriptions.
+            // 4. A statement observation anchors the balance at its effective date; subsequent transactions
+            //    add to that anchor. The summary must NEVER return an unanchored transaction sum.
+            // 5. Future observations (> asOfDate) and non-valuation kinds (e.g. available_balance) CANNOT
+            //    establish an earlier ledger starting basis.
+            // 6. Observation dates are preserved separately from calculation dates.
+            // TODO: In Milestone 2, provide one-click prompt on unrecorded accounts to record initial statement.
+            const isClearingAccount = clearingAccountIds.has(account.id);
+            const hasExplicitOpeningBasis = isClearingAccount || (account.opening_balance_cents !== null && account.opening_balance_cents !== undefined);
+            
+            let hasOpeningTx = false;
+            if (!hasExplicitOpeningBasis) {
+                const txRows = db.prepare(`
+                    SELECT t.origin,
+                           EXISTS (
+                               SELECT 1 FROM m1_journal_entries je2
+                               JOIN m1_accounts a2 ON je2.account_id = a2.id
+                               WHERE je2.transaction_id = t.id AND a2.type = 'equity'
+                           ) as has_equity
+                    FROM m1_journal_entries je
+                    JOIN m1_transactions t ON je.transaction_id = t.id
+                    WHERE je.account_id = ? AND t.status = 'posted'
+                `).all(account.id) as Array<{ origin: string; has_equity: number }>;
 
-            // Check if there is a recent observation to provide reconciliation comparison
-            const latestObs = getLatestObservation(db, account.id);
-            if (latestObs) {
-                reconciliation = getReconciliationComparison(db, account.id, latestObs);
+                // Do not infer opening history from transaction descriptions; only explicit origin or equity
+                hasOpeningTx = txRows.some(r =>
+                    r.origin === 'opening_balance' ||
+                    Boolean(r.has_equity)
+                );
+            }
+
+            const hasEstablishedLedgerBasis = hasExplicitOpeningBasis || hasOpeningTx;
+
+            if (hasEstablishedLedgerBasis) {
+                basis = 'ledger';
+                const ledgerBalance = getAccountBalance(db, account.id, asOfDate);
+                accountAmountCents = ledgerBalance.balance_cents;
+                effectiveDate = asOfDate;
+
+                // Check for accepted valuation observation on or before asOfDate for reconciliation
+                const latestObs = getLatestValuationObservation(db, account.id, asOfDate);
+                if (latestObs) {
+                    reconciliation = getReconciliationComparison(db, account.id, latestObs);
+                    sourceType = latestObs.source_type;
+                    documentId = latestObs.document_id;
+                    observationDate = latestObs.effective_date;
+                    const obsTime = new Date(latestObs.effective_date).getTime();
+                    const asOfTime = new Date(asOfDate).getTime();
+                    if ((asOfTime - obsTime) > (45 * 24 * 60 * 60 * 1000)) {
+                        isStale = true;
+                    }
+                }
+            } else {
+                // No ledger opening basis: check if an accepted valuation/statement observation on or before asOfDate anchors it
+                const latestValuationObs = getLatestValuationObservation(db, account.id, asOfDate);
+
+                if (!latestValuationObs) {
+                    // Unknown opening + no observation on or before asOfDate => unrecorded (unknown)
+                    unrecordedAccounts.push({
+                        id: account.id,
+                        name: account.name,
+                        currency: account.currency,
+                        entity_id: account.entity_id,
+                        entity_name: entityMap.get(account.entity_id) || 'Household',
+                        account_type: account.type,
+                        account_sub_type: account.sub_type,
+                        reason: 'missing_opening_balance'
+                    });
+                    coverageNotes.push(`Account "${account.name}" (${account.currency}) tracks transactions but has no opening balance or statement observation on or before ${asOfDate}. Starting balance needed.`);
+                    continue;
+                }
+
+                // Sourced from statement observation: anchor at observation date and add subsequent postings up to asOfDate
+                const obsDate = latestValuationObs.effective_date;
+                const obsCents = latestValuationObs.amount_cents;
+                sourceType = latestValuationObs.source_type;
+                documentId = latestValuationObs.document_id;
+                balanceKind = latestValuationObs.balance_kind;
+                observationDate = obsDate;
+
+                const obsTime = new Date(obsDate).getTime();
+                const asOfTime = new Date(asOfDate).getTime();
+                if ((asOfTime - obsTime) > (45 * 24 * 60 * 60 * 1000)) {
+                    isStale = true;
+                }
+
+                const subsequentRows = db.prepare(`
+                    SELECT j.amount_cents
+                    FROM m1_journal_entries j
+                    JOIN m1_transactions t ON j.transaction_id = t.id
+                    WHERE j.account_id = ? AND t.date > ? AND t.date <= ? AND t.status = 'posted'
+                    ORDER BY t.date ASC
+                `).all(account.id, obsDate, asOfDate) as Array<{ amount_cents: number }>;
+
+                let subsequentNet = 0;
+                for (const r of subsequentRows) {
+                    subsequentNet += r.amount_cents;
+                }
+                const isDebitNormal = account.type === 'asset';
+                const subsequentChange = isDebitNormal ? subsequentNet : -subsequentNet;
+
+                accountAmountCents = obsCents + subsequentChange;
+                basis = subsequentRows.length > 0 ? 'ledger' : 'observation';
+                effectiveDate = asOfDate;
             }
         }
 
@@ -178,6 +311,7 @@ export function getSharedFinancialSummary(
             account_id: account.id,
             account_name: account.name,
             entity_id: account.entity_id,
+            entity_name: entityMap.get(account.entity_id) || 'Household',
             account_type: account.type,
             account_sub_type: account.sub_type,
             tracking_mode: trackingMode,
@@ -186,8 +320,12 @@ export function getSharedFinancialSummary(
             amount_cents: weightedAmountCents,
             currency: account.currency,
             effective_date: effectiveDate,
+            observation_date: observationDate,
+            as_of_date: asOfDate,
             is_stale: isStale,
-            reconciliation
+            reconciliation,
+            source_type: sourceType,
+            document_id: documentId
         });
 
         // Add to currency-specific totals
@@ -215,6 +353,7 @@ export function getSharedFinancialSummary(
             JOIN m1_transactions pt ON w.personal_transaction_id = pt.id
             LEFT JOIN m1_transactions prt ON w.personal_reimbursement_tx_id = prt.id
             LEFT JOIN m1_transactions brt ON w.business_reimbursement_tx_id = brt.id
+            WHERE w.status != 'cancelled'
         `).all() as any[];
 
         for (const wf of workflows) {

@@ -28,7 +28,8 @@ import {
     ArrowRight,
     RefreshCw,
     ShieldCheck,
-    Bookmark
+    Bookmark,
+    AlertCircle
 } from 'lucide-react';
 import { CsvImportModal } from './CsvImportModal';
 import { PdfImportModal } from './PdfImportModal';
@@ -73,22 +74,38 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
     const accountId = searchParams.get('accountId') || searchParams.get('account_id') || undefined;
 
     // Fetch documents, accounts, and entities
+    // Why this exists:
+    // Loads persisted document inbox items and account metadata from backend APIs.
+    // Tricky logic:
+    // Explicitly checks HTTP status (res.ok) and response payload validity (resData.success).
+    // An HTTP 500 error or network failure must NEVER be conflated with "No documents yet".
+    // Existing documents in memory are preserved on transient refresh failure so user does not lose view context.
+    // TODO: In Milestone 2, add websocket/polling auto-refresh for background OCR processing.
     const loadData = async () => {
         setIsLoading(true);
         setError(null);
         try {
             // 1. Fetch documents
             const docRes = await fetch('/api/documents');
+            if (!docRes.ok) {
+                throw new Error(`Failed to load documents (HTTP ${docRes.status}: ${docRes.statusText || 'Server Error'})`);
+            }
             const docData = await docRes.json();
-            if (docData.success && Array.isArray(docData.documents)) {
+            if (!docData.success) {
+                throw new Error(docData.error || 'Failed to load documents');
+            }
+            if (Array.isArray(docData.documents)) {
                 setDocuments(docData.documents);
             }
 
             // 2. Fetch accounts from accounting API
             const accRes = await fetch('/api/accounting?view=overview');
+            if (!accRes.ok) {
+                throw new Error(`Failed to load accounts (HTTP ${accRes.status}: ${accRes.statusText || 'Server Error'})`);
+            }
             const accData = await accRes.json();
-            if (accData.success) {
-                if (Array.isArray(accData.accounts)) setAccounts(accData.accounts);
+            if (accData.success && Array.isArray(accData.accounts)) {
+                setAccounts(accData.accounts);
             }
         } catch (err: any) {
             setError(err.message || 'Failed to load inbox documents.');
@@ -264,9 +281,45 @@ export const DocumentInboxView: React.FC<DocumentInboxViewProps> = ({ entities, 
                     </button>
                 </div>
 
+                {error && documents.length > 0 && (
+                    <div className="p-4 bg-red-50 dark:bg-red-950/40 border-b border-red-200 dark:border-red-900/60 flex items-center justify-between gap-3 text-xs text-red-700 dark:text-red-400">
+                        <div className="flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                            <span>{error}</span>
+                        </div>
+                        <button
+                            onClick={loadData}
+                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold text-xs transition cursor-pointer"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+
                 {isLoading ? (
                     <div className="p-12 text-center text-xs text-slate-400">
                         Loading documents...
+                    </div>
+                ) : error && documents.length === 0 ? (
+                    <div className="p-16 text-center space-y-4">
+                        <div className="mx-auto w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/50 flex items-center justify-center text-red-500">
+                            <AlertCircle className="w-6 h-6" />
+                        </div>
+                        <div className="max-w-sm mx-auto">
+                            <h4 className="text-sm font-bold text-red-600 dark:text-red-400">
+                                Failed to load documents
+                            </h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                {error}
+                            </p>
+                        </div>
+                        <button
+                            onClick={loadData}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                            <span>Retry</span>
+                        </button>
                     </div>
                 ) : documents.length === 0 ? (
                     <div className="p-16 text-center space-y-4">

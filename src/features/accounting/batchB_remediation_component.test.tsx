@@ -592,7 +592,9 @@ describe('Batch B Remediation - Component and Domain Verification', () => {
                 type: 'asset',
                 sub_type: 'checking',
                 currency: 'AUD',
-                tracking_mode: 'transactions'
+                tracking_mode: 'transactions',
+                opening_balance_cents: 0,
+                opening_date: '2026-09-01'
             });
             // Why this code exists:
             // Record income for CBA Everyday transaction-tracked account. Currency is derived from account.
@@ -800,7 +802,9 @@ describe('Batch B Remediation - Component and Domain Verification', () => {
                 type: 'asset',
                 sub_type: 'checking',
                 currency: 'AUD',
-                tracking_mode: 'transactions'
+                tracking_mode: 'transactions',
+                opening_balance_cents: 0,
+                opening_date: '2026-09-01'
             });
             // Why this code exists:
             // Record income for CBA Active transaction-tracked account. Currency is derived from account.

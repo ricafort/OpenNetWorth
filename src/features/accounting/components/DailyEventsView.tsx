@@ -32,6 +32,7 @@ import {
     Building2,
     Calendar,
     Tag,
+    AlertCircle,
     AlertTriangle,
     CheckCircle2,
     RefreshCw,
@@ -86,6 +87,7 @@ interface TransactionItem {
     origin: string;
     revision: number;
     created_at: string;
+    evidence_refs?: any[] | null;
     postings: TransactionPosting[];
 }
 
@@ -156,7 +158,7 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
     type AccountCreationEligibleType = 'checking' | 'savings' | 'credit_card' | 'loan';
 
     const [activeTab, setActiveTab] = useState<TransactionType>('expense');
-    const [modalView, setModalView] = useState<'transaction' | 'create_account'>('transaction');
+    const [modalView, setModalView] = useState<'transaction' | 'create_account' | 'reimbursement_preview'>('transaction');
     const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
     const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
@@ -190,6 +192,9 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
     const [draftSourceDocumentId, setDraftSourceDocumentId] = useState<string | null>(null);
     const [draftSourceTransactionId, setDraftSourceTransactionId] = useState<string | null>(null);
     const [draftExpectReimbursement, setDraftExpectReimbursement] = useState<'yes' | 'no' | 'not_sure'>('not_sure');
+    const [reimbursementWorkflows, setReimbursementWorkflows] = useState<any[]>([]);
+    const [reimbursementsLoading, setReimbursementsLoading] = useState(false);
+    const [reimbursementsError, setReimbursementsError] = useState<string | null>(null);
 
     // Stable idempotency key across submission retries (M1-SAFE-05)
     const [submissionIdempotencyKey, setSubmissionIdempotencyKey] = useState<string>(() => crypto.randomUUID());
@@ -198,6 +203,40 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
     const [voidTargetTx, setVoidTargetTx] = useState<TransactionItem | null>(null);
     const [voidReason, setVoidReason] = useState('');
     const [voidActor, setVoidActor] = useState('User');
+
+    // Reimbursement matching state
+    const [matchingReimbursementId, setMatchingReimbursementId] = useState<string | null>(null);
+    const [reimbCandidatesPersonal, setReimbCandidatesPersonal] = useState<any[]>([]);
+    const [reimbCandidatesBusiness, setReimbCandidatesBusiness] = useState<any[]>([]);
+    const [selectedReimbPersonal, setSelectedReimbPersonal] = useState<string | 'missing' | null>(null);
+    const [selectedReimbBusiness, setSelectedReimbBusiness] = useState<string | 'missing' | null>(null);
+    const [reimbCandidatesLoadingPersonal, setReimbCandidatesLoadingPersonal] = useState(false);
+    const [reimbCandidatesLoadingBusiness, setReimbCandidatesLoadingBusiness] = useState(false);
+    const [reimbCandidatesErrorPersonal, setReimbCandidatesErrorPersonal] = useState<string | null>(null);
+    const [reimbCandidatesErrorBusiness, setReimbCandidatesErrorBusiness] = useState<string | null>(null);
+    const reimbCandidatesSeqRef = useRef<{ personal: number; business: number }>({ personal: 0, business: 0 });
+    // Explicit account and date review for missing movements (Requirement 1 & 2)
+    const [missingPersonalAccountId, setMissingPersonalAccountId] = useState<string>('');
+    const [missingPersonalDate, setMissingPersonalDate] = useState<string>('');
+    const [missingBusinessAccountId, setMissingBusinessAccountId] = useState<string>('');
+    const [missingBusinessDate, setMissingBusinessDate] = useState<string>('');
+
+    // Undo Business Classification state
+    const [undoViewActive, setUndoViewActive] = useState<boolean>(false);
+    const [undoOriginalCategory, setUndoOriginalCategory] = useState<string | null>(null);
+    const [undoSelectedCategory, setUndoSelectedCategory] = useState<string>('');
+    const [undoLoadingPreview, setUndoLoadingPreview] = useState<boolean>(false);
+    const [undoPurchaseDate, setUndoPurchaseDate] = useState<string>('');
+    const [undoPurchaseDesc, setUndoPurchaseDesc] = useState<string>('');
+    const [undoExpectedPersRevision, setUndoExpectedPersRevision] = useState<number | undefined>(undefined);
+    const [undoExpectedBusRevision, setUndoExpectedBusRevision] = useState<number | undefined>(undefined);
+
+    // Undo Reimbursement Match state
+    const [undoMatchViewActive, setUndoMatchViewActive] = useState<boolean>(false);
+    const [undoMatchPreview, setUndoMatchPreview] = useState<any>(null);
+    const [undoMatchLoading, setUndoMatchLoading] = useState<boolean>(false);
+    const [undoMatchNewPersonalAccount, setUndoMatchNewPersonalAccount] = useState<string>('');
+    const [undoMatchNewBusinessAccount, setUndoMatchNewBusinessAccount] = useState<string>('');
 
     // React to URL changes (props update)
     useEffect(() => {
@@ -240,6 +279,8 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             setIsRecordModalOpen(false);
             setEditingDraftId(null);
             setIsPersonallyPaidBusiness(false);
+            setDraftSourceTransactionId(null);
+            setDraftSourceDocumentId(null);
         }
     }, [modalView]);
 
@@ -268,6 +309,191 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             console.error('Failed to load drafts:', e);
         }
     };
+
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const reimbFetchSeqRef = useRef<number>(0);
+
+    /**
+     * Fetches reimbursement workflows scoped to the active entity.
+     * 
+     * Why this exists:
+     * Maintains real-time visibility into inter-entity reimbursements awaiting settlement.
+     * 
+     * Tricky logic:
+     * - Uses a sequence counter `reimbFetchSeqRef` alongside `AbortController` to guarantee
+     *   that slow or delayed responses from a previously selected entity can never overwrite
+     *   the currently active entity's state (Requirement 4).
+     * - Distinct loading, error, and empty states are strictly preserved.
+     */
+    const fetchReimbursementWorkflows = useCallback(async (targetEntityId?: string) => {
+        const entityToFetch = targetEntityId !== undefined ? targetEntityId : selectedEntityId;
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        const seq = ++reimbFetchSeqRef.current;
+
+        setReimbursementsLoading(true);
+        setReimbursementsError(null);
+        try {
+            const query = new URLSearchParams({ view: 'reimbursements' });
+            if (entityToFetch !== 'all') {
+                query.set('entity_id', entityToFetch);
+            }
+            const res = await fetch(`/api/accounting?${query.toString()}`, { signal: controller.signal });
+            if (seq !== reimbFetchSeqRef.current || controller.signal.aborted) {
+                return;
+            }
+            if (res.ok) {
+                const data = await res.json();
+                if (data.workflows) {
+                    setReimbursementWorkflows(data.workflows);
+                }
+            } else {
+                setReimbursementsError('Failed to load reimbursement workflows');
+            }
+        } catch (e: any) {
+            if (e.name === 'AbortError' || seq !== reimbFetchSeqRef.current) return;
+            console.error('Failed to load reimbursement workflows:', e);
+            setReimbursementsError(e.message || 'Error connecting to server');
+        } finally {
+            if (seq === reimbFetchSeqRef.current && !controller.signal.aborted) {
+                setReimbursementsLoading(false);
+            }
+        }
+    }, [selectedEntityId]);
+
+    useEffect(() => {
+        fetchReimbursementWorkflows(selectedEntityId);
+    }, [selectedEntityId, fetchReimbursementWorkflows]);
+
+    /**
+     * Why this function exists:
+     * Loads candidate bank movements for reimbursement matching with independent per-leg
+     * error handling, loading states, sequence tracking (to ignore stale responses),
+     * and explicit candidate selection rules.
+     * 
+     * Tricky logic:
+     * - An HTTP error (e.g. HTTP 500) must NEVER be treated as "no candidates / payment missing".
+     *   It must display an actionable error with a Retry action and block matching.
+     * - Manual creation requires a deliberate user selection; it is never auto-selected.
+     * - If multiple plausible matches exist, the selection is left unresolved (null) rather than
+     *   guessing the first candidate.
+     * - If exactly one candidate exists, it is auto-selected to minimize user effort.
+     * - Prior valid selections are preserved across retries.
+     * 
+     * TODO: Support candidate pagination or search filter in future milestone.
+     */
+    const fetchReimbCandidates = useCallback(async (workflowId: string, leg: 'personal' | 'business') => {
+        const seq = ++reimbCandidatesSeqRef.current[leg];
+        if (leg === 'personal') {
+            setReimbCandidatesLoadingPersonal(true);
+            setReimbCandidatesErrorPersonal(null);
+        } else {
+            setReimbCandidatesLoadingBusiness(true);
+            setReimbCandidatesErrorBusiness(null);
+        }
+
+        try {
+            const res = await fetch(`/api/accounting?view=reimbursement_candidates&workflow_id=${encodeURIComponent(workflowId)}&leg=${leg}`);
+            if (seq !== reimbCandidatesSeqRef.current[leg]) return;
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                const errMsg = errData.error || `Server error (HTTP ${res.status})`;
+                if (leg === 'personal') {
+                    setReimbCandidatesErrorPersonal(errMsg);
+                } else {
+                    setReimbCandidatesErrorBusiness(errMsg);
+                }
+                return;
+            }
+
+            const data = await res.json().catch(() => null);
+            if (seq !== reimbCandidatesSeqRef.current[leg]) return;
+
+            if (!data || data.success === false || !Array.isArray(data.candidates)) {
+                const errMsg = data?.error || 'Invalid response format from server';
+                if (leg === 'personal') {
+                    setReimbCandidatesErrorPersonal(errMsg);
+                } else {
+                    setReimbCandidatesErrorBusiness(errMsg);
+                }
+                return;
+            }
+
+            const cands = data.candidates;
+            if (leg === 'personal') {
+                setReimbCandidatesPersonal(cands);
+                setSelectedReimbPersonal(prev => {
+                    // Preserve existing valid selection
+                    if (prev === 'missing') return 'missing';
+                    if (prev && cands.some((c: any) => c.id === prev)) return prev;
+                    // Auto-select ONLY when there is exactly 1 candidate
+                    if (cands.length === 1) return cands[0].id;
+                    // Multiple plausible matches (> 1) or no matches (0): leave unresolved (null)
+                    return null;
+                });
+            } else {
+                setReimbCandidatesBusiness(cands);
+                setSelectedReimbBusiness(prev => {
+                    // Preserve existing valid selection
+                    if (prev === 'missing') return 'missing';
+                    if (prev && cands.some((c: any) => c.id === prev)) return prev;
+                    // Auto-select ONLY when there is exactly 1 candidate
+                    if (cands.length === 1) return cands[0].id;
+                    // Multiple plausible matches (> 1) or no matches (0): leave unresolved (null)
+                    return null;
+                });
+            }
+        } catch (e: any) {
+            if (seq !== reimbCandidatesSeqRef.current[leg]) return;
+            const errMsg = e.message || 'Network error fetching candidates';
+            if (leg === 'personal') {
+                setReimbCandidatesErrorPersonal(errMsg);
+            } else {
+                setReimbCandidatesErrorBusiness(errMsg);
+            }
+        } finally {
+            if (seq === reimbCandidatesSeqRef.current[leg]) {
+                if (leg === 'personal') {
+                    setReimbCandidatesLoadingPersonal(false);
+                } else {
+                    setReimbCandidatesLoadingBusiness(false);
+                }
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (matchingReimbursementId) {
+            const today = getLocalIsoDate();
+            setMissingPersonalDate(today);
+            setMissingBusinessDate(today);
+
+            const wf = reimbursementWorkflows.find(w => w.id === matchingReimbursementId);
+            if (wf) {
+                // Initialize default missing account selections
+                const pAcc = accounts.find(a => a.entity_id === wf.personal_entity_id && (a.type === 'asset' || a.sub_type === 'checking' || a.sub_type === 'savings') && a.currency === wf.currency);
+                if (pAcc) setMissingPersonalAccountId(pAcc.id);
+                const bAcc = accounts.find(a => a.entity_id === wf.business_entity_id && (a.type === 'asset' || a.sub_type === 'checking' || a.sub_type === 'savings') && a.currency === wf.currency);
+                if (bAcc) setMissingBusinessAccountId(bAcc.id);
+            }
+            
+            fetchReimbCandidates(matchingReimbursementId, 'personal');
+            fetchReimbCandidates(matchingReimbursementId, 'business');
+        } else {
+            setReimbCandidatesPersonal([]);
+            setReimbCandidatesBusiness([]);
+            setReimbCandidatesErrorPersonal(null);
+            setReimbCandidatesErrorBusiness(null);
+            setSelectedReimbPersonal(null);
+            setSelectedReimbBusiness(null);
+            setMissingPersonalAccountId('');
+            setMissingBusinessAccountId('');
+        }
+    }, [matchingReimbursementId, reimbursementWorkflows, accounts, fetchReimbCandidates]);
 
     // One-time migration for legacy browser drafts (Clarification 3)
     useEffect(() => {
@@ -306,6 +532,7 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                 console.error('Draft migration error:', err);
             }
             await fetchDrafts();
+            await fetchReimbursementWorkflows();
         };
 
         migrateAndLoadDrafts();
@@ -518,6 +745,140 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
         }
     };
 
+    const handleConfirmPersonallyPaidExpense = async () => {
+        if (isSubmitting) return;
+        setError(null);
+        setIsSubmitting(true);
+        try {
+            const activePaymentAccId = draftPaymentAccountId || formAccountId;
+            const activePaymentAcc = accounts.find(a => a.id === activePaymentAccId);
+            const finalCurrency = activePaymentAcc?.currency || draftCurrency || null;
+            const amtCents = formAmount ? parseToCents(formAmount, finalCurrency || 'AUD') : null;
+
+            if (!activePaymentAccId || !draftBusinessId || !amtCents || !formDate || !formCategory) {
+                throw new Error("Missing required fields for personally paid expense.");
+            }
+
+            const businessAccs = accounts.filter(a => a.entity_id === draftBusinessId);
+            let businessExpenseAcc = businessAccs.find(a => a.type === 'expense' && a.sub_type === formCategory && a.currency === finalCurrency);
+            
+            if (!businessExpenseAcc) {
+                const newAccPayload = {
+                    entity_id: draftBusinessId,
+                    name: formCategory,
+                    type: 'expense',
+                    sub_type: formCategory,
+                    currency: finalCurrency,
+                };
+                const createRes = await fetch('/api/accounting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create_account', account: newAccPayload })
+                });
+                if (!createRes.ok) {
+                    const createData = await createRes.json().catch(() => ({}));
+                    throw new Error(createData.error || `Failed to create business expense account for ${formCategory}`);
+                }
+                const createData = await createRes.json();
+                businessExpenseAcc = createData.account;
+            }
+
+            // Why draft source identity is retained:
+            // When confirming an existing draft, the draft itself is the source of truth.
+            // If the draft is linked to an imported transaction (draftSourceTransactionId),
+            // the domain service resolves the source transaction, performs in-place reclassification
+            // without a duplicate bank charge, marks the draft posted, and sets workflow.draft_id.
+            // Actions genuinely lacking an originating draft use the direct posted_transaction path.
+            // Tricky logic:
+            // Saving the draft before posting synchronizes edited merchant, date, and descriptions
+            // with draft facts checked strictly in processPersonallyPaidBusinessExpense.
+            // TODO: In Milestone 2, bundle draft save + post in a single atomic RPC endpoint.
+            const isExistingDraft = Boolean(editingDraftId);
+            const sourceId = editingDraftId || draftSourceTransactionId || crypto.randomUUID();
+            if (!editingDraftId && !draftSourceTransactionId) {
+                setEditingDraftId(sourceId);
+            }
+
+            const sourceTx = draftSourceTransactionId ? transactions.find(t => t.id === draftSourceTransactionId) : null;
+            const finalDate = sourceTx?.date || formDate;
+
+            if (isExistingDraft || !draftSourceTransactionId) {
+                const draftPayload = {
+                    id: sourceId,
+                    entity_id: draftBusinessId,
+                    payer_entity_id: activePaymentAcc?.entity_id || null,
+                    payment_account_id: activePaymentAccId,
+                    currency: finalCurrency,
+                    amount_cents: amtCents,
+                    date: finalDate,
+                    merchant: formPayee.trim() || null,
+                    description: formDescription.trim() || 'Personally paid business expense',
+                    reimbursement_intent: 'yes',
+                    source_document_id: draftSourceDocumentId || null,
+                    source_transaction_id: draftSourceTransactionId || null,
+                    status: 'draft'
+                };
+                
+                const draftRes = await fetch('/api/accounting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'save_draft', draft: draftPayload })
+                });
+                
+                if (!draftRes.ok) {
+                    const draftData = await draftRes.json().catch(() => ({}));
+                    throw new Error(draftData.error || 'Failed to save draft before processing');
+                }
+            }
+
+            const payload = {
+                personalEntityId: activePaymentAcc?.entity_id,
+                businessEntityId: draftBusinessId,
+                currency: finalCurrency,
+                amountCents: amtCents,
+                date: finalDate,
+                merchant: formPayee.trim() || null,
+                description: formDescription.trim() || 'Personally paid business expense',
+                sourceType: isExistingDraft ? 'draft' : (draftSourceTransactionId ? 'posted_transaction' : 'draft'),
+                sourceId: sourceId,
+                paymentAccountId: activePaymentAccId,
+                businessExpenseAccountId: businessExpenseAcc!.id,
+                evidenceDocumentId: draftSourceDocumentId || null,
+                expectedRevision: sourceTx ? sourceTx.revision : undefined,
+                performedBy: 'User'
+            };
+
+            const res = await fetch('/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'process_personally_paid_expense', payload })
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to process personally paid expense');
+            }
+
+            setIsRecordModalOpen(false);
+            setEditingDraftId(null);
+            setIsPersonallyPaidBusiness(false);
+            setDraftSourceDocumentId(null);
+            setDraftSourceTransactionId(null);
+            setModalView('transaction');
+            setSuccessMessage('Personally paid expense recorded successfully. Workflow created.');
+            await fetchDrafts();
+            await fetchReimbursementWorkflows(selectedEntityId);
+            await fetchData();
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to process personally paid expense.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleDeleteDraft = async (draftId: string) => {
         try {
             const res = await fetch('/api/accounting', {
@@ -533,6 +894,226 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
             setSuccessMessage('Draft discarded.');
         } catch (err: any) {
             setError(err.message);
+        }
+    };
+
+    /**
+     * Executes the reimbursement matching workflow.
+     * 
+     * Why this exists:
+     * Links business payment and personal receipt to settle an outstanding reimbursement workflow.
+     * 
+     * Tricky logic:
+     * - When candidate transactions exist on both sides, their authoritative posting dates and IDs are passed.
+     *   The backend updates the transactions without writing new journal lines, leaving bank balances unchanged.
+     * - When a side is missing, the user's explicit account and date selections are passed, ensuring
+     *   no silent default account or duplicate movement occurs.
+     */
+    const handleMatchReimbursement = async () => {
+        if (!matchingReimbursementId || !selectedReimbPersonal || !selectedReimbBusiness || isSubmitting) return;
+        setError(null);
+        setIsSubmitting(true);
+        try {
+            const wf = reimbursementWorkflows.find(w => w.id === matchingReimbursementId);
+            if (!wf) throw new Error("Missing workflow");
+
+            let personalTx, businessTx;
+            if (selectedReimbPersonal !== 'missing') {
+                personalTx = reimbCandidatesPersonal.find(c => c.id === selectedReimbPersonal);
+            }
+            if (selectedReimbBusiness !== 'missing') {
+                businessTx = reimbCandidatesBusiness.find(c => c.id === selectedReimbBusiness);
+            }
+
+            const personalAccId = selectedReimbPersonal !== 'missing'
+                ? (personalTx?.leg_account_id || accounts.find(a => a.entity_id === wf.personal_entity_id && a.type === 'asset' && a.currency === wf.currency)?.id)
+                : missingPersonalAccountId;
+
+            const businessAccId = selectedReimbBusiness !== 'missing'
+                ? (businessTx?.leg_account_id || accounts.find(a => a.entity_id === wf.business_entity_id && a.type === 'asset' && a.currency === wf.currency)?.id)
+                : missingBusinessAccountId;
+
+            if (!personalAccId) throw new Error("Please select an account for the personal receipt.");
+            if (!businessAccId) throw new Error("Please select an account for the business payment.");
+
+            const persDate = selectedReimbPersonal !== 'missing' ? personalTx?.date : missingPersonalDate;
+            const busDate = selectedReimbBusiness !== 'missing' ? businessTx?.date : missingBusinessDate;
+
+            if (selectedReimbPersonal === 'missing' && !persDate) throw new Error("Please specify a date for the personal receipt.");
+            if (selectedReimbBusiness === 'missing' && !busDate) throw new Error("Please specify a date for the business payment.");
+
+            const res = await fetch('/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'match_reimbursement',
+                    payload: {
+                        workflowId: wf.id,
+                        date: busDate || persDate,
+                        personalDate: persDate,
+                        businessDate: busDate,
+                        description: personalTx?.description || businessTx?.description || 'Reimbursement match',
+                        personalReceivingAccountId: personalAccId,
+                        businessBankAccountId: businessAccId,
+                        personalReceivingBankTxId: selectedReimbPersonal !== 'missing' ? selectedReimbPersonal : undefined,
+                        businessBankTxId: selectedReimbBusiness !== 'missing' ? selectedReimbBusiness : undefined,
+                        expectedPersonalRevision: personalTx?.revision,
+                        expectedBusinessRevision: businessTx?.revision,
+                        createMissingPersonalReceipt: selectedReimbPersonal === 'missing',
+                        createMissingBusinessPayment: selectedReimbBusiness === 'missing',
+                        performedBy: 'User'
+                    }
+                })
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to match reimbursement');
+            }
+
+            setMatchingReimbursementId(null);
+            setSuccessMessage('Reimbursement matched successfully.');
+            await fetchReimbursementWorkflows(selectedEntityId);
+            await fetchData();
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to match reimbursement.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleUndoBusinessClassificationPreview = async (wf: any) => {
+        setUndoViewActive(true);
+        setUndoLoadingPreview(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/accounting?view=reimbursement_undo_preview&workflow_id=${wf.id}`);
+            if (!res.ok) throw new Error('Failed to load undo preview');
+            const data = await res.json();
+            setUndoOriginalCategory(data.original_category_account_id || null);
+            if (data.original_category_account_id) {
+                setUndoSelectedCategory(data.original_category_account_id);
+            } else {
+                setUndoSelectedCategory('');
+            }
+            setUndoPurchaseDate(data.purchase_date || '');
+            setUndoPurchaseDesc(data.purchase_description || '');
+            setUndoExpectedPersRevision(data.expected_personal_revision);
+            setUndoExpectedBusRevision(data.expected_business_revision);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setUndoLoadingPreview(false);
+        }
+    };
+
+    const handleUndoBusinessClassificationSubmit = async () => {
+        if (!matchingReimbursementId || !undoSelectedCategory || isSubmitting) return;
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'undo_personally_paid_expense',
+                    payload: {
+                        workflowId: matchingReimbursementId,
+                        personalExpenseAccountId: undoSelectedCategory,
+                        expectedPersonalRevision: undoExpectedPersRevision,
+                        expectedBusinessRevision: undoExpectedBusRevision,
+                        performedBy: 'User'
+                    }
+                })
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to undo business classification');
+            }
+            setUndoViewActive(false);
+            setMatchingReimbursementId(null);
+            setSuccessMessage('Business classification undone.');
+            await fetchReimbursementWorkflows(selectedEntityId);
+            await fetchData();
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleUndoMatchPreviewStart = async (wf: any) => {
+        setUndoMatchViewActive(true);
+        setUndoMatchLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/accounting?view=reimbursement_undo_match_preview&workflow_id=${wf.id}`);
+            if (!res.ok) throw new Error('Failed to load undo match preview');
+            const data = await res.json();
+            setUndoMatchPreview(data);
+            setUndoMatchNewPersonalAccount('');
+            setUndoMatchNewBusinessAccount('');
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setUndoMatchLoading(false);
+        }
+    };
+
+    const handleUndoMatchSubmit = async () => {
+        if (!matchingReimbursementId || !undoMatchPreview || isSubmitting) return;
+        
+        if (undoMatchPreview.is_personal_manual && !undoMatchNewPersonalAccount) {
+            setError('Please select an account for the personal transaction.');
+            return;
+        }
+        if (undoMatchPreview.is_business_manual && !undoMatchNewBusinessAccount) {
+            setError('Please select an account for the business transaction.');
+            return;
+        }
+
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'undo_reimbursement_match',
+                    payload: {
+                        workflowId: matchingReimbursementId,
+                        expectedPersonalRevision: undoMatchPreview.expected_personal_revision,
+                        expectedBusinessRevision: undoMatchPreview.expected_business_revision,
+                        expectedPersonalTxId: undoMatchPreview.expected_personal_tx_id,
+                        expectedBusinessTxId: undoMatchPreview.expected_business_tx_id,
+                        newPersonalAccountId: undoMatchNewPersonalAccount || undefined,
+                        newBusinessAccountId: undoMatchNewBusinessAccount || undefined,
+                        performedBy: 'User'
+                    }
+                })
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to undo reimbursement match');
+            }
+            setUndoMatchViewActive(false);
+            setMatchingReimbursementId(null);
+            setSuccessMessage('Reimbursement match undone.');
+            await fetchReimbursementWorkflows(selectedEntityId);
+            await fetchData();
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('opennetworth_balances_updated'));
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -682,6 +1263,16 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
     const handleRecordSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
+
+        if (isPersonallyPaidBusiness) {
+            if (draftExpectReimbursement === 'yes') {
+                setModalView('reimbursement_preview');
+                return;
+            } else {
+                handleSaveDraft(e);
+                return;
+            }
+        }
 
         setError(null);
         setSuccessMessage(null);
@@ -865,6 +1456,59 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
         ? (draftCurrency || currentPaymentAccount?.currency || null)
         : (currentPaymentAccount?.currency || selectedEntity?.currency || 'AUD');
 
+    // D2: Start reimbursement from posted personal transaction
+    const handleStartD2Flow = (tx: TransactionItem) => {
+        const paymentPosting = tx.postings.find(p => {
+            const a = accounts.find(acc => acc.id === p.account_id);
+            return a && ((a.type === 'asset' && ['checking', 'savings', 'cash'].includes(a.sub_type)) || (a.type === 'liability' && a.sub_type === 'credit_card'));
+        }) || tx.postings[0];
+        
+        const primaryAccount = paymentPosting ? accounts.find(a => a.id === paymentPosting.account_id) : null;
+        
+        setEditingDraftId(null);
+        setDraftBusinessId(''); 
+        setDraftPayerEntityId(primaryAccount?.entity_id || '');
+        setDraftPaymentAccountId(primaryAccount?.id || '');
+        setFormAccountId(primaryAccount?.id || '');
+        setDraftCurrency((paymentPosting?.currency as CurrencyCode) || 'USD');
+        
+        let docId = null;
+        if (tx.evidence_refs && Array.isArray(tx.evidence_refs) && tx.evidence_refs.length > 0) {
+            for (let i = tx.evidence_refs.length - 1; i >= 0; i--) {
+                const ref = tx.evidence_refs[i];
+                if (typeof ref === 'string') {
+                    if (ref.trim().startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(ref);
+                            if (parsed && typeof parsed === 'object' && typeof parsed.document_id === 'string') {
+                                docId = parsed.document_id;
+                                break;
+                            }
+                        } catch (e) {}
+                    }
+                    if (!docId) docId = ref;
+                } else if (ref && typeof ref === 'object' && typeof ref.document_id === 'string') {
+                    docId = ref.document_id;
+                    break;
+                }
+            }
+        }
+        setDraftSourceDocumentId(docId);
+        setDraftSourceTransactionId(tx.id);
+        
+        setFormAmount(centsToInputString(Math.abs(paymentPosting?.amount_cents || 0), paymentPosting?.currency));
+        setFormDate(tx.date);
+        setFormPayee(tx.payee_or_payer || '');
+        setFormDescription(tx.description || '');
+        setDraftExpectReimbursement('not_sure'); 
+        
+        setIsPersonallyPaidBusiness(true);
+        setActiveTab('expense');
+        setFormCategory('other'); 
+        setModalView('transaction');
+        setIsRecordModalOpen(true);
+    };
+
     return (
         <div className="space-y-6">
             {/* Controls Bar (Uncluttered, focused on date filtering and action) */}
@@ -931,6 +1575,13 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                             setModalView('transaction');
                             setCurrencyChangeNotice(null);
                             setIsPersonallyPaidBusiness(false);
+                            setDraftSourceTransactionId(null);
+                            setDraftSourceDocumentId(null);
+                            setFormAmount('');
+                            setFormDate(getLocalIsoDate());
+                            setFormPayee('');
+                            setFormDescription('');
+                            setFormCategory('other');
                             if (expensePaymentAccounts.length > 0 && !formAccountId) {
                                 setFormAccountId(expensePaymentAccounts[0].id);
                             }
@@ -1130,6 +1781,16 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                         ? formatMoney({ amount_cents: Math.abs(paymentPosting.amount_cents), currency: paymentPosting.currency as CurrencyCode })
                                         : (tx.postings.length > 0 ? formatMoney({ amount_cents: Math.abs(tx.postings[0].amount_cents), currency: tx.postings[0].currency as CurrencyCode }) : '-');
 
+                                    const isTransfer = tx.postings.every(p => {
+                                        const a = accounts.find(acc => acc.id === p.account_id);
+                                        return a && (a.type === 'asset' || a.type === 'liability');
+                                    });
+                                    const isOpeningBalance = tx.postings.some(p => {
+                                        const a = accounts.find(acc => acc.id === p.account_id);
+                                        return a && a.type === 'equity';
+                                    });
+                                    const isSupportedExpense = !isTransfer && !isOpeningBalance;
+
                                     return (
                                     <div key={tx.id} className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition hover:border-slate-300 dark:hover:border-slate-700">
                                         {/* Transaction Summary Row */}
@@ -1203,6 +1864,73 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                             </div>
                                         </div>
 
+                                        {/* Actions for eligible personal expenses or existing workflows */}
+                                        {(() => {
+                                            if (isVoided) return null;
+                                            const activeLinkedWf = reimbursementWorkflows.find(w => w.status !== 'cancelled' && (w.personal_transaction_id === tx.id || w.business_transaction_id === tx.id || w.personal_reimbursement_tx_id === tx.id || w.business_reimbursement_tx_id === tx.id));
+                                            const cancelledLinkedWf = reimbursementWorkflows.find(w => w.status === 'cancelled' && (w.personal_transaction_id === tx.id || w.business_transaction_id === tx.id || w.personal_reimbursement_tx_id === tx.id || w.business_reimbursement_tx_id === tx.id));
+                                            
+                                            if (activeLinkedWf) {
+                                                return (
+                                                    <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setMatchingReimbursementId(activeLinkedWf.id);
+                                                            }}
+                                                            className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                                        >
+                                                            View reimbursement
+                                                        </button>
+                                                    </div>
+                                                );
+                                            } else if (isOutflow && isSupportedExpense && ownerEntity?.type !== 'business' && (primaryAccount?.type === 'asset' || primaryAccount?.type === 'liability')) {
+                                                return (
+                                                    <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
+                                                        {cancelledLinkedWf && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setMatchingReimbursementId(cancelledLinkedWf.id);
+                                                                }}
+                                                                className="text-xs font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                                            >
+                                                                View cancelled workflow
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleStartD2Flow(tx);
+                                                            }}
+                                                            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                                                        >
+                                                            This was a business expense
+                                                        </button>
+                                                    </div>
+                                                );
+                                            } else if (cancelledLinkedWf) {
+                                                return (
+                                                    <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setMatchingReimbursementId(cancelledLinkedWf.id);
+                                                            }}
+                                                            className="text-xs font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                                        >
+                                                            View cancelled workflow
+                                                        </button>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
+
                                         {/* Expanded Accounting Details */}
                                         {isExpanded && (
                                             <div className="px-10 pb-4 pt-2 bg-slate-50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-slate-800/80">
@@ -1253,6 +1981,58 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                             </div>
                         )}
                     </div>
+                </div>
+                
+                <div className="border-t border-slate-200 dark:border-slate-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        {(() => {
+                            const outstandingCount = reimbursementWorkflows.filter(wf => wf.status === 'awaiting_reimbursement').length;
+                            return (
+                                <h4 className="text-sm font-semibold text-indigo-900 dark:text-indigo-400">
+                                    Outstanding Reimbursements {outstandingCount > 0 ? `(${outstandingCount})` : ''}
+                                </h4>
+                            );
+                        })()}
+                    </div>
+                    {reimbursementsLoading ? (
+                        <div className="text-sm text-indigo-600 dark:text-indigo-400 py-2">Loading outstanding reimbursements...</div>
+                    ) : reimbursementsError ? (
+                        <div className="text-sm text-rose-600 dark:text-rose-400 py-2">{reimbursementsError}</div>
+                    ) : reimbursementWorkflows.filter(wf => wf.status === 'awaiting_reimbursement').length === 0 ? (
+                        <div className="text-sm text-slate-500 dark:text-slate-400 py-2">No outstanding reimbursements at this time.</div>
+                    ) : (
+                        <div className="space-y-2">
+                            {reimbursementWorkflows.filter(wf => wf.status === 'awaiting_reimbursement').map(wf => {
+                                const bEnt = entities.find(e => e.id === wf.business_entity_id);
+                                const pEnt = entities.find(e => e.id === wf.personal_entity_id);
+                                const displayAmt = formatMoney({ amount_cents: wf.amount_cents, currency: (wf.currency || 'USD') as CurrencyCode });
+                                return (
+                                    <div key={wf.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 p-3 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-lg shadow-sm">
+                                        <div className="flex items-start gap-3">
+                                            <RefreshCw className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                                            <div>
+                                                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                                                    Due from {bEnt?.name || 'Business'}
+                                                </div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                                    Personal Payer: {pEnt?.name || 'Unknown'} • Initiated on {wf.created_at.split('T')[0]}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2">
+                                            <div className="font-bold text-sm text-slate-900 dark:text-slate-100">{displayAmt}</div>
+                                            <button
+                                                onClick={() => setMatchingReimbursementId(wf.id)}
+                                                className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1 bg-indigo-50 dark:bg-indigo-900/50 rounded"
+                                            >
+                                                Match Payment
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
                 
                 {drafts.length > 0 && (
@@ -1340,7 +2120,81 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                         tabIndex={-1}
                         className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col max-h-[90vh] focus:outline-none"
                     >
-                        {modalView === 'create_account' ? (
+                        {modalView === 'reimbursement_preview' ? (
+                            <div className="flex flex-col h-full">
+                                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 shrink-0">
+                                    <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">Review Personally Paid Expense</h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setModalView('transaction');
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4 overflow-y-auto">
+                                    {error && (
+                                        <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-lg text-xs flex items-center gap-2">
+                                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                                            <span>{error}</span>
+                                        </div>
+                                    )}
+                                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                                        {draftSourceTransactionId ? 
+                                            "Your bank balance will not change. This purchase will be recorded as a business expense owed back to you." :
+                                            "This expense will be posted directly to your personal ledger. It will immediately change your payment-account balance and create an outstanding reimbursement workflow from the business."}
+                                    </p>
+                                    <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 space-y-2 text-sm border border-slate-200 dark:border-slate-700">
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Payer (Personal):</span>
+                                            <span className="font-medium text-slate-900 dark:text-slate-100">{draftPayerEntityId ? entities.find(e => e.id === draftPayerEntityId)?.name : 'Personal Entity'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Business:</span>
+                                            <span className="font-medium text-slate-900 dark:text-slate-100">{draftBusinessId ? entities.find(e => e.id === draftBusinessId)?.name : 'N/A'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Account:</span>
+                                            <span className="font-medium text-slate-900 dark:text-slate-100">{formAccountId ? accounts.find(a => a.id === formAccountId)?.name : 'N/A'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Date:</span>
+                                            <span className="font-medium text-slate-900 dark:text-slate-100">{formDate}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Category:</span>
+                                            <span className="font-medium text-slate-900 dark:text-slate-100 capitalize">{formCategory?.replace(/_/g, ' ')}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
+                                            <span className="text-slate-500">Amount:</span>
+                                            <span className="font-bold text-slate-900 dark:text-slate-100">
+                                                {formAmount} {accounts.find(a => a.id === formAccountId)?.currency || draftCurrency || 'USD'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end items-center gap-3 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setModalView('transaction')}
+                                        className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition"
+                                    >
+                                        Cancel & Edit
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={isSubmitting}
+                                        onClick={handleConfirmPersonallyPaidExpense}
+                                        className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                                        <span>Confirm and Record</span>
+                                    </button>
+                                </div>
+                            </div>
+                        ) : modalView === 'create_account' ? (
                             /* Sub-task 1: Account Creation View (Replaces transaction form temporarily) */
                             <>
                                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 shrink-0">
@@ -1590,7 +2444,8 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                                         placeholder={currentCurrency && (CURRENCY_DECIMALS as any)[currentCurrency] === 0 ? "0" : "0.00"}
                                                         value={formAmount}
                                                         onChange={(e) => setFormAmount(e.target.value)}
-                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        disabled={!!draftSourceTransactionId}
+                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-800/50"
                                                     />
                                                 </div>
 
@@ -1603,7 +2458,8 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                                         required
                                                         value={formDate}
                                                         onChange={(e) => setFormDate(e.target.value)}
-                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        disabled={!!draftSourceTransactionId}
+                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-800/50"
                                                     />
                                                 </div>
                                             </div>
@@ -1618,7 +2474,8 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                                     placeholder="e.g. Officeworks"
                                                     value={formPayee}
                                                     onChange={(e) => setFormPayee(e.target.value)}
-                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    disabled={!!draftSourceTransactionId}
+                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-800/50"
                                                 />
                                             </div>
 
@@ -1646,7 +2503,8 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                                         value={formAccountId}
                                                         onChange={(e) => handleAccountSelectChange(e.target.value, 'formAccountId', ['checking', 'savings', 'credit_card'], e.currentTarget)}
                                                         required
-                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        disabled={!!draftSourceTransactionId}
+                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-800/50"
                                                     >
                                                         <option value="">Choose an account</option>
                                                         <optgroup label="Bank Accounts">
@@ -1701,7 +2559,8 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                                             placeholder="Optional notes or reference..."
                                                             value={formDescription}
                                                             onChange={(e) => setFormDescription(e.target.value)}
-                                                            className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                            disabled={!!draftSourceTransactionId}
+                                                            className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-800/50"
                                                         />
                                                     </div>
                                                 )}
@@ -1727,15 +2586,18 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                                                     }
                                                                 }
                                                             }}
-                                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                            disabled={!!draftSourceTransactionId}
+                                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
                                                         />
-                                                        <span>This was paid with personal funds for a business</span>
+                                                        <span className={!!draftSourceTransactionId ? "opacity-50" : ""}>This was paid with personal funds for a business</span>
                                                     </label>
 
                                                     {isPersonallyPaidBusiness && (
                                                         <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl space-y-3">
                                                             <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
-                                                                This will be saved as a draft. Your balances will not change.
+                                                            {draftSourceTransactionId ?
+                                                                "Your bank balance will not change. This purchase will be recorded as a business expense owed back to you." :
+                                                                "This business expense will be recorded and a reimbursement workflow will be initiated. It will impact your balances immediately."}
                                                             </p>
 
                                                             {/* Which business was this for? */}
@@ -1768,7 +2630,8 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                                                 <select
                                                                     value={draftPayerEntityId}
                                                                     onChange={(e) => setDraftPayerEntityId(e.target.value)}
-                                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                                                    disabled={!!draftSourceTransactionId}
+                                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-800/50"
                                                                 >
                                                                     <option value="">-- Select Person (Optional) --</option>
                                                                     {entities.filter(e => e.type === 'person' || e.type === 'household').map(e => (
@@ -2258,15 +3121,26 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                                         Cancel
                                     </button>
                                     {activeTab === 'expense' && isPersonallyPaidBusiness ? (
-                                        <button
-                                            type="button"
-                                            onClick={handleSaveDraft}
-                                            disabled={isSubmitting || !formAmount || !draftBusinessId}
-                                            className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-2 disabled:opacity-50"
-                                        >
-                                            {isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                                            <span>{editingDraftId ? 'Update draft' : 'Save draft'}</span>
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveDraft}
+                                                disabled={isSubmitting || !formAmount || !draftBusinessId}
+                                                className="px-4 py-2 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                <span>Save draft</span>
+                                            </button>
+                                            {draftExpectReimbursement === 'yes' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setModalView('reimbursement_preview')}
+                                                    disabled={isSubmitting || !formAmount || !draftBusinessId || !formAccountId}
+                                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-2 disabled:opacity-50"
+                                                >
+                                                    <span>Preview & Confirm</span>
+                                                </button>
+                                            )}
+                                        </div>
                                     ) : (
                                         <button
                                             type="button"
@@ -2368,6 +3242,537 @@ export const DailyEventsView: React.FC<DailyEventsViewProps> = ({ entities, sele
                     </div>
                 </div>
             )}
+
+            {/* Match Reimbursement Modal */}
+            {matchingReimbursementId && (() => {
+                const wf = reimbursementWorkflows.find(w => w.id === matchingReimbursementId);
+                const canSubmit = Boolean(
+                    !reimbCandidatesLoadingPersonal &&
+                    !reimbCandidatesLoadingBusiness &&
+                    !reimbCandidatesErrorPersonal &&
+                    !reimbCandidatesErrorBusiness &&
+                    selectedReimbPersonal &&
+                    selectedReimbBusiness &&
+                    (selectedReimbPersonal !== 'missing' || (missingPersonalAccountId && missingPersonalDate)) &&
+                    (selectedReimbBusiness !== 'missing' || (missingBusinessAccountId && missingBusinessDate))
+                );
+
+                return (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col max-h-[90vh]"
+                        >
+                            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                                <div>
+                                    <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">Match Reimbursement</h3>
+                                    {wf && (
+                                        <div className="text-xs text-slate-500 mt-0.5">
+                                            Reimbursement amount: <span className="font-semibold text-slate-700 dark:text-slate-300">{formatMoney({ amount_cents: wf.amount_cents, currency: (wf.currency || 'USD') as CurrencyCode })}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setMatchingReimbursementId(null); setUndoViewActive(false); }}
+                                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            
+                            {undoMatchViewActive ? (
+                                <div className="p-6 space-y-6">
+                                    <div className="space-y-2">
+                                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Undo payment match</h4>
+                                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                                            This will reopen the reimbursement as awaiting payment. Your recorded bank payments and receipts will be unlinked.
+                                        </p>
+                                    </div>
+                                    {undoMatchLoading ? (
+                                        <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+                                            <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                                            <span>Loading preview...</span>
+                                        </div>
+                                    ) : undoMatchPreview && (
+                                        <div className="space-y-4">
+                                            {undoMatchPreview.is_personal_manual && (
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                                        The personal receipt was manually created during settlement. Where should this {formatMoney({ amount_cents: undoMatchPreview.personal_amount, currency: (wf?.currency || 'USD') as CurrencyCode })} cash receipt be recorded instead? *
+                                                    </label>
+                                                    <select
+                                                        value={undoMatchNewPersonalAccount}
+                                                        onChange={e => setUndoMatchNewPersonalAccount(e.target.value)}
+                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                                    >
+                                                        <option value="" disabled>Select a personal account (e.g. suspense)</option>
+                                                        {accounts
+                                                            .filter(a => a.entity_id === wf.personal_entity_id && (a.type === 'income' || a.type === 'liability' || a.type === 'expense' || a.type === 'equity'))
+                                                            .filter(a => a.id !== wf.due_from_account_id && a.id !== undoMatchPreview.personal_bank_account_id)
+                                                            .map(a => (
+                                                                <option key={a.id} value={a.id}>{a.name}</option>
+                                                            ))
+                                                        }
+                                                    </select>
+                                                </div>
+                                            )}
+                                            {undoMatchPreview.is_business_manual && (
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                                        The business payment was manually created during settlement. Where should this {formatMoney({ amount_cents: undoMatchPreview.business_amount, currency: (wf?.currency || 'USD') as CurrencyCode })} cash payment be recorded instead? *
+                                                    </label>
+                                                    <select
+                                                        value={undoMatchNewBusinessAccount}
+                                                        onChange={e => setUndoMatchNewBusinessAccount(e.target.value)}
+                                                        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                                    >
+                                                        <option value="" disabled>Select a business account (e.g. suspense or expense)</option>
+                                                        {accounts
+                                                            .filter(a => a.entity_id === wf.business_entity_id && (a.type === 'expense' || a.type === 'asset' || a.type === 'equity' || a.type === 'liability'))
+                                                            .filter(a => a.id !== wf.due_to_account_id && a.id !== undoMatchPreview.business_bank_account_id)
+                                                            .map(a => (
+                                                                <option key={a.id} value={a.id}>{a.name}</option>
+                                                            ))
+                                                        }
+                                                    </select>
+                                                </div>
+                                            )}
+                                            {!undoMatchPreview.is_personal_manual && (
+                                                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                                                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Restoring imported personal receipt</div>
+                                                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                                                        <span className="font-medium">{undoMatchPreview.personal_date}</span>: {undoMatchPreview.personal_description}
+                                                    </div>
+                                                    <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                                                        Amount: <span className="font-medium text-emerald-600">{formatMoney({ amount_cents: undoMatchPreview.personal_amount, currency: (wf?.currency || 'USD') as CurrencyCode })}</span>
+                                                    </div>
+                                                    {undoMatchPreview.personal_original_postings?.length > 0 && (
+                                                        <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                            <div className="text-xs text-slate-500 mb-1">Previous treatment:</div>
+                                                            {undoMatchPreview.personal_original_postings.map((p: any, i: number) => {
+                                                                const acc = accounts.find(a => a.id === p.account_id);
+                                                                return (
+                                                                    <div key={i} className="text-xs text-slate-600 flex justify-between">
+                                                                        <span>{acc?.name || 'Unknown account'}</span>
+                                                                        <span className={p.amount_cents > 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatMoney({ amount_cents: Math.abs(p.amount_cents), currency: p.currency as CurrencyCode })}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {!undoMatchPreview.is_business_manual && (
+                                                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                                                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Restoring imported business payment</div>
+                                                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                                                        <span className="font-medium">{undoMatchPreview.business_date}</span>: {undoMatchPreview.business_description}
+                                                    </div>
+                                                    <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                                                        Amount: <span className="font-medium text-rose-600">{formatMoney({ amount_cents: undoMatchPreview.business_amount, currency: (wf?.currency || 'USD') as CurrencyCode })}</span>
+                                                    </div>
+                                                    {undoMatchPreview.business_original_postings?.length > 0 && (
+                                                        <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                            <div className="text-xs text-slate-500 mb-1">Previous treatment:</div>
+                                                            {undoMatchPreview.business_original_postings.map((p: any, i: number) => {
+                                                                const acc = accounts.find(a => a.id === p.account_id);
+                                                                return (
+                                                                    <div key={i} className="text-xs text-slate-600 flex justify-between">
+                                                                        <span>{acc?.name || 'Unknown account'}</span>
+                                                                        <span className={p.amount_cents > 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatMoney({ amount_cents: Math.abs(p.amount_cents), currency: p.currency as CurrencyCode })}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setUndoMatchViewActive(false)}
+                                                    className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleUndoMatchSubmit}
+                                                    disabled={isSubmitting || (undoMatchPreview.is_personal_manual && !undoMatchNewPersonalAccount) || (undoMatchPreview.is_business_manual && !undoMatchNewBusinessAccount)}
+                                                    className="px-4 py-2 bg-rose-600 text-white text-xs font-semibold rounded-lg hover:bg-rose-700 disabled:opacity-50"
+                                                >
+                                                    {isSubmitting ? 'Undoing...' : 'Confirm Undo Match'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : wf?.status === 'reimbursed' ? (
+                                <div className="p-6 space-y-4">
+                                    <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-lg">
+                                        <div className="font-semibold text-sm text-emerald-800 dark:text-emerald-300">Settlement Complete</div>
+                                        <div className="text-xs mt-1 text-emerald-700 dark:text-emerald-400">This reimbursement has been fully settled and linked to its corresponding bank movements. No further action is required.</div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleUndoMatchPreviewStart(wf)}
+                                            className="text-xs font-medium text-rose-600 hover:text-rose-800 transition"
+                                        >
+                                            Undo payment match
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setMatchingReimbursementId(null); setUndoViewActive(false); setUndoMatchViewActive(false); }}
+                                            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : wf?.status === 'cancelled' ? (
+                                <div className="p-6 space-y-4">
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+                                        <div className="font-semibold text-sm text-slate-800 dark:text-slate-300">Classification Cancelled</div>
+                                        <div className="text-xs mt-1 text-slate-700 dark:text-slate-400">This business classification was undone. The transaction was reverted to its personal expense category.</div>
+                                    </div>
+                                    <div className="flex justify-end pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setMatchingReimbursementId(null); setUndoViewActive(false); }}
+                                            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : undoViewActive ? (
+                                <div className="p-6 space-y-6">
+                                    <div className="space-y-2">
+                                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Undo business classification</h4>
+                                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                                            This action means the business classification was a mistake. 
+                                            <strong>Your bank balance will not change.</strong>
+                                        </p>
+                                    </div>
+                                    {undoLoadingPreview ? (
+                                        <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+                                            <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                                            <span>Loading preview...</span>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {undoPurchaseDesc && (
+                                                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                                                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">Purchase Details</div>
+                                                    <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
+                                                        <div>
+                                                            <div className="text-slate-500 dark:text-slate-400">Date</div>
+                                                            <div className="font-medium text-slate-900 dark:text-slate-100">{undoPurchaseDate}</div>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-slate-500 dark:text-slate-400">Description</div>
+                                                            <div className="font-medium text-slate-900 dark:text-slate-100">{undoPurchaseDesc}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                                    Personal Expense Category *
+                                                </label>
+                                                <select
+                                                    value={undoSelectedCategory}
+                                                    onChange={e => setUndoSelectedCategory(e.target.value)}
+                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                                >
+                                                    <option value="" disabled>Select a personal category</option>
+                                                    {accounts
+                                                        .filter(a => a.entity_id === wf.personal_entity_id && a.type === 'expense' && a.currency === wf.currency)
+                                                        .map(a => (
+                                                            <option key={a.id} value={a.id}>{a.name}</option>
+                                                        ))
+                                                    }
+                                                </select>
+                                                {!undoOriginalCategory && (
+                                                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                                                        No previous category found in correction history. Please provide one.
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setUndoViewActive(false)}
+                                                    className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleUndoBusinessClassificationSubmit}
+                                                    disabled={!undoSelectedCategory || isSubmitting}
+                                                    className="px-4 py-2 bg-rose-600 text-white text-xs font-semibold rounded-lg hover:bg-rose-700 disabled:opacity-50"
+                                                >
+                                                    {isSubmitting ? 'Undoing...' : 'Confirm Undo'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="p-6 space-y-6 overflow-y-auto">
+                                <p className="text-sm text-slate-600 dark:text-slate-400">
+                                    Link the corresponding bank transactions for this reimbursement. Both bank movements are selected explicitly. If a movement is missing from the bank feed, you can record it with explicit account and date review.
+                                </p>
+
+                                <div className="space-y-6">
+                                    {/* Personal Leg */}
+                                    <div className="space-y-3">
+                                        <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200">
+                                            Personal Receipt (Money Received by Owner)
+                                        </h4>
+                                        {reimbCandidatesLoadingPersonal ? (
+                                            <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+                                                <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                                                <span>Searching for personal receipt candidate movements...</span>
+                                            </div>
+                                        ) : reimbCandidatesErrorPersonal ? (
+                                            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg flex items-center justify-between gap-3 text-xs text-rose-700 dark:text-rose-300">
+                                                <div className="flex items-center gap-2">
+                                                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                                    <span>Failed to check candidate movements: {reimbCandidatesErrorPersonal}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => matchingReimbursementId && fetchReimbCandidates(matchingReimbursementId, 'personal')}
+                                                    className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 font-semibold rounded hover:bg-rose-50 dark:hover:bg-rose-900/30 transition shrink-0"
+                                                >
+                                                    Retry
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {reimbCandidatesPersonal.length > 1 && (
+                                                    <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                                                        Multiple candidate movements found ({reimbCandidatesPersonal.length}). Please select the matching receipt.
+                                                    </p>
+                                                )}
+                                                {reimbCandidatesPersonal.length === 0 && (
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                        No candidate movements found in bank feed. If not yet imported, select manual entry below.
+                                                    </p>
+                                                )}
+                                                {reimbCandidatesPersonal.map(tx => {
+                                                    const acc = accounts.find(a => a.id === tx.leg_account_id);
+                                                    return (
+                                                        <div 
+                                                            key={tx.id}
+                                                            onClick={() => setSelectedReimbPersonal(tx.id)}
+                                                            className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center transition ${selectedReimbPersonal === tx.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}
+                                                        >
+                                                            <div>
+                                                                <div className="font-medium text-sm text-slate-800 dark:text-slate-200">{tx.description}</div>
+                                                                <div className="text-xs text-slate-500">{tx.date} • {acc?.name || 'Unknown'}</div>
+                                                            </div>
+                                                            <div className="font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                                                                +{formatMoney({ amount_cents: Math.abs(tx.leg_amount_cents || tx.leg_amount || wf?.amount_cents || 0), currency: (tx.currency || wf?.currency || 'USD') as CurrencyCode })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                                <div 
+                                                    onClick={() => setSelectedReimbPersonal('missing')}
+                                                    className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center transition ${selectedReimbPersonal === 'missing' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 border-dashed'}`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center">
+                                                            {selectedReimbPersonal === 'missing' && <div className="w-3 h-3 bg-indigo-600 rounded-full" />}
+                                                        </div>
+                                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Record missing receipt manually</span>
+                                                    </div>
+                                                </div>
+
+                                                {selectedReimbPersonal === 'missing' && wf && (
+                                                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg space-y-3 border border-slate-200 dark:border-slate-700 ml-2">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                                                    Receiving Personal Account *
+                                                                </label>
+                                                                <select
+                                                                    value={missingPersonalAccountId}
+                                                                    onChange={e => setMissingPersonalAccountId(e.target.value)}
+                                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                                                >
+                                                                    {accounts
+                                                                        .filter(a => a.entity_id === wf.personal_entity_id && (a.type === 'asset' || a.sub_type === 'checking' || a.sub_type === 'savings') && a.currency === wf.currency)
+                                                                        .map(a => (
+                                                                            <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
+                                                                        ))
+                                                                    }
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                                                    Receipt Date *
+                                                                </label>
+                                                                <input
+                                                                    type="date"
+                                                                    required
+                                                                    value={missingPersonalDate}
+                                                                    onChange={e => setMissingPersonalDate(e.target.value)}
+                                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Business Leg */}
+                                    <div className="space-y-3">
+                                        <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200">
+                                            Business Payment (Money Paid by Business)
+                                        </h4>
+                                        {reimbCandidatesLoadingBusiness ? (
+                                            <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+                                                <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                                                <span>Searching for business payment candidate movements...</span>
+                                            </div>
+                                        ) : reimbCandidatesErrorBusiness ? (
+                                            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg flex items-center justify-between gap-3 text-xs text-rose-700 dark:text-rose-300">
+                                                <div className="flex items-center gap-2">
+                                                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                                    <span>Failed to check candidate movements: {reimbCandidatesErrorBusiness}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => matchingReimbursementId && fetchReimbCandidates(matchingReimbursementId, 'business')}
+                                                    className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 font-semibold rounded hover:bg-rose-50 dark:hover:bg-rose-900/30 transition shrink-0"
+                                                >
+                                                    Retry
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {reimbCandidatesBusiness.length > 1 && (
+                                                    <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                                                        Multiple candidate movements found ({reimbCandidatesBusiness.length}). Please select the matching payment.
+                                                    </p>
+                                                )}
+                                                {reimbCandidatesBusiness.length === 0 && (
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                        No candidate movements found in bank feed. If not yet imported, select manual entry below.
+                                                    </p>
+                                                )}
+                                                {reimbCandidatesBusiness.map(tx => {
+                                                    const acc = accounts.find(a => a.id === tx.leg_account_id);
+                                                    return (
+                                                        <div 
+                                                            key={tx.id}
+                                                            onClick={() => setSelectedReimbBusiness(tx.id)}
+                                                            className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center transition ${selectedReimbBusiness === tx.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}
+                                                        >
+                                                            <div>
+                                                                <div className="font-medium text-sm text-slate-800 dark:text-slate-200">{tx.description}</div>
+                                                                <div className="text-xs text-slate-500">{tx.date} • {acc?.name || 'Unknown'}</div>
+                                                            </div>
+                                                            <div className="font-bold text-sm text-rose-600 dark:text-rose-400">
+                                                                -{formatMoney({ amount_cents: Math.abs(tx.leg_amount_cents || tx.leg_amount || wf?.amount_cents || 0), currency: (tx.currency || wf?.currency || 'USD') as CurrencyCode })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                                <div 
+                                                    onClick={() => setSelectedReimbBusiness('missing')}
+                                                    className={`p-3 border rounded-lg cursor-pointer flex justify-between items-center transition ${selectedReimbBusiness === 'missing' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 border-dashed'}`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center">
+                                                            {selectedReimbBusiness === 'missing' && <div className="w-3 h-3 bg-indigo-600 rounded-full" />}
+                                                        </div>
+                                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Record missing payment manually</span>
+                                                    </div>
+                                                </div>
+
+                                                {selectedReimbBusiness === 'missing' && wf && (
+                                                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg space-y-3 border border-slate-200 dark:border-slate-700 ml-2">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                                                    Paying Business Account *
+                                                                </label>
+                                                                <select
+                                                                    value={missingBusinessAccountId}
+                                                                    onChange={e => setMissingBusinessAccountId(e.target.value)}
+                                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                                                >
+                                                                    {accounts
+                                                                        .filter(a => a.entity_id === wf.business_entity_id && (a.type === 'asset' || a.sub_type === 'checking' || a.sub_type === 'savings') && a.currency === wf.currency)
+                                                                        .map(a => (
+                                                                            <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
+                                                                        ))
+                                                                    }
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                                                    Payment Date *
+                                                                </label>
+                                                                <input
+                                                                    type="date"
+                                                                    required
+                                                                    value={missingBusinessDate}
+                                                                    onChange={e => setMissingBusinessDate(e.target.value)}
+                                                                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
+                                <button
+                                    type="button"
+                                    onClick={() => handleUndoBusinessClassificationPreview(wf)}
+                                    className="text-xs font-medium text-rose-600 hover:text-rose-800 transition"
+                                >
+                                    Undo business classification
+                                </button>
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setMatchingReimbursementId(null); setUndoViewActive(false); }}
+                                        className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleMatchReimbursement}
+                                        disabled={!canSubmit || isSubmitting}
+                                        className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isSubmitting ? 'Matching...' : 'Match Reimbursement'}
+                                    </button>
+                                </div>
+                            </div>
+                            </>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 };

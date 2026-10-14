@@ -191,7 +191,8 @@ export const ACCOUNTING_SCHEMA_DDL = `
         personal_reimbursement_tx_id TEXT,
         business_reimbursement_tx_id TEXT,
         amount_cents INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'awaiting_reimbursement' CHECK (status IN ('awaiting_reimbursement', 'reimbursed')),
+        status TEXT NOT NULL DEFAULT 'awaiting_reimbursement' CHECK (status IN ('awaiting_reimbursement', 'reimbursed', 'cancelled')),
+        last_undo_request TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (personal_entity_id) REFERENCES m1_entities(id) ON DELETE CASCADE,
@@ -678,6 +679,12 @@ export function migrateAccountingSchema(db: Database.Database): void {
                 db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_pers ON m1_reimbursement_workflows(personal_entity_id)`).run();
                 db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_reimb_workflow_bus ON m1_reimbursement_workflows(business_entity_id)`).run();
             }
+        }
+        
+        try {
+            db.prepare('ALTER TABLE m1_reimbursement_workflows ADD COLUMN last_undo_request TEXT').run();
+        } catch (err: any) {
+            if (!err.message.includes('duplicate column name')) throw err;
         }
     });
 

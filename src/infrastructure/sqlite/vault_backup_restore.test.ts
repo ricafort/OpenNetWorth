@@ -21,6 +21,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
 import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { initMentorChatSchema } from '@/lib/domain/mentor/schema';
+import { appendMessage, createSession } from '@/lib/domain/mentor/mentorSessionService';
 import Database from 'better-sqlite3';
 
 describe('Vault Backup & Restore Safety (Batch A2)', () => {
@@ -433,5 +435,105 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(drafts.length).toBe(1);
         expect((drafts[0] as any).amount_cents).toBe(3500);
         expect(journal.length).toBe(2);
+    });
+
+    // Mentor chat collections are OPTIONAL in backups: they are never in the required
+    // list, older archives omit them entirely, and restores must not disturb existing
+    // conversations unless the archive actually carries mentor data.
+    function validV2Payload(extra: Record<string, any> = {}): any {
+        return {
+            action: 'bulk_restore',
+            schemaVersion: 2,
+            entities: [],
+            accounts: [],
+            account_ownership: [],
+            transactions: [],
+            journal_entries: [],
+            transaction_corrections: [],
+            exchange_rates: [],
+            asset_valuations: [],
+            drafts: [],
+            documents: [],
+            csv_mappings: [],
+            document_jobs: [],
+            proposals: [],
+            assets: [],
+            liabilities: [],
+            goals: [],
+            recurring: [],
+            history: [],
+            cashFlow: [],
+            settings: { baseCurrency: 'USD' },
+            ...extra
+        };
+    }
+
+    it('Test 9: Version 2 restore without mentor collections succeeds and preserves existing mentor chats', async () => {
+        // Seed a live conversation before the restore
+        initMentorChatSchema(testDb);
+        const session = createSession(testDb, 'Moats and margins');
+        appendMessage(testDb, session.id, { id: 'msg-u1', role: 'user', content: 'How is my posture?' });
+        appendMessage(testDb, session.id, { id: 'msg-m1', role: 'mentor', mentorName: 'Warren Buffett', content: 'Moats matter.' });
+
+        // Restore an older-style V2 archive that knows nothing about mentor chats
+        const res = await vaultPost(new Request('http://localhost:4000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(validV2Payload())
+        }));
+        expect(res.status).toBe(200);
+
+        // CRITICAL: mentor conversations survived the restore untouched
+        const sessions = testDb.prepare('SELECT * FROM m1_mentor_sessions').all();
+        const messages = testDb.prepare('SELECT * FROM m1_mentor_messages ORDER BY seq ASC').all();
+        expect(sessions.length).toBe(1);
+        expect((sessions[0] as any).title).toBe('Moats and margins');
+        expect(messages.length).toBe(2);
+        expect((messages[0] as any).content).toBe('How is my posture?');
+    });
+
+    it('Test 10: Mentor chats round-trip through snapshot export and V2 restore', async () => {
+        initMentorChatSchema(testDb);
+        const session = createSession(testDb, 'Liquidity ratios');
+        appendMessage(testDb, session.id, { id: 'msg-u1', role: 'user', content: 'Explain liquidity ratios.' });
+        appendMessage(testDb, session.id, {
+            id: 'msg-a1',
+            role: 'action_confirm',
+            actionIntent: { action: 'add_asset', name: 'Savings', amount: 5000 },
+            actionIntentResolved: 'confirmed'
+        });
+
+        // GET snapshot must carry the optional mentor collections
+        const getRes = await vaultGet(new Request('http://localhost:4000/api/vault'));
+        expect(getRes.status).toBe(200);
+        const snapshot = await getRes.json();
+        expect(snapshot.vault.mentor_sessions.length).toBe(1);
+        expect(snapshot.vault.mentor_messages.length).toBe(2);
+
+        // Wipe and restore from the snapshot — chats come back exactly, including
+        // the resolved action_confirm payload.
+        testDb.prepare('DELETE FROM m1_mentor_messages').run();
+        testDb.prepare('DELETE FROM m1_mentor_sessions').run();
+
+        const restoreRes = await vaultPost(new Request('http://localhost:4000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'bulk_restore',
+                schemaVersion: 2,
+                manifest: snapshot.manifest,
+                vault: snapshot.vault
+            })
+        }));
+        expect(restoreRes.status).toBe(200);
+
+        const sessions = testDb.prepare('SELECT * FROM m1_mentor_sessions').all();
+        const messages = testDb.prepare('SELECT * FROM m1_mentor_messages ORDER BY seq ASC').all();
+        expect(sessions.length).toBe(1);
+        expect((sessions[0] as any).title).toBe('Liquidity ratios');
+        expect(messages.length).toBe(2);
+        expect((messages[1] as any).role).toBe('action_confirm');
+        expect((messages[1] as any).action_intent_resolved).toBe('confirmed');
+        expect(JSON.parse((messages[1] as any).action_intent_json).name).toBe('Savings');
     });
 });

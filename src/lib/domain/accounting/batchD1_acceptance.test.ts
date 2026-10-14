@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { createTestDb } from '@/infrastructure/sqlite/db';
 import { initAccountingSchema } from '../accounting/schema';
 import { createEntity, createAccount } from '../accounting/accountService';
-import { postTransaction } from '../accounting/transactionService';
+import { postTransaction, correctTransaction } from '../accounting/transactionService';
 import { saveDraft } from '../accounting/draftService';
 import { processPersonallyPaidBusinessExpense, getOrCreateClearingAccounts, matchReimbursement } from '../../../features/reimbursement/reimbursementService';
 import { getSharedFinancialSummary } from '../accounting/sharedFinancialSummaryService';
@@ -102,13 +102,14 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
         const personalReport = getSharedFinancialSummary(db, { asOfDate: '2025-01-01', scopeEntityId: personalEntityId });
         expect(personalReport.total_assets_cents_by_currency['AUD']).toBe(100000); // 89000 + 11000 due from
 
-        // Perform Reimbursement (Neither bank side imported yet, manual flow)
         const matchedWf = matchReimbursement(db, {
             workflowId: wf.id,
             date: '2025-01-10',
             description: 'Reimbursement for Printer Ink',
             personalReceivingAccountId: personalBankId,
             businessBankAccountId: businessBankId,
+            createMissingPersonalReceipt: true,
+            createMissingBusinessPayment: true,
             performedBy: 'TestUser'
         });
 
@@ -244,25 +245,27 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
     it('prevents exclusive matching violations', () => {
         const wf = processPersonallyPaidBusinessExpense(db, {
             personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-01', description: 'desc',
-            sourceType: 'draft', sourceId: saveDraft(db, { payer_entity_id: personalEntityId, entity_id: businessEntityId, amount_cents: 11000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes' }).id,
+            sourceType: 'draft', sourceId: saveDraft(db, { payer_entity_id: personalEntityId, entity_id: businessEntityId, payment_account_id: personalBankId, amount_cents: 11000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes' }).id,
             paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
         });
 
         const matchedWf = matchReimbursement(db, {
-            workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, performedBy: 'user'
+            workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, 
+            createMissingPersonalReceipt: true, createMissingBusinessPayment: true, performedBy: 'user'
         });
 
         // Now attempt to use the newly created reimbursement transaction to settle ANOTHER workflow
         const wf2 = processPersonallyPaidBusinessExpense(db, {
             personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-01', description: 'desc',
-            sourceType: 'draft', sourceId: saveDraft(db, { payer_entity_id: personalEntityId, entity_id: businessEntityId, amount_cents: 11000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes' }).id,
+            sourceType: 'draft', sourceId: saveDraft(db, { payer_entity_id: personalEntityId, entity_id: businessEntityId, payment_account_id: personalBankId, amount_cents: 11000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes' }).id,
             paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
         });
 
         expect(() => matchReimbursement(db, {
             workflowId: wf2.id, date: '2025-01-10', description: 'desc',
             personalReceivingBankTxId: matchedWf.personal_reimbursement_tx_id!,
-            personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, performedBy: 'user'
+            personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId,
+            createMissingBusinessPayment: true, performedBy: 'user'
         })).toThrow('Personal transaction is already matched to another workflow');
     });
 
@@ -365,12 +368,13 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
     it('rejects matchReimbursement on changed settlement date/account/transaction selection', () => {
         const wf = processPersonallyPaidBusinessExpense(db, {
             personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-01', description: 'desc',
-            sourceType: 'draft', sourceId: saveDraft(db, { payer_entity_id: personalEntityId, entity_id: businessEntityId, amount_cents: 11000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes' }).id,
+            sourceType: 'draft', sourceId: saveDraft(db, { payer_entity_id: personalEntityId, entity_id: businessEntityId, payment_account_id: personalBankId, amount_cents: 11000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes' }).id,
             paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
         });
 
         const matchedWf = matchReimbursement(db, {
-            workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, performedBy: 'user'
+            workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId, businessBankAccountId: businessBankId, 
+            createMissingPersonalReceipt: true, createMissingBusinessPayment: true, performedBy: 'user'
         });
 
         // Identical retry -> succeeds and returns workflow
@@ -392,5 +396,83 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
             workflowId: wf.id, date: '2025-01-10', description: 'desc', personalReceivingAccountId: personalBankId2, businessBankAccountId: businessBankId, performedBy: 'user',
             personalReceivingBankTxId: matchedWf.personal_reimbursement_tx_id!, businessBankTxId: matchedWf.business_reimbursement_tx_id!
         })).toThrow('Conflicting matched reimbursement exists.');
+    });
+
+    it('extracts genuine document ID from structured evidence while preserving its metadata', () => {
+        const suspenseAcc = createAccount(db, { entity_id: personalEntityId, name: 'Suspense', type: 'expense', sub_type: 'other', currency: 'AUD', tracking_mode: 'transactions' }).account;
+        
+        // Structured evidence array containing an object with document_id and metadata
+        const structuredEvidence = JSON.stringify([
+            { document_id: 'doc-structured-123', metadata: { confidence: 0.99, source: 'receipt_scanner' } },
+            'doc-string-456'
+        ]);
+
+        const importedTx = postTransaction(db, {
+            date: '2025-01-02', description: 'Officeworks', origin: 'document_extraction',
+            evidence_refs: [structuredEvidence] as any, // bypassing type temporarily to simulate DB state
+            postings: [{ account_id: suspenseAcc.id, amount_cents: 11000, currency: 'AUD' }, { account_id: personalBankId, amount_cents: -11000, currency: 'AUD' }]
+        });
+
+        // Manually inject the structured evidence JSON directly into DB as it would come from document service
+        db.prepare('UPDATE m1_transactions SET evidence_refs = ? WHERE id = ?').run(structuredEvidence, importedTx.id);
+
+        const wf = processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', description: 'desc',
+            sourceType: 'posted_transaction', sourceId: importedTx.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId,
+            performedBy: 'TestUser'
+        });
+
+        // Assert effectiveEvidenceDocId extracted correctly
+        expect(wf.evidence_document_id).toBe('doc-structured-123');
+
+        // Assert the new business transaction preserves the structured metadata in its evidence_refs
+        const busTx = db.prepare('SELECT evidence_refs FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+        const parsedBusRefs = JSON.parse(busTx.evidence_refs);
+        expect(parsedBusRefs.length).toBe(2);
+        expect(parsedBusRefs[0].document_id).toBe('doc-structured-123');
+        expect(parsedBusRefs[0].metadata.source).toBe('receipt_scanner');
+    });
+
+    it('rejects a processing request whose payment account differs from the draft saved account', () => {
+        const personalBankId2 = createAccount(db, { entity_id: personalEntityId, name: 'Another Bank', type: 'asset', sub_type: 'checking', currency: 'AUD', tracking_mode: 'transactions' }).account.id;
+        
+        const draft = saveDraft(db, {
+            payer_entity_id: personalEntityId, entity_id: businessEntityId, payment_account_id: personalBankId, amount_cents: 5000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes'
+        });
+
+        // Try to process with a different payment account
+        expect(() => processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 5000, date: '2025-01-01', description: 'desc',
+            sourceType: 'draft', sourceId: draft.id, paymentAccountId: personalBankId2, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
+        })).toThrow('Draft facts do not match provided input. Please explicitly correct the draft first.');
+
+        // Normal processing succeeds
+        const wf = processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 5000, date: '2025-01-01', description: 'desc',
+            sourceType: 'draft', sourceId: draft.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
+        });
+        expect(wf.status).toBe('awaiting_reimbursement');
+    });
+
+    it('protects reimbursement-linked records from ordinary edits and voids silently invalidating them', () => {
+        const draft = saveDraft(db, {
+            payer_entity_id: personalEntityId, entity_id: businessEntityId, payment_account_id: personalBankId, amount_cents: 5000, currency: 'AUD', date: '2025-01-01', reimbursement_intent: 'yes'
+        });
+
+        const wf = processPersonallyPaidBusinessExpense(db, {
+            personalEntityId, businessEntityId, currency: 'AUD', amountCents: 5000, date: '2025-01-01', description: 'desc',
+            sourceType: 'draft', sourceId: draft.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
+        });
+
+        const tx = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+
+        // Attempting to void the linked transaction directly MUST throw a ValidationError guard
+        expect(() => correctTransaction(db, {
+            transaction_id: wf.business_transaction_id,
+            expected_revision: tx.revision,
+            operation: 'void',
+            reason: 'Ordinary void',
+            performed_by: 'user'
+        })).toThrow('Ordinary edits or voids cannot be applied to transactions linked to an active reimbursement workflow.');
     });
 });

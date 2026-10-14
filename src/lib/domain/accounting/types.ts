@@ -370,6 +370,12 @@ export interface ReconciliationComparison {
     is_comparable: boolean;
     status: 'matched' | 'discrepancy' | 'not_directly_comparable' | 'balance_only' | 'insufficient_history';
     notes?: string;
+    // Why this exists:
+    // Distinguishes genuine statement reconciliations from manual valuation comparisons.
+    // Tricky logic:
+    // Manual observations must never be described as statement reconciliations in UI badges.
+    // TODO: Add support for external banking API reconciliation in Milestone 2.
+    source_type?: 'manual' | 'table_paste' | 'document' | 'api';
 }
 
 export interface ConvertedMonetaryAmount {
@@ -521,6 +527,7 @@ export interface SharedFinancialSummaryAccount {
     account_id: string;
     account_name: string;
     entity_id: string;
+    entity_name?: string;
     account_type: AccountType;
     account_sub_type: AccountSubType;
     tracking_mode: TrackingMode;
@@ -531,6 +538,20 @@ export interface SharedFinancialSummaryAccount {
     effective_date: string;
     is_stale: boolean;
     reconciliation?: ReconciliationComparison;
+    // Why this exists:
+    // Enables truthful presentation of account evidence (e.g. distinguishing manual valuations
+    // from statement-extracted balances and document-backed observations).
+    // Preserves observation dates separately from calculation dates so an old observation
+    // does not appear recently verified just because the summary was calculated today.
+    // Tricky logic:
+    // If the observation came from a statement PDF/CSV, source_type is 'document' and document_id is populated.
+    // observation_date retains the observation's original effective date.
+    // as_of_date records the query calculation date.
+    // TODO: In Milestone 2, link document_id directly to PDF preview modals from summary chips.
+    source_type?: 'manual' | 'table_paste' | 'document' | 'api';
+    document_id?: string | null;
+    observation_date?: string | null;
+    as_of_date?: string;
     // Converted balance in reporting currency if an authoritative dated exchange rate is available
     converted_amount_cents?: number;
 }
@@ -552,15 +573,19 @@ export interface SharedFinancialSummary {
     // Enables the UI to truthfully qualify headline metrics (e.g., "Known Net Worth (1 account needs balance)")
     // rather than claiming "Total Net Worth" when accounts have no recorded balances.
     // Tricky logic:
-    // unrecorded_accounts only includes balance-mode accounts that have zero accepted valuation observations on or before asOfDate.
+    // unrecorded_accounts includes balance-mode accounts lacking observations, as well as transaction-mode
+    // accounts that have no recorded opening balance basis or statement observation.
     // is_complete is true only when unrecorded_count === 0 and all eligible accounts have valid balances and conversion rates.
     // TODO: Include un-reconciled ledger discrepancy accounts in completeness criteria in Milestone 2.
     unrecorded_accounts: Array<{
         id: string;
         name: string;
         currency: CurrencyCode;
+        entity_id?: string;
+        entity_name?: string;
         account_type?: AccountType;
         account_sub_type?: AccountSubType;
+        reason?: string;
     }>;
     unrecorded_count: number;
     is_complete: boolean;
@@ -971,7 +996,7 @@ export interface ReimbursementWorkflow {
     personal_reimbursement_tx_id?: string | null;
     business_reimbursement_tx_id?: string | null;
     amount_cents: number;
-    status: 'awaiting_reimbursement' | 'reimbursed';
+    status: 'awaiting_reimbursement' | 'reimbursed' | 'cancelled';
     created_at: string;
     updated_at: string;
 }

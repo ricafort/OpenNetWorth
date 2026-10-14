@@ -258,7 +258,7 @@ export async function extractBalancesFromText(
             extraction_method: 'local_llm',
             source_batch_id: sourceBatchId,
             error: isOffline
-                ? `Local AI runner is offline or unreachable. Please verify LM Studio (port 1234) or Ollama (port 11434) is running, or switch to manual balance entry.`
+                ? `Local AI runner is offline or unreachable. Please verify LM Studio (port 1234), Ollama (port 11434), or Strata (port 8080) is running, or switch to manual balance entry.`
                 : `Extraction failed: ${err.message || 'Unknown LLM parsing error'}`,
             is_offline: isOffline
         };

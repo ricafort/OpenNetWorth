@@ -517,7 +517,10 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                             onChange={e => handleTargetAccountChange(e.target.value)}
                             className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-900 dark:text-slate-100 outline-none"
                         >
-                            {accounts.filter(a => a.type === 'asset' || a.type === 'liability').map(acc => {
+                            {accounts.filter(a => 
+                                (a.type === 'asset' && ['checking', 'savings', 'cash'].includes(a.sub_type)) ||
+                                (a.type === 'liability' && a.sub_type === 'credit_card')
+                            ).map(acc => {
                                 const ownerName = entities.find(e => e.id === acc.entity_id)?.name || 'Unknown Owner';
                                 return (
                                     <option key={acc.id} value={acc.id}>
@@ -1062,7 +1065,10 @@ export const ProposalReviewTable: React.FC<ProposalReviewTableProps> = ({
                                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
                                 >
                                     <option value="">(None / Keep Current)</option>
-                                    {accounts.map(acc => {
+                                    {accounts.filter(a => 
+                                        (a.type === 'asset' && ['checking', 'savings', 'cash'].includes(a.sub_type)) ||
+                                        (a.type === 'liability' && a.sub_type === 'credit_card')
+                                    ).map(acc => {
                                         const entityName = entities.find(e => e.id === acc.entity_id)?.name || 'Unknown Entity';
                                         return (
                                             <option key={acc.id} value={acc.id}>
