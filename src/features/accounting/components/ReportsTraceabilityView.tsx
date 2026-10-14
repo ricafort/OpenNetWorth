@@ -54,6 +54,7 @@ import {
     parseToCents
 } from '@/lib/domain/accounting/types';
 import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
+import HtmlReportDownloadButton from '@/features/reports/components/HtmlReportDownloadButton';
 
 /**
  * Format entity types into user-friendly labels without losing trust/household distinctions.
@@ -607,6 +608,10 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                         <Globe className="w-3.5 h-3.5" />
                         <span>Exchange Rates</span>
                     </button>
+                    <HtmlReportDownloadButton
+                        entityId={selectedEntityId !== 'all' ? selectedEntityId : undefined}
+                        entityName={entities.find(e => e.id === selectedEntityId)?.name}
+                    />
                     <button
                         onClick={refreshAllReports}
                         disabled={loading}
@@ -653,7 +658,7 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                     className={`pb-3 border-b-2 flex items-center gap-1.5 transition ${activeSubTab === 'drilldown' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
                 >
                     <FileText className="w-4 h-4" />
-                    <span>Ledger Drill-Down & Evidence Links</span>
+                    <span>Transactions Behind Totals</span>
                 </button>
             </div>
 
@@ -1392,10 +1397,10 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                         <div>
                             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                                Chronological Ledger Traceability (M1-EVID-01, M1-EVID-02)
+                                Transactions behind this total
                             </h3>
                             <p className="text-[11px] text-slate-500">
-                                Every displayed balance is traceable to individual journal postings with running balances and evidence citations.
+                                Every displayed balance is traceable to individual journal postings with running balances and source documents.
                             </p>
                         </div>
 
@@ -1420,17 +1425,18 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                     {drilldownReport ? (
                         <div className="space-y-4">
                             {/* Summary Cards */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {/* Why this exists:
+                                Provides immediate clarity on the account's opening and closing balance
+                                without overwhelming the user with technical accounting conventions up front.
+                                Tricky logic:
+                                Normal balance rule (Debit vs Credit) is preserved for auditability under an expandable details tag.
+                                TODO: In Milestone 2, show date range selector directly in the drilldown card.
+                            */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
                                     <div className="text-[10px] font-bold text-slate-500 uppercase">Account</div>
                                     <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                                         {drilldownReport.account_name}
-                                    </div>
-                                </div>
-                                <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
-                                    <div className="text-[10px] font-bold text-slate-500 uppercase">Normal Balance</div>
-                                    <div className="text-xs font-bold text-slate-900 dark:text-slate-100 capitalize">
-                                        {drilldownReport.account_type === 'asset' || drilldownReport.account_type === 'expense' ? 'Debit Normal' : 'Credit Normal'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
@@ -1446,6 +1452,27 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Technical & Audit Details */}
+                            <details className="text-xs text-slate-500 bg-slate-50/60 dark:bg-slate-800/30 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                                <summary className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                    Accounting Rules & Details
+                                </summary>
+                                <div className="mt-2 grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-800 text-[11px]">
+                                    <div>
+                                        <span className="font-medium text-slate-400">Normal Balance: </span>
+                                        <span className="font-semibold text-slate-700 dark:text-slate-300 capitalize">
+                                            {drilldownReport.account_type === 'asset' || drilldownReport.account_type === 'expense' ? 'Debit Normal' : 'Credit Normal'}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="font-medium text-slate-400">Account Type: </span>
+                                        <span className="font-semibold text-slate-700 dark:text-slate-300 capitalize">
+                                            {drilldownReport.account_type}
+                                        </span>
+                                    </div>
+                                </div>
+                            </details>
 
                             {/* Journal Postings Table */}
                             <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-xl">
@@ -1550,18 +1577,25 @@ export const ReportsTraceabilityView: React.FC<ReportsTraceabilityViewProps> = (
                                             </a>
                                         )}
                                     </div>
-                                    <div>
-                                        <span className="text-[10px] font-bold uppercase text-slate-400 block">Document ID</span>
-                                        <span className="font-mono text-slate-800 dark:text-slate-200 break-all text-xs">
-                                            {ev.document_id || 'N/A'}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] font-bold uppercase text-slate-400 block">Content Hash (SHA-256)</span>
-                                        <span className="font-mono text-slate-800 dark:text-slate-200 break-all text-xs">
-                                            {ev.content_hash || 'N/A'}
-                                        </span>
-                                    </div>
+                                    <details className="mt-1 text-xs text-slate-500">
+                                        <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800">
+                                            Cryptographic & Verification Details
+                                        </summary>
+                                        <div className="mt-1.5 space-y-1.5 pl-2 border-l border-slate-200 dark:border-slate-700">
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase text-slate-400 block">Document ID</span>
+                                                <span className="font-mono text-slate-800 dark:text-slate-200 break-all text-[11px]">
+                                                    {ev.document_id || 'N/A'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase text-slate-400 block">Content Hash (SHA-256)</span>
+                                                <span className="font-mono text-slate-800 dark:text-slate-200 break-all text-[11px]">
+                                                    {ev.content_hash || 'N/A'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </details>
                                     {ev.page_number !== undefined && ev.page_number !== null && (
                                         <div>
                                             <span className="text-[10px] font-bold uppercase text-slate-400 block">Page Citation</span>
