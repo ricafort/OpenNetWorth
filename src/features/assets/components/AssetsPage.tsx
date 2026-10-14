@@ -323,8 +323,13 @@ export const AssetsPage = () => {
                                 {modernAssetAccounts.map((account) => (
                                     <tr key={account.account_id} className="hover:bg-muted/50 border-b border-border transition-colors">
                                         <td className="px-6 py-5 font-black text-foreground">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <span>{account.account_name}</span>
+                                                {account.entity_name && (
+                                                    <span className="text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-full font-bold">
+                                                        {account.entity_name}
+                                                    </span>
+                                                )}
                                                 {account.is_stale && (
                                                     <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 px-2 py-0.5 rounded-full font-bold">
                                                         Stale (&gt;45d)
@@ -375,7 +380,14 @@ export const AssetsPage = () => {
                                 {unrecordedAssetAccounts.map((account) => (
                                     <tr key={account.id} className="hover:bg-muted/50 border-b border-border transition-colors bg-amber-50/20">
                                         <td className="px-6 py-5 font-bold text-foreground">
-                                            {account.name}
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span>{account.name}</span>
+                                                {account.entity_name && (
+                                                    <span className="text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-full font-bold">
+                                                        {account.entity_name}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="capitalize px-2 py-1 bg-muted text-muted-foreground rounded-md text-xs font-bold">

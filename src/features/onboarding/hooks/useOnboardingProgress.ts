@@ -3,6 +3,7 @@ import { useLiabilitiesQuery } from '@/features/liabilities/hooks/useLiabilities
 import { useGoalsQuery } from '@/features/goals/hooks/useGoalsQuery';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
+import { useHistory } from '@/hooks/useHistory';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
@@ -12,6 +13,7 @@ export function useOnboardingProgress() {
     const { goals } = useGoalsQuery();
     const { baseCurrency } = useNetWorth();
     const sourceState = useFinancialSourceSelection(baseCurrency);
+    const { history } = useHistory();
     const [hasUsedMentors, setHasUsedMentors] = useState(false);
     const pathname = usePathname();
     const isLoading = sourceState.isLoading;
@@ -42,6 +44,15 @@ export function useOnboardingProgress() {
         hasModernLiability = allAccounts.some(a => a.account_type === 'liability');
     }
 
+    // Why this exists:
+    // A user who already has accounts but zero debts is genuinely debt-free — showing an
+    // incomplete "Track a liability" step contradicts the Debt-Free banner and the unlocked
+    // Debt Slayer badge. For that case we swap the step for recording a net worth snapshot,
+    // which is the actually-missing piece of their setup. Brand-new users (nothing tracked yet)
+    // keep the liability step.
+    const hasAnyAccounts = assets.length > 0 || hasModernAsset;
+    const isDebtFree = liabilities.length === 0 && !hasModernLiability;
+
     // Derived state for tasks
     const tasks = [
         {
@@ -50,12 +61,19 @@ export function useOnboardingProgress() {
             done: assets.length > 0 || hasModernAsset,
             href: '/assets'
         },
-        {
-            id: 'first-liability',
-            label: 'Track a liability',
-            done: liabilities.length > 0 || hasModernLiability,
-            href: '/liabilities'
-        },
+        isDebtFree && hasAnyAccounts
+            ? {
+                id: 'first-snapshot',
+                label: 'Record a net worth snapshot',
+                done: history.length > 0,
+                href: '/timemachine'
+            }
+            : {
+                id: 'first-liability',
+                label: 'Track a liability',
+                done: liabilities.length > 0 || hasModernLiability,
+                href: '/liabilities'
+            },
         {
             id: 'first-goal',
             label: 'Set a financial goal',

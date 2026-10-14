@@ -42,7 +42,6 @@ export default function WealthMomentumGauge({ momentum }: Props) {
     } = momentum;
 
     const monthlySavingsBase = monthlySavings;
-    const annualProjectedBase = annualProjectedSavings;
     const diff = monthlySavingsBase;
 
     // Check if applicable recurring rules exist
@@ -95,6 +94,14 @@ export default function WealthMomentumGauge({ momentum }: Props) {
             <div className="flex flex-col items-center relative z-10">
                 <div className="w-48 h-24 overflow-hidden relative translate-y-2">
                     <PieChart width={200} height={200}>
+                        <defs>
+                            {/* Depth gradient along the arc: lighter at the base, full status
+                                color at the tip — reads stronger than a flat fill on dark cards. */}
+                            <linearGradient id="momentum-gauge-grad" x1="0" y1="1" x2="1" y2="0">
+                                <stop offset="0%" stopColor={color} stopOpacity={0.65} />
+                                <stop offset="100%" stopColor={color} stopOpacity={1} />
+                            </linearGradient>
+                        </defs>
                         <Pie
                             data={data}
                             cx="50%"
@@ -103,11 +110,14 @@ export default function WealthMomentumGauge({ momentum }: Props) {
                             endAngle={0}
                             innerRadius={60}
                             outerRadius={80}
+                            cornerRadius={6}
                             stroke="none"
                             dataKey="value"
                         >
-                            <Cell key="score" fill={color} />
-                            <Cell key="remaining" fill="#f1f5f9" />
+                            <Cell key="score" fill="url(#momentum-gauge-grad)" />
+                            {/* Theme-aware track instead of the hard-coded light gray, which
+                                glared against dark cards. */}
+                            <Cell key="remaining" fill="var(--muted, #f1f5f9)" />
                         </Pie>
                     </PieChart>
                     {/* Score Text */}
@@ -115,7 +125,10 @@ export default function WealthMomentumGauge({ momentum }: Props) {
                         <span className="text-3xl font-black text-foreground leading-none">
                             {isNoRules ? '--' : `${displayScore}%`}
                         </span>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-0.5">
+                        <span
+                            className="text-[10px] font-bold uppercase tracking-wider mt-0.5"
+                            style={isNoRules ? { color: 'var(--muted-foreground)' } : { color }}
+                        >
                             {status}
                         </span>
                     </div>
@@ -134,9 +147,8 @@ export default function WealthMomentumGauge({ momentum }: Props) {
                                     {diff > 0 ? '+' : ''}{formatCurrency(monthlySavingsBase, baseCurrency)}/mo
                                 </span>
                             </p>
-                            <p className="text-xs text-muted-foreground">
-                                Annualized <span className="font-bold text-foreground privacy-value">{formatCurrency(annualProjectedBase, baseCurrency)}</span> / year
-                            </p>
+                            {/* Annualized projection line removed: it restated the monthly figure ×12
+                                and added no decision value in the compact widget. */}
                         </>
                     )}
                 </div>

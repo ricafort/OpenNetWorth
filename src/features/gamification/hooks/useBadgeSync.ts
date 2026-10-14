@@ -2,19 +2,33 @@ import { useEffect, useState } from 'react';
 import { useProfile } from '@/contexts/ProfileContext';
 import { createClient } from '@/utils/supabase/client';
 import { GamificationRepository } from '../data/repository';
+import { evaluateAchievements } from '../domain/achievementRules';
 
 // Domain Types needed for checks
 import { Asset } from '@/features/assets/types';
-import { Liability } from '@/features/liabilities/types';
 import { Goal } from '@/features/goals/types';
 
 interface UseBadgeSyncProps {
     assets: Asset[];
     goals: Goal[];
-    netWorthUSD: number;
+    /** Converted net worth in the user's base currency; null when not reliably known. */
+    netWorthBase: number | null;
+    /** Modern accounting asset accounts (recorded or awaiting a balance). */
+    assetAccountCount: number;
+    /** Any liability with a non-zero recorded balance, or awaiting a balance (unknown ≠ debt-free). */
+    hasAnyDebt: boolean;
+    /** Longest consecutive-day run of net-worth snapshots. */
+    checkInStreakDays: number;
 }
 
-export function useBadgeSync({ assets, goals, netWorthUSD }: UseBadgeSyncProps) {
+export function useBadgeSync({
+    assets,
+    goals,
+    netWorthBase,
+    assetAccountCount,
+    hasAnyDebt,
+    checkInStreakDays
+}: UseBadgeSyncProps) {
     const { profile } = useProfile();
     const [unlockedBadges, setUnlockedBadges] = useState<Set<string>>(new Set());
 
@@ -29,14 +43,17 @@ export function useBadgeSync({ assets, goals, netWorthUSD }: UseBadgeSyncProps) 
 
             if (!profile?.id) return;
 
-            // 2. Local/Guest Mode Logic
+            // 2. Local/Guest Mode Logic — evaluate ALL six badges against authoritative facts.
+            // (Previously only four badges were checked, using legacy assets and USD-only net
+            // worth, which wrongly locked badges for users whose data lives in the accounting DB.)
             if (profile.id === 'local_user') {
-                const localUnlocked = new Set<string>();
-                if (assets.length > 0) localUnlocked.add('first-steps');
-                if (goals.length > 0) localUnlocked.add('goal-setter');
-                if ((netWorthUSD || 0) > 0) localUnlocked.add('wealth-tracker');
-                if ((netWorthUSD || 0) >= 1000000) localUnlocked.add('millionaire');
-                setUnlockedBadges(localUnlocked);
+                setUnlockedBadges(evaluateAchievements({
+                    hasAnyAsset: assets.length > 0 || assetAccountCount > 0,
+                    hasAnyGoal: goals.length > 0,
+                    netWorthBase,
+                    hasAnyDebt,
+                    checkInStreakDays
+                }));
                 return;
             }
 
@@ -48,11 +65,14 @@ export function useBadgeSync({ assets, goals, netWorthUSD }: UseBadgeSyncProps) 
             setUnlockedBadges(loadedBadges);
 
             // B. Check for missing badges (Trigger Backup)
-            const missingBadges: string[] = [];
-            if (!loadedBadges.has('first-steps') && assets.length > 0) missingBadges.push('first-steps');
-            if (!loadedBadges.has('goal-setter') && goals.length > 0) missingBadges.push('goal-setter');
-            if (!loadedBadges.has('wealth-tracker') && (netWorthUSD || 0) > 0) missingBadges.push('wealth-tracker');
-            if (!loadedBadges.has('millionaire') && (netWorthUSD || 0) >= 1000000) missingBadges.push('millionaire');
+            const locallyEarned = evaluateAchievements({
+                hasAnyAsset: assets.length > 0 || assetAccountCount > 0,
+                hasAnyGoal: goals.length > 0,
+                netWorthBase,
+                hasAnyDebt,
+                checkInStreakDays
+            });
+            const missingBadges = Array.from(locallyEarned).filter(id => !loadedBadges.has(id));
 
             // C. Award missing
             if (missingBadges.length > 0) {
@@ -68,7 +88,15 @@ export function useBadgeSync({ assets, goals, netWorthUSD }: UseBadgeSyncProps) 
         }
 
         syncBadges();
-    }, [assets.length, goals.length, netWorthUSD, profile?.id]);
+    }, [
+        assets.length,
+        goals.length,
+        netWorthBase,
+        assetAccountCount,
+        hasAnyDebt,
+        checkInStreakDays,
+        profile?.id
+    ]);
 
     return { unlockedBadges };
 }

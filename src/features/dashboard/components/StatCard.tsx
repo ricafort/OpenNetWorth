@@ -12,8 +12,12 @@ interface StatCardProps {
 
 export default function StatCard({ title, value, change, trend, icon, privacySensitive }: StatCardProps) {
     return (
-        <div className="flex flex-col h-full justify-between">
-            <div className="flex justify-between items-start mb-2">
+        // p-5 keeps the title/value clear of the card's rounded border: the widget
+        // content box has overflow-hidden, so flush-edge text was being clipped.
+        <div className="flex flex-col h-full justify-between p-5">
+            {/* pr-6 keeps the icon chip clear of the grid collapse toggle, which sits
+                inside the card's top-right corner. */}
+            <div className="flex justify-between items-start mb-2 pr-6">
                 <span className="text-sm font-medium text-muted-foreground">{title}</span>
                 <div className="p-2 bg-muted rounded-xl">
                     {icon}
@@ -36,7 +40,7 @@ export default function StatCard({ title, value, change, trend, icon, privacySen
                     </div>
                 ) : (
                     <div className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-                        <span>Not enough comparable history</span>
+                        <span>No verified comparable history yet</span>
                     </div>
                 )}
             </div>

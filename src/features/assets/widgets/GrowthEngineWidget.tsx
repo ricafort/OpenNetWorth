@@ -11,6 +11,7 @@ import { useAssetsQuery } from '@/features/assets/hooks/useAssetsQuery';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { centsToMajorUnits } from '@/lib/domain/accounting/types';
+import { formatCurrency } from '@/lib/utils/currencyService';
 
 export default function GrowthEngineWidget() {
     const { assets: legacyAssetsQuery, isLoading: legacyIsLoading } = useAssetsQuery();
@@ -77,6 +78,26 @@ export default function GrowthEngineWidget() {
 
     const hasInvestments = assets.length > 0 || accountValuations.length > 0;
 
+    // Largest investment accounts breakdown: makes the widget informative even when
+    // cost-basis returns and dividend income are unavailable. Only uses recorded
+    // valuations; converted values display in base currency, native ones stay native
+    // (never fabricate cross-currency totals).
+    const topInvestmentAccounts = useMemo(() => {
+        if (sourceState.mode === 'legacy') return [];
+        return accountValuations
+            .filter(v => v.value !== null && v.value !== undefined)
+            .sort((a, b) => ((b.convertedValue ?? b.value ?? 0) - (a.convertedValue ?? a.value ?? 0)))
+            .slice(0, 3);
+    }, [accountValuations, sourceState.mode]);
+
+    const latestValuationDate = useMemo(() => {
+        const dates = accountValuations
+            .map(v => v.effectiveDate)
+            .filter((d): d is string => Boolean(d));
+        if (dates.length === 0) return null;
+        return dates.reduce((max, d) => (d > max ? d : max));
+    }, [accountValuations]);
+
     if (sourceState.mode === 'error') {
         return (
             <WidgetWrapper id="growth-engine" title="Growth Engine" isEditMode={isEditMode} onRemove={() => hideWidget('growth-engine')}>
@@ -124,13 +145,44 @@ export default function GrowthEngineWidget() {
             isEditMode={isEditMode}
             onRemove={() => hideWidget('growth-engine')}
         >
-            <PortfolioSummary 
-                analysis={analyzePortfolio(assets, baseCurrency)} 
-                privacyBlur={isPrivacyBlur} 
-                currencyCode={baseCurrency} 
-                accountValuations={accountValuations} 
-                isAuthoritativeMode={sourceState.mode !== 'legacy'} 
+            <PortfolioSummary
+                analysis={analyzePortfolio(assets, baseCurrency)}
+                privacyBlur={isPrivacyBlur}
+                currencyCode={baseCurrency}
+                accountValuations={accountValuations}
+                isAuthoritativeMode={sourceState.mode !== 'legacy'}
+                valueContextNote="Same total as the Investment slice in Asset Allocation"
             />
+            {topInvestmentAccounts.length > 0 && (
+                // px-2 keeps the list clear of the card's border: the widget content box
+                // has overflow-hidden, so flush-edge text was being clipped.
+                <div className="mt-4 px-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] uppercase font-bold tracking-wide text-muted-foreground">
+                            Largest investment accounts
+                        </span>
+                        {latestValuationDate && (
+                            <span className="text-[10px] text-muted-foreground">
+                                as of {new Date(latestValuationDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                        )}
+                    </div>
+                    <div className="space-y-1">
+                        {topInvestmentAccounts.map(v => {
+                            const isConverted = v.convertedValue !== null && v.convertedValue !== undefined;
+                            const amount = isConverted ? v.convertedValue : v.value;
+                            return (
+                                <div key={v.id} className="flex items-center justify-between gap-2 text-xs border-b border-border/40 pb-1 last:border-0">
+                                    <span className="min-w-0 truncate font-medium text-foreground">{v.name}</span>
+                                    <span className="text-muted-foreground tabular-nums whitespace-nowrap">
+                                        {formatCurrency(amount, isConverted ? baseCurrency : (v.currency || baseCurrency))}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
             <div className="mt-4 text-center">
                 <Link href="/portfolio" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline">
                     View Detailed Analysis &rarr;
