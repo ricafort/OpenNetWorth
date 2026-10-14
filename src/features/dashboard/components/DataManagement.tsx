@@ -3,6 +3,7 @@
 import { useState, ChangeEvent, useEffect } from 'react';
 import { Download, Upload, Trash2, AlertTriangle, FileJson } from 'lucide-react';
 import { exportAuthoritativeVault, importData, clearAllData } from '@/infrastructure/local_driver';
+import HtmlReportDownloadButton from '@/features/reports/components/HtmlReportDownloadButton';
 
 export default function DataManagement() {
     const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -118,6 +119,9 @@ export default function DataManagement() {
                         </>
                     )}
                 </label>
+
+                {/* Self-contained HTML financial report */}
+                <HtmlReportDownloadButton variant="card" />
             </div>
 
             {importStatus === 'error' && (
