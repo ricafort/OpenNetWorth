@@ -54,11 +54,3 @@ export const MENTOR_CHAT_SCHEMA_DDL = `
     CREATE INDEX IF NOT EXISTS idx_mentor_sessions_updated ON mentor_sessions(updated_at);
 `;
 
-/**
- * Initializes the mentor chat schema idempotently.
- * New tables only — no migration step is required for a first-version schema.
- */
-export function initMentorChatSchema(db: Database.Database): void {
-    db.pragma('foreign_keys = ON');
-    db.exec(MENTOR_CHAT_SCHEMA_DDL);
-}

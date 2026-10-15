@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { getSharedFinancialSummary } from '@/lib/domain/accounting/sharedFinancialSummaryService';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
@@ -26,7 +26,8 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
 
         db.exec(`
             CREATE TABLE IF NOT EXISTS net_worth_snapshots (

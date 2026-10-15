@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { ingestCsvDocument, approveProposals, updateProposalReview } from './documentInboxService';
 import { CsvMappingProfile } from './types';
 import crypto from 'crypto';
@@ -11,7 +10,6 @@ describe('Batch C3: Categorization Rules Acceptance', () => {
 
     const setupDatabase = () => {
         db = createTestDb();
-        initAccountingSchema(db);
 
         // Setup base entities and accounts
         const ownerId = `ent-${crypto.randomUUID()}`;

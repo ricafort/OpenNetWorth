@@ -19,7 +19,6 @@ if (typeof (globalThis as any).ResizeObserver === 'undefined') {
 }
 
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { getAccountBalance } from '@/lib/domain/accounting/balanceService';
 import { createEntity, createAccount, getAccount } from '@/lib/domain/accounting/accountService';
 import { 
@@ -29,7 +28,6 @@ import {
     approveProposals,
     linkProposalToTransaction
 } from '@/lib/domain/document/documentInboxService';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
 import { 
     processPersonallyPaidBusinessExpense, 
     matchReimbursement, 
@@ -49,8 +47,6 @@ describe('E1 End-to-End Acceptance Journey', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
-        initDocumentSchema(db);
         
         container = document.createElement('div');
         document.body.appendChild(container);

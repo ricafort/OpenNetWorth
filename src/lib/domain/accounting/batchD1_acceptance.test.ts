@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createEntity, createAccount } from '../accounting/accountService';
 import { postTransaction, correctTransaction } from '../accounting/transactionService';
 import { saveDraft } from '../accounting/draftService';
@@ -19,7 +18,6 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
 
     beforeEach(() => {
         db = createTestDb();
-        initAccountingSchema(db);
 
         // 1. Setup entities
         personalEntityId = createEntity(db, { name: 'Household', type: 'household', currency: 'AUD' }).id;

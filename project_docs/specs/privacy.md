@@ -35,10 +35,10 @@ The system SHALL allow users to delete all their data.
 #### Scenario: Full deletion
 - **GIVEN** user confirms data deletion
 - **WHEN** deletion is confirmed
-- **THEN** all user data is removed from localStorage and database
+- **THEN** all user data is removed from the local SQLite vault
 
-### Requirement: Row-Level Security
-The system SHALL ensure data isolation via Supabase RLS.
+### Requirement: Data Isolation
+The system SHALL ensure data isolation by keeping all data in a single-user local SQLite vault — nothing leaves the device.
 
 #### Scenario: Cross-user protection
 - **GIVEN** user A is authenticated

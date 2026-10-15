@@ -15,7 +15,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, closeDb, setTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount } from '../accounting/accountService';
 import { getAccountBalance } from '../accounting/balanceService';
 import { postTransaction, ensureExpenseAccount } from '../accounting/transactionService';
@@ -54,7 +53,6 @@ describe('Slice 1E: Document Inbox and Basic Bank CSV Import Review', () => {
         // Isolated in-memory database setup (M1-SAFE-01)
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Seed person entity
         db.prepare(`

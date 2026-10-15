@@ -207,17 +207,3 @@ export function migrateDocumentSchema(db: Database.Database): void {
     }
 }
 
-/**
- * Initializes the Milestone 1 document processing schema on a SQLite database,
- * and applies any pending migrations idempotently.
- * 
- * Migration order:
- * Migrations must run BEFORE `DOCUMENT_SCHEMA_DDL` so that existing tables
- * from previous slices (e.g. Slice 1F) have missing columns added before
- * index creation runs on those columns.
- */
-export function initDocumentSchema(db: Database.Database): void {
-    migrateDocumentSchema(db);
-    db.pragma('foreign_keys = ON');
-    db.exec(DOCUMENT_SCHEMA_DDL);
-}

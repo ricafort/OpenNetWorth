@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import {
     createEntity,
     createAccount,
@@ -35,7 +35,7 @@ describe('Milestone 1 — Slice 1B: Accounts, Opening Balances & Calculations', 
         // Pristine in-memory database for each test (M1-SAFE-01)
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
     });
 
     afterEach(() => {

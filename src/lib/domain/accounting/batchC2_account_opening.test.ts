@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount, setAccountOpeningBalance, ConflictError, ValidationError } from '@/lib/domain/accounting/accountService';
 import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/accounting/route'; // The API route handling 'set_opening_balance' action
@@ -15,7 +15,7 @@ describe('Account Service - setAccountOpeningBalance (Batch C2)', () => {
     beforeEach(() => {
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
         setTestDb(db);
 
         const household = createEntity(db, { name: 'Household', type: 'household', currency: 'USD' });

@@ -18,8 +18,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { initSchema } from '../src/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../src/lib/domain/accounting/schema';
+import { runMigrations } from '../src/infrastructure/sqlite/migrations';
 import { createAccount, createEntity } from '../src/lib/domain/accounting/accountService';
 
 export const TEST_VAULT_PATH = path.resolve(process.cwd(), 'data', 'test_browser_vault.sqlite');
@@ -49,9 +48,8 @@ export function seedBrowserTestFixtures(targetDbPath: string = TEST_VAULT_PATH):
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
 
-    // Initialize all schemas
-    initSchema(db);
-    initAccountingSchema(db);
+    // Bring the fixture vault to the current schema (full migration list)
+    runMigrations(db);
 
     // Why this exists:
     // If the test server holds a Windows file lock on targetDbPath, unlinking fails.

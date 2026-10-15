@@ -27,7 +27,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, setTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount, createEntity } from '../accounting/accountService';
 import { getAccountBalance } from '../accounting/balanceService';
 import {
@@ -66,7 +65,6 @@ describe('Slice 1G: Receipt-to-Transaction Linking & Invariants', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Setup test sovereign entity
         const entity = createEntity(db, { name: 'Slice 1G Test Entity', type: 'household', currency: 'AUD' });

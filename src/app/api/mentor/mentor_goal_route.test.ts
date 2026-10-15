@@ -5,8 +5,8 @@
  * This is the regression test for the "mentors refuse to estimate dates" complaint.
  *
  * Tricky logic:
- * - The recurring_schedules table is created by full app DB init, not initAccountingSchema,
- *   so this test creates it explicitly in the in-memory DB.
+ * - The recurring_schedules table comes from the full migration list, but this
+ *   test creates it explicitly in the in-memory DB to stay self-contained.
  * - @/lib/api/localLlm is mocked to reject immediately so the offline fallback path is exercised
  *   with zero socket timeout.
  * - The expected projected month label is computed from the current date so the test is stable
@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import Database from 'better-sqlite3';
 import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { POST } from './route';
 
@@ -49,7 +49,8 @@ describe('Mentor goal projection answers (offline fallback)', () => {
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
         db.exec(`
             CREATE TABLE IF NOT EXISTS recurring_schedules (
                 id TEXT PRIMARY KEY,

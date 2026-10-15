@@ -30,7 +30,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema, migrateAccountingSchema } from './schema';
+import { migrateAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount, ConflictError } from './accountService';
 import {
     recordBalanceObservation,
@@ -54,7 +55,7 @@ describe('Delivery 1: Balance Updates & Shared Financial Summary Acceptance Test
         // Run strictly in-memory for fast, isolated tests
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
         setTestDb(db);
     });
 

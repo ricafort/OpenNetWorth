@@ -21,7 +21,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from './accountService';
 import { recordBalanceObservation, getLatestValuationObservation } from './balanceObservationService';
 import { getSharedFinancialSummary } from './sharedFinancialSummaryService';
@@ -43,7 +43,7 @@ describe('Delivery 2A: AI-Assisted Balance Extraction Domain Tests', () => {
     beforeEach(() => {
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
         setTestDb(db);
         vi.restoreAllMocks();
     });

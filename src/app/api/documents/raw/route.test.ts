@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from './route';
-import { getDb, initSchema } from '@/infrastructure/sqlite/db';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
+import { getDb } from '@/infrastructure/sqlite/db';
 import Database from 'better-sqlite3';
 
 describe('Raw Document API Route', () => {
     let db: Database.Database;
 
     beforeEach(() => {
+        // Under Vitest, getDb() returns an isolated in-memory database that has
+        // already run the full migration list (documents table included).
         db = getDb();
-        initSchema(db);
-        initDocumentSchema(db);
     });
 
     afterEach(() => {

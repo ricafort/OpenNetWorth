@@ -34,7 +34,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema, migrateAccountingSchema } from './schema';
+import { migrateAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import {
     createEntity,
     createAccount,
@@ -78,7 +79,8 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
     beforeEach(() => {
         // Strict in-memory database isolation (M1-SAFE-01)
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
         setTestDb(db);
     });
 

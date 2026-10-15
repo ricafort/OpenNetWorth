@@ -10,7 +10,6 @@ import Database from 'better-sqlite3';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { getAccountBalance } from '@/lib/domain/accounting/balanceService';
 import { ingestCsvDocument, approveProposals, ingestPdfDocument, linkProposalToTransaction } from '@/lib/domain/document/documentInboxService';
@@ -41,7 +40,6 @@ describe('DailyEventsView Batch D2 Acceptance Test', () => {
     beforeEach(async () => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Setup entities
         personalEntity = createEntity(db, { name: 'Household', type: 'household', currency: 'AUD' });

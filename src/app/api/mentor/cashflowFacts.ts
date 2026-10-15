@@ -6,10 +6,10 @@
  * (income, expenses, net monthly surplus) instead of only balance-sheet totals.
  *
  * Tricky logic:
- * - The legacy table stores free-form REAL amounts per frequency; normalization factors convert
+ * - The schedules table stores free-form REAL amounts per frequency; normalization factors convert
  *   weekly/fortnightly/quarterly/annual items to monthly equivalents.
- * - The table is created by the full app DB init, not by initAccountingSchema, so reads are guarded:
- *   when the table is absent (e.g. in-memory test DBs) the snapshot reports available=false
+ * - `recurring_schedules` comes from the baseline migration, not the accounting DDL, so reads are
+ *   guarded: when the table is absent (e.g. in-memory test DBs) the snapshot reports available=false
  *   instead of throwing.
  * - FX conversion reuses the same explicit dated-rate policy as the shared financial summary:
  *   no 1:1 guesses; a missing rate returns null and the caller must disclose it.

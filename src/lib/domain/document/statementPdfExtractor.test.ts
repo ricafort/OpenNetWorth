@@ -18,7 +18,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createEntity, createAccount } from '../accounting/accountService';
 import {
     extractStatementBalancesFromPdf,
@@ -41,7 +40,6 @@ describe('Delivery 2B: PDF Statement Extractor & Per-Page Coverage', () => {
 
     beforeEach(() => {
         db = createTestDb();
-        initAccountingSchema(db);
 
         // Seed default entity and accounts
         const entity = createEntity(db, { name: 'Test Household', type: 'household', currency: 'AUD' });

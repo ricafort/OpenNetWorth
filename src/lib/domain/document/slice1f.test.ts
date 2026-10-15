@@ -27,7 +27,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { createTestDb, closeDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount, createEntity } from '../accounting/accountService';
 import {
     approveProposals,
@@ -63,7 +62,6 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
     beforeEach(() => {
         // Ensure complete database isolation (M1-SAFE-01)
         db = createTestDb();
-        initAccountingSchema(db);
 
         // Provision test entity and AUD bank account
         const entity = createEntity(db, { name: 'Grace Bell', type: 'person', currency: 'AUD' });
