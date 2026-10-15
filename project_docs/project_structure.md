@@ -42,7 +42,6 @@ One-off executable scripts for maintenance. Run with `npx tsx scripts/script-nam
 - `inventory-vault.ts`: Read-only row counts per table for the live vault.
 - `seed-demo-vaults.ts`: Builds the read-only persona vaults under `data/demo_vaults/`.
 - `launch-browser-test.ts`: Boots the dev server against an isolated test vault.
-- `legacy_migrations/`: Archived one-time data fixes (superseded by the migration runner).
 
 > **Schema Source of Truth** is the embedded SQLite engine: migrations run in
 > `src/infrastructure/sqlite/migrations/` (via `runMigrations` in `db.ts`)
