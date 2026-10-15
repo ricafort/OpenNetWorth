@@ -749,35 +749,10 @@ export function calculateWealthMomentum(): WealthMomentum {
     };
 }
 
-export function applyRecurringToMonth(month: string): boolean {
-    const recurring = loadRecurringTransactions().filter(t => t.is_active);
-    if (recurring.length === 0) return false;
-
-    const cashFlowEntries = loadCashFlow();
-    const existingEntry = cashFlowEntries.find((e) => e.month === month);
-
-    if (existingEntry) return false; // Don't overwrite existing
-
-    const income = recurring
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + toMonthlyAmount(t.amount, t.frequency), 0);
-
-    const expenses = recurring
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + toMonthlyAmount(t.amount, t.frequency), 0);
-
-    const newEntry: CashFlowEntry = {
-        id: `cf-auto-${Date.now()}`,
-        month,
-        income: Math.round(income),
-        expenses: Math.round(expenses)
-    };
-
-    cashFlowEntries.push(newEntry);
-    saveCashFlow(cashFlowEntries);
-
-    return true;
-}
+// NOTE: The old `applyRecurringToMonth` here fabricated fake cash_flow_history
+// rows from schedule sums. It was removed (zero callers) and replaced by
+// `applyRecurringToMonth` in `src/features/cashflow/data/autopilotGenerator.ts`,
+// which posts real double-entry transactions with origin='recurring'.
 
 /**
  * Synchronizes the Debt Freedom Accelerator as an active recurring transaction.
