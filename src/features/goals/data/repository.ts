@@ -15,11 +15,11 @@ export interface IGoalRepository extends IRepository<Goal> {
  * Reads go through the vault API (`GET /api/vault?entity=goals`), which serves
  * the SQLite `goals` table directly — the Goal type is already snake_case, so
  * rows need no mapping. Writes go through `scoped_save`/`scoped_delete`, which
- * treat SQLite as authoritative.
+ * treat SQLite as authoritative. In demo mode (Phase 2.7) the `demo_persona`
+ * cookie makes the vault API serve the persona vault's goals, and the write
+ * actions are refused with 403.
  */
 export class LocalGoalRepository implements IGoalRepository {
-    constructor(private templateId?: string | null) { }
-
     async getAll(): Promise<Goal[]> {
         const res = await fetch('/api/vault?entity=goals');
         if (!res.ok) throw new Error(`Failed to load goals: HTTP ${res.status}`);

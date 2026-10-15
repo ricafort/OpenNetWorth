@@ -19,7 +19,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDb } from '@/infrastructure/sqlite/db';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
 
 function secureJson(data: any, init?: ResponseInit): NextResponse {
@@ -42,7 +42,8 @@ export async function GET(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
     try {
-        const db = getDb();
+        // Demo cookie present → persona vault's settings kv (Phase 2.7).
+        const db = getDbForRequest(request);
         const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[];
         const settings: Record<string, any> = {};
         for (const row of rows) {
@@ -51,6 +52,8 @@ export async function GET(request: Request) {
         }
         return secureJson({ settings });
     } catch (e: any) {
+        const demoRes = demoErrorResponse(e);
+        if (demoRes) return demoRes;
         return secureJson({ error: e.message || 'Failed to read settings' }, { status: 500 });
     }
 }
@@ -58,9 +61,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
         const body = await request.json().catch(() => null);
-        const db = getDb();
+        const db = getDbForRequest(request);
         const upsert = db.prepare(`
             INSERT INTO settings (key, value)
             VALUES (?, ?)
@@ -114,6 +120,9 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
         const { searchParams } = new URL(request.url);
         let key = searchParams.get('key');
@@ -124,7 +133,7 @@ export async function DELETE(request: Request) {
         if (!key) {
             return secureJson({ error: 'Missing key for settings delete' }, { status: 400 });
         }
-        const db = getDb();
+        const db = getDbForRequest(request);
         db.prepare('DELETE FROM settings WHERE key = ?').run(key);
         return secureJson({ success: true, key });
     } catch (e: any) {

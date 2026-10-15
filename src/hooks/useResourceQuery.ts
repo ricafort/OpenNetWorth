@@ -17,12 +17,13 @@ interface UseResourceQueryOptions<T> {
 
 export function useResourceQuery<T>({ queryKey, repository }: UseResourceQueryOptions<T>) {
     const queryClient = useQueryClient();
-    const { isDemoMode, profile, isLoading: profileLoading } = useProfile();
-    const templateId = isDemoMode ? profile?.id : null;
+    const { isDemoMode, demoPersona, isLoading: profileLoading } = useProfile();
 
-    // Fetch
+    // Fetch — the persona is part of the key so switching personas (the
+    // `demo_persona` cookie changes what the API routes serve) never reuses
+    // another persona's cached rows.
     const { data = [], isLoading, error } = useQuery<T[]>({
-        queryKey: [...queryKey, isDemoMode, templateId],
+        queryKey: [...queryKey, isDemoMode, demoPersona],
         queryFn: async () => {
             return await repository.getAll();
         },

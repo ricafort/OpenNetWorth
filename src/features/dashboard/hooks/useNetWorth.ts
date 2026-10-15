@@ -2,12 +2,10 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useProfile } from '@/contexts/ProfileContext';
-import { loadSettings, loadSettingsFromVault } from '@/infrastructure/local_driver';
+import { loadSettingsFromVault } from '@/infrastructure/local_driver';
 import { CurrencyCode } from '@/types';
 import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { centsToMajorUnits } from '@/lib/domain/accounting/types';
-import { Asset } from '@/features/assets/types';
-import { Liability } from '@/features/liabilities/types';
 
 /**
  * Hook to calculate Net Worth and Totals.
@@ -15,7 +13,7 @@ import { Liability } from '@/features/liabilities/types';
  * Fulfills Deliverable 3: Automatic net-worth goals using authoritative financial totals
  */
 export function useNetWorth() {
-    const { profile, isDemoMode } = useProfile();
+    const { profile } = useProfile();
     const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('USD');
 
     useEffect(() => {
@@ -23,17 +21,14 @@ export function useNetWorth() {
             setBaseCurrency(profile.currency_code as CurrencyCode);
             return;
         }
-        // No profile currency: demo personas keep settings in localStorage until the
-        // demo rework (Phase 2.7); the real vault reads base currency from SQLite.
+        // No profile currency: read base currency from the SQLite settings kv.
+        // In demo mode the `demo_persona` cookie makes that read target the
+        // persona vault (Phase 2.7) — no localStorage involved.
         let cancelled = false;
         const apply = (code: CurrencyCode) => { if (!cancelled) setBaseCurrency(code); };
-        if (isDemoMode) {
-            apply(loadSettings().baseCurrency);
-        } else {
-            loadSettingsFromVault().then(s => apply(s.baseCurrency)).catch(() => apply('USD'));
-        }
+        loadSettingsFromVault().then(s => apply(s.baseCurrency)).catch(() => apply('USD'));
         return () => { cancelled = true; };
-    }, [profile, isDemoMode]);
+    }, [profile]);
 
     const sourceState = useFinancialSourceSelection(baseCurrency);
 
@@ -55,19 +50,6 @@ export function useNetWorth() {
             for (const [curr, cents] of Object.entries(summary.net_worth_cents_by_currency)) {
                 netWorthByCurrency[curr as CurrencyCode] = centsToMajorUnits(cents as number, curr as CurrencyCode);
             }
-        } else if (sourceState.mode === 'legacy') {
-            // Legacy behavior
-            sourceState.assets.forEach((a: Asset) => {
-                const curr = (a.currency || 'USD') as CurrencyCode;
-                assetsByCurrency[curr] = (assetsByCurrency[curr] || 0) + a.value;
-                netWorthByCurrency[curr] = (netWorthByCurrency[curr] || 0) + a.value;
-            });
-    
-            sourceState.liabilities.forEach((l: Liability) => {
-                const curr = (l.currency || 'USD') as CurrencyCode;
-                liabilitiesByCurrency[curr] = (liabilitiesByCurrency[curr] || 0) + l.balance;
-                netWorthByCurrency[curr] = (netWorthByCurrency[curr] || 0) - l.balance;
-            });
         }
 
         // Determine if coverage is complete
@@ -106,20 +88,11 @@ export function useNetWorth() {
                  totalLiabilitiesBase = null;
                  isComplete = false;
              }
-        } else if (sourceState.mode === 'error') {
+        } else {
+            // Only 'error' remains: no figures to show.
             netWorthBase = null;
             totalAssetsBase = null;
             totalLiabilitiesBase = null;
-        } else {
-             // Legacy mode: We only have assets and liabilities, and if they have cross-currency, we can't reliably convert them here without FX
-             // We do a naive sum for legacy fallback, but we should flag if it's mixed currency
-             const uniqueCurrencies = Object.keys(netWorthByCurrency);
-             if (uniqueCurrencies.length > 1 || (uniqueCurrencies.length === 1 && uniqueCurrencies[0] !== baseCurrency)) {
-                 isComplete = false;
-                 netWorthBase = null; // Cannot provide accurate total
-             } else {
-                 netWorthBase = totalAssetsBase - totalLiabilitiesBase;
-             }
         }
 
         const totalAssetsUSD = assetsByCurrency['USD'] || 0;

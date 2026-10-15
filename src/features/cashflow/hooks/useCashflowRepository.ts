@@ -9,17 +9,9 @@ import { useMemo } from 'react';
  *
  * Why this exists:
  * The embedded SQLite vault is the single data layer, so there is exactly one
- * repository. Demo mode passes the persona id so the repository stays on
- * localStorage persona data and never touches the real vault.
+ * repository. Demo mode (Phase 2.7) needs no injection: the `demo_persona`
+ * cookie makes the vault API serve the persona vault's schedules.
  */
 export function useCashflowRepository(): ICashflowRepository {
-    const { isDemoMode, profile } = useProfile();
-    const templateId = isDemoMode ? profile?.id : null;
-
-    const repository = useMemo(
-        () => new LocalCashflowRepository(templateId),
-        [templateId]
-    );
-
-    return repository;
+    return useMemo(() => new LocalCashflowRepository(), []);
 }

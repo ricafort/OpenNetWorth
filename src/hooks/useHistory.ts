@@ -11,8 +11,9 @@
  * reads disagreeing with SQLite writes.
  *
  * Tricky logic:
- * - Demo mode (templateId set) stays on localStorage persona data until the
- *   demo-vault rewrite; it must never read or write the real vault.
+ * - Demo mode (Phase 2.7) needs no special branch: the `demo_persona` cookie
+ *   makes `/api/vault` serve the persona vault's snapshots, and the route
+ *   refuses writes with 403.
  * - The entity-scoped vault GET returns raw snake_case rows; we map them to
  *   the camelCase NetWorthSnapshot shape the UI consumes and sort by date.
  * - `scoped_save` upserts on (user_id, date), so the local list replaces by
@@ -22,10 +23,9 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { NetWorthSnapshot } from '@/types';
 import { useProfile } from '@/contexts/ProfileContext';
-import { LocalStorageService } from '@/infrastructure/LocalStorageService';
 
 /** Raw `net_worth_history` row shape returned by the entity-scoped vault GET. */
 interface HistoryRow {
@@ -51,26 +51,14 @@ function rowToSnapshot(row: HistoryRow): NetWorthSnapshot {
 const byDateAsc = (a: NetWorthSnapshot, b: NetWorthSnapshot) => a.date.localeCompare(b.date);
 
 export function useHistory() {
-    const { isDemoMode, profile } = useProfile();
-    const templateId = isDemoMode ? profile?.id : null;
+    const { profile } = useProfile();
 
     const [history, setHistory] = useState<NetWorthSnapshot[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Demo mode keeps the snapshot series in localStorage (persona data).
-    const demoService = useMemo(
-        () => (templateId ? new LocalStorageService<NetWorthSnapshot>('history') : null),
-        [templateId]
-    );
-
     const loadHistory = useCallback(async () => {
         setIsLoading(true);
         try {
-            if (demoService) {
-                const data = await demoService.getAll();
-                setHistory([...data].sort(byDateAsc));
-                return;
-            }
             const res = await fetch('/api/vault?entity=history');
             if (!res.ok) {
                 throw new Error(`Failed to load net worth history: HTTP ${res.status}`);
@@ -83,7 +71,7 @@ export function useHistory() {
         } finally {
             setIsLoading(false);
         }
-    }, [demoService]);
+    }, []);
 
     useEffect(() => {
         loadHistory();
@@ -100,18 +88,15 @@ export function useHistory() {
                 ...item,
                 currency: item.currency || (profile?.currency_code as any) || 'USD'
             };
-            if (demoService) {
-                await demoService.create(snapshotWithCurrency);
-            } else {
-                const res = await fetch('/api/vault', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'scoped_save', entity: 'history', item: snapshotWithCurrency })
-                });
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    throw new Error(err.error || `Failed to add snapshot: HTTP ${res.status}`);
-                }
+            // In demo mode the route refuses this with 403 ("read-only").
+            const res = await fetch('/api/vault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'scoped_save', entity: 'history', item: snapshotWithCurrency })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `Failed to add snapshot: HTTP ${res.status}`);
             }
             setHistory(prev => [...prev.filter(h => h.date !== snapshotWithCurrency.date), snapshotWithCurrency].sort(byDateAsc));
         } catch (error) {

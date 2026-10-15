@@ -1,7 +1,7 @@
 import { RecurringTransaction } from '@/features/cashflow/types';
 import { IRepository } from '@/types/repository';
 import { CurrencyCode } from '@/types';
-import { loadRecurringTransactions, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
+import { persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 
 /**
  * Domain-specific Cashflow Repository Interface.
@@ -61,23 +61,15 @@ function rowToSchedule(row: RecurringRow): RecurringTransaction {
  * no localStorage-first reads disagreeing with SQLite writes.
  *
  * Tricky logic:
- * - Demo mode (templateId set) still reads localStorage persona rows until the
- *   demo-vault rewrite; it must never fall through to the vault path, which
- *   would leak real schedules into the demo view.
+ * - Demo mode (Phase 2.7) is served by the vault API itself: the
+ *   `demo_persona` cookie makes `/api/vault?entity=recurring` return the
+ *   persona vault's schedules, and writes are refused with 403.
  * - Writes already go to SQLite via `persistScopedRecord` (which dual-writes the
  *   localStorage cache); `initVaultSync` pushes any browser-only schedules into
  *   SQLite at boot, so the read cutover loses nothing.
  */
 export class LocalCashflowRepository implements ICashflowRepository {
-    constructor(private templateId?: string | null) { }
-
     async getAll(): Promise<RecurringTransaction[]> {
-        if (this.templateId) {
-            // Demo mode: localStorage persona data (demo seeds user_id 'local_user').
-            return loadRecurringTransactions().filter(t =>
-                t.user_id === this.templateId || t.user_id === 'local_user' || !t.user_id);
-        }
-
         const res = await fetch('/api/vault?entity=recurring');
         if (!res.ok) {
             throw new Error(`Failed to load recurring schedules: HTTP ${res.status}`);

@@ -4,7 +4,6 @@ import { Wallet } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
-import { useHistory } from '@/hooks/useHistory';
 import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
 
@@ -16,16 +15,15 @@ import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
  * Historical comparison is only calculated and displayed if comparable history snapshots exist with matching currency.
  */
 export default function StatNetWorthWidget() {
-    const { baseCurrency, netWorthByCurrency, netWorthCurrencies } = useNetWorth();
+    const { baseCurrency } = useNetWorth();
     const { isEditMode } = useDashboard();
-    const { history } = useHistory();
     const sourceState = useFinancialSourceSelection(baseCurrency);
 
     // Why this exists:
     // Resolves Issues 1, 2 & 3:
-    // 1. Groups legacy net worth by native currency without fabricating $0 AUD when holdings are in USD.
+    // 1. Groups net worth by native currency without fabricating $0 AUD when holdings are in USD.
     // 2. Suppresses historical comparison if displayed currency does not match snapshot currency or coverage is incomplete.
-    // 3. Discloses when legacy holdings are excluded from modern accounting figures.
+    // 3. Discloses when legacy holdings are excluded from accounting figures.
     let title = `Total Net Worth (${baseCurrency})`;
     let displayValue = '...';
     let numericValue = 0;
@@ -96,36 +94,10 @@ export default function StatNetWorthWidget() {
                 displayValue = otherCurrencies.map(c => `${c} ${(summary.net_worth_cents_by_currency[c] / Math.pow(10, CURRENCY_DECIMALS[c] ?? 2)).toLocaleString()}`).join(' + ');
             }
         }
-    } else {
-        // Legacy mode: group by native currency (Resolves Issue 1)
-        const nwBase = netWorthByCurrency?.[baseCurrency];
-        const otherNwCurrs = (netWorthCurrencies || []).filter(c => c !== baseCurrency);
-
-        if (nwBase !== undefined && (nwBase > 0 || otherNwCurrs.length === 0)) {
-            numericValue = nwBase;
-            displayedCurrency = baseCurrency;
-            displayValue = formatCurrency(nwBase, baseCurrency);
-            title = otherNwCurrs.length > 0
-                ? `Net Worth (${baseCurrency} Holdings Subtotal)`
-                : `Total Net Worth (${baseCurrency})`;
-        } else if (otherNwCurrs.length === 1) {
-            const foreignCurr = otherNwCurrs[0];
-            const foreignVal = netWorthByCurrency?.[foreignCurr] || 0;
-            numericValue = foreignVal;
-            displayedCurrency = foreignCurr;
-            displayValue = formatCurrency(foreignVal, foreignCurr);
-            title = `Net Worth (${foreignCurr} Holding — Unconverted)`;
-        } else if (otherNwCurrs.length > 1) {
-            displayedCurrency = null;
-            title = `Net Worth (Multi-Currency Holdings — Unconverted)`;
-            displayValue = otherNwCurrs.map(c => `${c} ${(netWorthByCurrency?.[c] || 0).toLocaleString()}`).join(' + ');
-        } else {
-            numericValue = 0;
-            displayedCurrency = baseCurrency;
-            displayValue = formatCurrency(0, baseCurrency);
-            title = `Total Net Worth (${baseCurrency})`;
-        }
     }
+    // The mode union is exhaustive (loading | error | modern_missing_balances | modern_usable):
+    // the old browser-storage "legacy" totals branch was deleted with the single-data-layer
+    // collapse, so no fallback is needed here.
 
     // Historical comparison: Suppress whenever historical account coverage cannot be verified
     // Why this exists:

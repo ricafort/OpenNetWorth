@@ -157,10 +157,14 @@ describe('Batch B Remediation - GoalItem and GrowthEngineWidget', () => {
             currency: 'AUD'
         } as any;
 
-        it('uses legacy fallback for legacy-only same-currency goal', async () => {
-            mockSourceMode = 'legacy';
+        it('shows Unavailable for a same-currency net_worth goal when no accounting summary exists', async () => {
+            // Single-data-layer collapse (Phase 2.7): the old browser-storage "legacy" fallback
+            // was deleted. A net_worth goal reads ONLY the accounting summary — a stale
+            // netWorth prop must never fabricate progress.
+            mockSourceMode = 'modern_usable';
             mockBaseCurrency = 'AUD';
-            
+            mockSummaryData = null;
+
             await act(async () => {
                 renderWithProviders(
                     <GoalItem goal={mockGoal} netWorth={25000} baseCurrency="AUD" onUpdate={vi.fn()} onDelete={vi.fn()} />
@@ -168,15 +172,16 @@ describe('Batch B Remediation - GoalItem and GrowthEngineWidget', () => {
             });
 
             const text = container.textContent || '';
-            expect(text).toContain('A$25,000'); // Should read from netWorth prop
-            expect(text).toContain('25.0%');
+            expect(text).toContain('Unavailable');
+            expect(text).not.toContain('A$25,000'); // Must NOT read from the netWorth prop
         });
 
-        it('shows Unavailable for legacy USD holdings against AUD goal without FX', async () => {
-            mockSourceMode = 'legacy';
-            // Base currency is USD, Goal currency is AUD
+        it('shows Unavailable for foreign-currency goal without a matching-currency summary', async () => {
+            // Base currency is USD, Goal currency is AUD — no FX engine, so the AUD target
+            // stays Unavailable rather than inventing a conversion.
+            mockSourceMode = 'modern_usable';
             mockBaseCurrency = 'USD';
-            
+
             await act(async () => {
                 renderWithProviders(
                     <GoalItem goal={mockGoal} netWorth={20000} baseCurrency="USD" onUpdate={vi.fn()} onDelete={vi.fn()} />
@@ -184,7 +189,7 @@ describe('Batch B Remediation - GoalItem and GrowthEngineWidget', () => {
             });
 
             const text = container.textContent || '';
-            expect(text).toContain('Unavailable'); // Because it's legacy mode and no FX engine is available
+            expect(text).toContain('Unavailable');
             expect(text).not.toContain('A$20,000');
             expect(text).not.toContain('A$0');
         });

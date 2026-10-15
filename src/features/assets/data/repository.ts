@@ -1,7 +1,8 @@
 import { Asset, AssetType } from '@/features/assets/types';
 import { IRepository } from '@/types/repository';
 import { CurrencyCode } from '@/types';
-import { loadAssets, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
+import { loadAssets } from '@/infrastructure/local_driver';
+import { readDemoPersona } from '@/features/demo/demoMode';
 import {
     LedgerAccountRow,
     listLedgerAccounts,
@@ -81,24 +82,19 @@ function toAsset(row: LedgerAccountRow): Asset {
  * retired m0 `assets` table is no longer read or written.
  *
  * Tricky logic:
- * - Demo mode (templateId set) still reads localStorage persona rows until
- *   the demo-vault rewrite; it must never fall through to the ledger path,
- *   which would leak real vault data into the demo view.
+ * - Demo mode (Phase 2.7) is served by the API routes themselves: the
+ *   `demo_persona` cookie makes `/api/accounting` return the persona vault's
+ *   ledger. The localStorage merge is skipped in demo mode so the user's
+ *   real legacy rows can never leak into a persona view.
  * - Non-demo reads also merge leftover localStorage `local_user` rows the
  *   ledger does not contain, so nothing silently disappears before the
  *   Phase 3 backfill; the pages render those as "unlinked legacy".
  */
 export class LocalAssetRepository implements IAssetRepository {
-    constructor(private templateId?: string | null) { }
-
     async getAll(): Promise<Asset[]> {
-        if (this.templateId) {
-            // Demo mode: localStorage persona data (demoMode seeds user_id 'local_user').
-            return loadAssets().filter(a =>
-                a.user_id === this.templateId || a.user_id === 'local_user' || !a.user_id);
-        }
-
         const ledgerRows = (await listLedgerAccounts('asset')).map(toAsset);
+        if (readDemoPersona()) return ledgerRows;
+
         const ledgerIds = new Set(ledgerRows.map(r => r.id));
         const localRows = loadAssets().filter(a =>
             (a.user_id === 'local_user' || !a.user_id) && !ledgerIds.has(a.id));
@@ -111,9 +107,6 @@ export class LocalAssetRepository implements IAssetRepository {
     }
 
     async create(item: Asset): Promise<Asset> {
-        if (this.templateId) {
-            return await persistScopedRecord<Asset>('assets', item);
-        }
         await createLedgerAccount({
             id: item.id,
             name: item.name,
@@ -126,9 +119,6 @@ export class LocalAssetRepository implements IAssetRepository {
     }
 
     async update(item: Asset): Promise<Asset> {
-        if (this.templateId) {
-            return await persistScopedRecord<Asset>('assets', item);
-        }
         await updateLedgerAccount({
             id: item.id,
             type: 'asset',
@@ -140,11 +130,8 @@ export class LocalAssetRepository implements IAssetRepository {
     }
 
     async delete(id: string): Promise<void> {
-        if (this.templateId) {
-            await deleteScopedRecord('assets', id);
-            return;
-        }
         // Archive instead of hard delete: the ledger must keep its history.
+        // In demo mode the route refuses this with 403 (read-only personas).
         await archiveLedgerAccount(id);
     }
 }

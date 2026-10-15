@@ -120,6 +120,16 @@ export function closeDb(): void {
         }
         dbInstance = null;
     }
+    // Read-only demo vault connections (Phase 2.7) — Windows file locks make
+    // closing these on teardown mandatory.
+    for (const [, demoDb] of demoDbCache) {
+        try {
+            demoDb.close();
+        } catch {
+            // Already closed or detached
+        }
+    }
+    demoDbCache.clear();
 }
 
 /**
@@ -189,6 +199,111 @@ export function getDb(): Database.Database {
  */
 export function initSchema(db: Database.Database): void {
     runMigrations(db);
+}
+
+/* ------------------------------------------------------------------ */
+/* Demo vaults (Phase 2.7 — read-only sample personas)                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Allowlist of demo persona keys. Doubles as the path-traversal guard:
+ * only these keys may ever be interpolated into a file path.
+ * Keys match `ProfileConfig.id` in `src/features/demo/demoConfigs.ts`.
+ */
+export const DEMO_PERSONAS = ['start', 'stab', 'build', 'fam', 'grow'] as const;
+export type DemoPersona = (typeof DEMO_PERSONAS)[number];
+
+export function isDemoPersona(value: string): value is DemoPersona {
+    return (DEMO_PERSONAS as readonly string[]).includes(value);
+}
+
+/** Directory holding the per-persona demo vault files (gitignored under data/). */
+export function demoVaultDir(): string {
+    return path.resolve(process.cwd(), process.env.OPENNETWORTH_DEMO_DIR || path.join('data', 'demo_vaults'));
+}
+
+/**
+ * Raised when a request carries a `demo_persona` cookie that cannot be served:
+ * either the key is not on the allowlist, or the vault file has not been seeded.
+ * Routes translate it via `demoErrorResponse` (400 / 503).
+ */
+export class DemoVaultUnavailableError extends Error {
+    constructor(public persona: string, public reason: 'unknown_persona' | 'not_seeded') {
+        super(reason === 'unknown_persona'
+            ? `Unknown demo persona "${persona}".`
+            : `Demo vault for persona "${persona}" is not seeded. Run: npm run seed:demo`);
+        this.name = 'DemoVaultUnavailableError';
+    }
+}
+
+const demoDbCache = new Map<string, Database.Database>();
+
+/**
+ * Opens (and caches) a persona's demo vault READ-ONLY.
+ *
+ * Tricky logic:
+ * - `readonly: true` + `fileMustExist: true` guarantee demo traffic can never
+ *   create, migrate, or mutate any database file.
+ * - The seed script closes files with `journal_mode = DELETE`, so read-only
+ *   connections never need WAL sidecar files.
+ */
+export function getDemoDb(persona: string): Database.Database | null {
+    if (!isDemoPersona(persona)) return null;
+    const cached = demoDbCache.get(persona);
+    if (cached) return cached;
+    const dbPath = path.join(demoVaultDir(), `${persona}.sqlite`);
+    if (!fs.existsSync(dbPath)) return null;
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    db.pragma('foreign_keys = ON');
+    demoDbCache.set(persona, db);
+    return db;
+}
+
+/** Reads the `demo_persona` cookie from a request (null when absent). */
+export function readDemoPersona(request: Request): string | null {
+    const cookie = request.headers.get('cookie');
+    if (!cookie) return null;
+    const match = cookie.match(/(?:^|;\s*)demo_persona=([A-Za-z0-9_-]+)/);
+    return match ? match[1] : null;
+}
+
+/**
+ * Request-aware DB resolution: demo cookie present → read-only persona vault;
+ * absent → the live vault via getDb().
+ *
+ * Why this exists:
+ * Demo mode must serve the SAME API surface as the real vault without ever
+ * touching `opennetworth.sqlite`. Routes call this instead of getDb(); the
+ * client sets the cookie from `?simulatedProfileId=` in ProfileContext.
+ */
+export function getDbForRequest(request: Request): Database.Database {
+    const persona = readDemoPersona(request);
+    if (persona === null) return getDb();
+    if (!isDemoPersona(persona)) throw new DemoVaultUnavailableError(persona, 'unknown_persona');
+    const demo = getDemoDb(persona);
+    if (!demo) throw new DemoVaultUnavailableError(persona, 'not_seeded');
+    return demo;
+}
+
+/** Maps a thrown error to a JSON Response when it is demo-vault related (null otherwise). */
+export function demoErrorResponse(err: unknown): Response | null {
+    if (err instanceof DemoVaultUnavailableError) {
+        const status = err.reason === 'unknown_persona' ? 400 : 503;
+        return new Response(JSON.stringify({ success: false, error: err.message, demo_persona: err.persona }), {
+            status,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+    return null;
+}
+
+/** 403 response when a mutating request carries the demo cookie (demo is read-only). */
+export function demoReadOnlyResponse(request: Request): Response | null {
+    if (readDemoPersona(request) === null) return null;
+    return new Response(JSON.stringify({ success: false, error: 'Demo mode is read-only. Exit sample data to make changes.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+    });
 }
 
 export default getDb;
