@@ -13,7 +13,7 @@
 
 ### 🛡️ 1. Zero Cloud Data Leakage (The Privacy Hard-Lock)
 *   **Financial Balances & Holdings**: NEVER route user financial numbers, balances, or transactions to third-party cloud AI APIs (OpenAI, Anthropic, Gemini, etc.).
-*   **Local AI Execution**: All AI features (mentorship, natural language action parsing) MUST route through [src/lib/api/localLlm.ts](file:///d:/LocalVersions/OpenNetWorth/src/lib/api/localLlm.ts) to a Local LLM (LM Studio on port 1234 or Ollama on port 11434).
+*   **Local AI Execution**: All AI features (mentorship, natural language action parsing) MUST route through [src/lib/api/localLlm.ts](file:///d:/LocalVersions/OpenNetWorth/src/lib/api/localLlm.ts) to a Local LLM (LM Studio `:1234`, Ollama `:11434`, or Strata `:8080`).
 *   **Offline Fallbacks**: Always provide deterministic offline rule-based fallbacks so unstarted LLM servers never block the user.
 
 ### 🧠 2. Cognitive Load Optimization
@@ -35,8 +35,8 @@
 | **Framework** | Next.js 16 (App Router + Turbopack) | Server Components by default. Client Components (`'use client'`) only for interaction. |
 | **Language** | TypeScript (Strict Mode) | No `any`. Use Zod and strict domain interfaces. |
 | **Styling** | Tailwind CSS v4 | Use utility classes. Patched for Turbopack base-directory resolution. |
-| **Local AI** | LM Studio / Ollama | Local REST integration (`src/lib/api/localLlm.ts`). Budget 2048 tokens for reasoning models. |
-| **Data Layer** | LocalStorageService (Local Vault) | Primary zero-config driver. Optional Supabase client for self-hosters. |
+| **Local AI** | LM Studio / Ollama / Strata / LocalAI | Local REST integration (`src/lib/api/localLlm.ts`). Budget 2048 tokens for reasoning models. |
+| **Data Layer** | Embedded SQLite (Local Vault) | Primary driver: `better-sqlite3` via `src/infrastructure/sqlite/`. Optional Supabase client for self-hosters. |
 | **State** | TanStack Query & React Hooks | For async/domain caching and component-level reactive state. |
 | **Charts** | Recharts | Responsive SVG charts for net worth, allocation, and cash flow. |
 | **Icons** | Lucide React | Clean, modern, accessible iconography. |
@@ -72,7 +72,7 @@
 
 ### 🏗️ Local Vault & Repository Pattern
 *   Data access is abstracted behind Repository interfaces.
-*   **Default**: LocalStorage-backed Local Vault with 1-click JSON export/import.
+*   **Default**: Embedded SQLite Local Vault (`data/opennetworth.sqlite`) with 1-click backup/restore.
 *   **Optional**: Self-hosted Supabase with Row-Level Security (RLS) policies.
 
 ---

@@ -13,7 +13,7 @@ What you see when you first open the project.
  ┣━━ 📂 public                   - Static assets served directly (images, fonts).
  ┣━━ 📂 scripts                  - TypeScript maintenance scripts (migrations, seeding).
  ┣━━ 📂 src                      - Source code (Application Logic).
- ┣━━ 📂 supabase_migrations      - SQL Schema migrations (Database Version Control).
+ ┣━━ 📂 supabase_migrations      - SQL migrations for the optional Supabase adapter (legacy).
  ┃
  ┣━━ 📄 .env.local               - Local environment variables (Secrets - DO NOT COMMIT).
  ┣━━ 📄 next.config.ts           - Next.js framework configuration.
@@ -45,9 +45,12 @@ One-off executable scripts for maintenance. Run with `npx tsx scripts/script-nam
 - `hydrate-templates.ts`: Seeds initial templates.
 
 #### 📂 `supabase_migrations`
-Source of Truth for the Database Schema.
-- `00_schema_v1.sql`: The consolidated schema file defining all tables and RLS policies.
+SQL migrations for the **optional** self-hosted Supabase adapter only.
+- `00_schema_v1.sql`: Consolidated schema with RLS policies (legacy path).
 - `_archive/`: Old, squashed migrations kept for reference.
+
+> **Schema Source of Truth** is the embedded SQLite engine: migrations run in
+> `src/infrastructure/sqlite/db.ts` against `data/opennetworth.sqlite`.
 
 ---
 
@@ -65,11 +68,15 @@ The actual application code. Organized by **Feature (Vertical Slice)**.
  ┃    ┣━━ 📊 dashboard           - Layouts, Widget Registry
  ┃    ┣━━ 💸 cashflow            - Budgeting & Transactions
  ┃    ┣━━ 🎯 goals               - Financial Goals
- ┃    ┣━━ 🔄 bank                - Plaid Integration & Sync
+ ┃    ┣━━ 🔄 bank                - Bank sync (Basiq AU / Plaid US connectors)
  ┃    ┣━━ ⏳ timemachine         - Historical state
  ┃    ┣━━ 🤖 mentors             - AI Persona logic
  ┃    ┣━━ 🎮 gamification        - Badges & Achievements
  ┃    ┣━━ 🪁 onboarding          - User setup flow
+ ┃    ┣━━ 🧾 reimbursement       - Reimbursement corrections
+ ┃    ┣━━ 📄 reports             - One-click offline HTML financial report
+ ┃    ┣━━ 🔐 privacy             - Support Access ("Break-Glass") & trust logic
+ ┃    ┣━━ 📦 migration           - Data import/migration service
  ┃    ┣━━ 🧪 demo                - Demo data generation
  ┃    ┗━━ 🗽 freedom             - Financial Freedom calculations
  ┃
@@ -85,10 +92,11 @@ The actual application code. Organized by **Feature (Vertical Slice)**.
  ┃    ┗━━ 🧱 common              - Shared PageHeader, ContentCard
  ┃
  ┣━━ ⚙️ infrastructure           (ADAPTERS: External Services)
- ┃    ┣━━ 🏭 dataFactory.ts      - Abstract Factory
- ┃    ┣━━ 💾 sqlite/             - Embedded SQLite DB adapter (better-sqlite3)
- ┃    ┣━━ ☁️ SupabaseService.ts  - Optional Cloud DB Adapter
- ┃    ┗━━ 💾 LocalStorageService.ts - Local/Demo Adapter
+ ┃    ┣━━ 🏭 dataFactory.ts      - Abstract Factory (driver selection)
+ ┃    ┣━━ 💾 sqlite/             - Embedded SQLite engine (better-sqlite3): schema + migrations
+ ┃    ┣━━ 💾 SqliteDataService.ts - Primary data service (Local Vault on SQLite)
+ ┃    ┣━━ ☁️ SupabaseService.ts  - Optional Cloud DB Adapter (self-hosters)
+ ┃    ┗━━ 💾 LocalStorageService.ts - Browser/Demo Adapter
  ┃
  ┗━━ 📚 lib                      (UTILITIES: Shared Helpers)
       ┣━━ 📂 utils               - formatting, dates, currency
@@ -120,7 +128,8 @@ Dumb UI components used across multiple features.
 #### ⚙️ `src/infrastructure` (The Plumber)
 Handles "How do we get data?".
 - Implements the Repository Interfaces defined in Features.
-- Allows switching between "Real Mode" (Supabase) and "Demo Mode" (Local Storage).
+- **Default**: embedded SQLite Local Vault (`sqlite/` + `SqliteDataService.ts`).
+- **Optional**: self-hosted Supabase (`SupabaseService.ts`); browser LocalStorage for demo mode.
 
 ---
 
@@ -146,8 +155,8 @@ Handles "How do we get data?".
     2. Create logic in `src/features/[route]/components/[Route]Page.tsx`.
 
 - **A database change?**
-    1. Edit `supabase_schema.sql` (or create new migration in `supabase_migrations/`).
-    2. Run migration via script or Supabase CLI.
+    1. Add a migration in `src/infrastructure/sqlite/db.ts` (embedded SQLite is the source of truth).
+    2. If the change must also work for self-hosted Supabase, mirror it in `supabase_migrations/`.
 
 - **A local AI feature or prompt?**
     - Call `queryLocalLlm` from `src/lib/api/localLlm.ts` within an API route (`src/app/api/...`).
@@ -157,119 +166,3 @@ Handles "How do we get data?".
     - `src/lib/utils` (if generic helper).
     - `src/lib/domain` (if business logic like financial math or mentor advice).
 
-This document explains the directory structure of OpenNetWorth, detailing **what** goes where and **why**.
-We follow a **Feature-First Architecture** (Vertical Slice), grouped by business domain rather than technical type.
-
-## Root Directory
-
-```text
-📂 src
- ┃
- ┣━━ 🚀 features                 (DOMAIN LOGIC: Vertical Slices)
- ┃    ┃  "Code that changes together stays together"
- ┃    ┃
- ┃    ┣━━ 💰 assets              - Market prices, Portfolio holdings
- ┃    ┃    ┣━━ 📂 components     - Feature-specific UI (HoldingCard, Charts)
- ┃    ┃    ┣━━ 📂 hooks          - React Query hooks (useAssetsQuery)
- ┃    ┃    ┣━━ 📂 data           - Schemas & Repository interfaces
- ┃    ┃    ┗━━ 📂 actions        - Server Actions (getPrices)
- ┃    ┃
- ┃    ┣━━ 💳 liabilities         - Debt payoff engine
- ┃    ┃    ┣━━ 📂 components     - PayoffCalculator, AmortizationTable
- ┃    ┃    ┗━━ 📂 hooks          - useLiabilitiesQuery
- ┃    ┃
- ┃    ┣━━ 📊 dashboard           - Layouts, Widget Registry
- ┃    ┃    ┣━━ 📂 components     - DashboardGrid, Header
- ┃    ┃    ┗━━ 📂 widgets        - Widget implementations (NetWorthWidget)
- ┃    ┃
- ┃    ┣━━ ⏳ timemachine         - Historical state reconstruction
- ┃    ┣━━ 💸 cashflow            - Budgeting & Transactions
- ┃    ┣━━ 🎯 goals               - Financial Goals tracking
- ┃    ┗━━ 🛡️ privacy             - Support Access ("Break-Glass") & Trust Logic
- ┃
- ┣━━ 🧩 components               (SHARED UI: No Business Logic)
- ┃    ┃  "Generic, reusable visual elements"
- ┃    ┃
- ┃    ┣━━ 🎨 ui                  - Atoms: Buttons, Cards, Inputs, Dialogs
- ┃    ┣━━ 📐 layout              - Shell: Sidebar, Headers, AppWrappers
- ┃    ┣━━ 📈 charts              - Recharts wrappers (BarChart, PieChart)
- ┃    ┗━━ 🏦 bank                - Plaid specific UI (LinkButton)
- ┃
- ┗━━ ⚙️ infrastructure           (ADAPTERS: External Services)
-      ┃  "Data access layer only - No UI"
-      ┃
-      ┣━━ ☁️ SupabaseService     - Real Database connection & Auth
-      ┣━━ 💾 local_driver        - Demo mode local storage adapter
-      ┗━━ 🔌 DataService         - Factory for creating repositories
-```
-
-- `project_docs/`: Documentation for architecture, product specs, and roadmaps.
-- `src/`: Source code.
-- `public/`: Static assets (images, fonts).
-
-## Source Directory (`src/`)
-
-### 1. Features (`src/features/*`)
-**Why?** To keep related code together. If you delete a feature folder, you delete the feature. High cohesion, low coupling.
-
-Each feature folder (e.g., `assets`, `liabilities`, `dashboard`) follows this standard structure:
-- `components/`: React components specific only to this feature.
-- `hooks/`: Custom hooks (logic, data fetching) for this feature.
-- `types.ts`: TypeScript definitions for this feature's domain.
-- `actions/`: Server Actions specific to this feature (e.g., fetching prices, saving goals).
-- `modals/`: (Optional) Modals specific to this feature.
-- `widgets/`: (Optional) Dashboard widgets exposed by this feature.
-
-**Current Features:**
-- `assets/`: Integration with Plaid, stock prices, manual asset tracking.
-- `liabilities/`: Debt tracking, payoff calculators.
-- `dashboard/`: The main User Dashboard, including layout logic and widget management.
-- `cashflow/`: Budgeting, income/expense tracking.
-- `goals/`: Financial goal setting and tracking.
-- `timemachine/`: Historical snapshot viewing logic.
-- `mentors/`: AI interactions and persona definitions.
-- `gamification/`: Achievements and badges system.
-- `onboarding/`: First-run experience and tutorials.
-- `bank/`: Plaid Link integration and syncing logic.
-- `freedom/`: Financial freedom date calculations and projections.
-- `demo/`: Logic for generating realistic demo data for different personas.
-
-### 2. Components (`src/components/*`)
-**Why?** To house **Generic** UI elements that are agnostic of business logic.
-
-- `ui/`: "Atoms" - basic building blocks (Buttons, Inputs, Cards, CurrencySelectors).
-- `layout/`: "Organisms" - structural components (Sidebar, LayoutShell, Banners).
-- `charts/`: Reusable chart wrappers (Recharts abstractions).
-- `providers/`: Context providers (QueryClient, Theme).
-- `bank/`: Shared banking UI (Plaid Link buttons).
-
-*Note: If a component contains business logic (e.g., "Calculate Debt Payoff"), it belongs in `features/liabilities`, NOT here.*
-
-### 3. Application (`src/app/*`)
-**Why?** Next.js App Router entry points (Routing & Metadata ONLY).
-
-- **Rule: Thin Routes**. Pages (`page.tsx`) must be completely empty of business logic.
-- They typically contain only 3 things:
-  1. Metadata export.
-  2. One import from `src/features/[feature]/components/[Screen].tsx`.
-  3. A default export rendering that component.
-- `api/`: Route Handlers (REST endpoints, Webhooks).
-
-### 4. Library (`src/lib/*`)
-**Why?** Shared utilities and core domain logic that cuts across features.
-
-- `domain/`: Pure business logic functions (e.g., `interestCalculator`, `currencyService`).
-- `utils/`: Helper functions (formatting, dates).
-- `data/`: (Legacy/Transitional) Sample data or generic data fetching helpers.
-- `registry/`: Application registries (e.g., `widgetRegistry.ts` for dashboard configuration).
-
-### 5. Infrastructure (`src/infrastructure/*`)
-**Why?** Adapters for external services.
-
-- `local_driver.ts`: LocalStorage adapter for Demo/Guest mode.
-- `SupabaseService.ts`: Database adapter for Real mode.
-
-## Key Files
-- `src/middleware.ts`: Authenticated route protection.
-- `src/types/index.ts`: Shared global types (User, Currency).
-- `supabase_schema.sql`: Database schema definition.
