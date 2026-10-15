@@ -50,11 +50,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
                 await loadFromSupabase(templateId);
             } else {
                 // Direct Instant Local Vault Mode (100% Private, On-Device)
-                loadFromLocalStorage();
+                await loadLocalProfile();
             }
         } catch {
-            // Safe fallback to local storage mode
-            loadFromLocalStorage();
+            // Safe fallback to local vault mode
+            await loadLocalProfile();
         } finally {
             setIsLoading(false);
         }
@@ -106,9 +106,22 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const loadFromLocalStorage = () => {
+    const loadLocalProfile = async () => {
         // Private on-device profile for OpenNetWorth
-        const storedSettings = LocalStorage.loadSettings();
+        // Why two sources: demo personas keep their settings in localStorage until the
+        // demo-mode rework (Phase 2.7); the real vault reads settings from SQLite so
+        // currency/theme survive browser storage resets.
+        let storedSettings: { baseCurrency: CurrencyCode };
+        if (templateId) {
+            storedSettings = LocalStorage.loadSettings();
+        } else {
+            try {
+                storedSettings = await LocalStorage.loadSettingsFromVault();
+            } catch {
+                // Explicit defaults — never resurrect stale localStorage for the real vault.
+                storedSettings = { baseCurrency: 'USD' };
+            }
+        }
         let customName = 'Local Vault Owner';
         if (typeof window !== 'undefined') {
             const raw = localStorage.getItem('opennetworth_profile');
@@ -158,8 +171,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
                 refreshData(); // Re-fetch true state
             }
         } else {
-            // Guest or Demo -> LocalStorage + SQLite
-            const settings = LocalStorage.loadSettings();
+            // Guest or Demo -> SQLite vault (writes already go through persistScopedRecord).
+            // Read the current settings from the same source we read at load so a currency
+            // change never overwrites the vault with a stale localStorage object.
+            const settings = isDemoMode
+                ? LocalStorage.loadSettings()
+                : await LocalStorage.loadSettingsFromVault().catch(() => LocalStorage.loadSettings());
             settings.baseCurrency = code;
             await LocalStorage.saveSettings(settings);
 

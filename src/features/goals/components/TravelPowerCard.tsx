@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { Plane, Compass, Globe } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { UserSettings } from '@/types';
-import { loadSettings } from '@/infrastructure/local_driver';
+import { loadSettings, loadSettingsFromVault } from '@/infrastructure/local_driver';
+import { useProfile } from '@/contexts/ProfileContext';
 
 interface CityCost {
     city: string;
@@ -40,11 +41,22 @@ interface Props {
  * TODO: In Milestone 2, allow user to link a specific liquid travel savings goal or sub-account.
  */
 export default function TravelPowerCard({ netWorthUSD }: Props) {
+    const { isDemoMode } = useProfile();
     const [settings, setSettings] = useState<UserSettings | null>(null);
 
     useEffect(() => {
-        setSettings(loadSettings());
-    }, []);
+        // Demo personas keep their settings in localStorage until the demo rework
+        // (Phase 2.7); the real vault reads settings from the SQLite settings kv.
+        if (isDemoMode) {
+            setSettings(loadSettings());
+            return;
+        }
+        let cancelled = false;
+        loadSettingsFromVault()
+            .then(s => { if (!cancelled) setSettings(s); })
+            .catch(() => { /* baseCurrency falls back to 'USD' below if the vault is unreachable */ });
+        return () => { cancelled = true; };
+    }, [isDemoMode]);
 
     const baseCurrency = settings?.baseCurrency || 'USD';
 

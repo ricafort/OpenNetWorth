@@ -941,6 +941,110 @@ export async function saveDashboardLayout(config: DashboardConfig): Promise<void
     await persistScopedRecord('settings' as any, { key: 'dashboardLayout', value: config } as any);
 }
 
+// --- UI state reads from the SQLite settings kv (Phase 2.5) ---
+/**
+ * Why this exists:
+ * UI state (general settings, debt payoff plan, dashboard layout) used to be
+ * read from localStorage with SQLite as a write-only mirror. Reads now come
+ * from the settings kv table via /api/settings, so state survives browser
+ * resets and is covered by vault backups. localStorage remains only as the
+ * demo-persona store (removed with the demo-mode rework) and as a one-time
+ * migration source.
+ *
+ * Tricky logic:
+ * The one-time localStorage -> settings-kv migration is guarded by a marker
+ * row INSIDE the kv table ('ui_state_migrated_v1'), not a localStorage flag,
+ * so it is idempotent across browsers and re-runs. If the migration POST
+ * fails, the singleton promise is reset so the next boot retries instead of
+ * silently swallowing the migration forever.
+ */
+const UI_STATE_MIGRATION_KEY = 'ui_state_migrated_v1';
+let uiStateMigrationPromise: Promise<void> | null = null;
+
+async function ensureUiStateMigrated(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    if (!uiStateMigrationPromise) {
+        uiStateMigrationPromise = (async () => {
+            try {
+                const res = await fetch('/api/settings');
+                if (!res.ok) {
+                    uiStateMigrationPromise = null;
+                    return;
+                }
+                const json = await res.json().catch(() => null);
+                const existing = json?.settings || {};
+                if (existing[UI_STATE_MIGRATION_KEY]) return;
+
+                const userSettings = get<Record<string, any>>(STORAGE_KEYS.SETTINGS);
+                const freedom = get<Record<string, any>>(STORAGE_KEYS.FREEDOM_SETTINGS);
+                const layout = get<DashboardConfig>(STORAGE_KEYS_DASHBOARD);
+
+                const payload: Record<string, any> = { [UI_STATE_MIGRATION_KEY]: true };
+                if (userSettings) payload.userSettings = userSettings;
+                if (freedom) payload.freedomSettings = freedom;
+                if (layout) payload.dashboardLayout = layout;
+
+                const post = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings: payload })
+                });
+                if (!post.ok) {
+                    // Leave the marker unset so the next boot retries.
+                    uiStateMigrationPromise = null;
+                }
+            } catch (e) {
+                uiStateMigrationPromise = null;
+                console.debug('UI state migration notice:', e);
+            }
+        })();
+    }
+    return uiStateMigrationPromise;
+}
+
+/** Test seam: force the next vault settings read to re-run the boot migration. */
+export function resetUiStateMigrationForTests(): void {
+    uiStateMigrationPromise = null;
+}
+
+export async function getVaultSettings(): Promise<Record<string, any>> {
+    await ensureUiStateMigrated();
+    const res = await fetch('/api/settings');
+    if (!res.ok) {
+        throw new Error(`Failed to load settings from SQLite vault (HTTP ${res.status})`);
+    }
+    const json = await res.json().catch(() => null);
+    return json?.settings || {};
+}
+
+export async function loadSettingsFromVault(): Promise<UserSettings> {
+    const s = await getVaultSettings();
+    const defaults: UserSettings = {
+        baseCurrency: 'USD',
+        theme: 'system',
+        checkInFrequency: 'monthly'
+    };
+    return { ...defaults, ...(s.userSettings || {}) };
+}
+
+export async function loadFreedomSettingsFromVault(): Promise<{ strategy: PayoffStrategy; extraMonthlyPayment: number; currency: CurrencyCode }> {
+    const s = await getVaultSettings();
+    const saved = s.freedomSettings as Partial<{ strategy: PayoffStrategy; extraMonthlyPayment: number; currency: CurrencyCode }> | undefined;
+    // Same historical-USD preservation rule as the localStorage reader:
+    // a currency-less saved plan keeps its original USD meaning, never a silent
+    // reinterpretation in the current reporting currency.
+    return {
+        strategy: saved?.strategy || 'avalanche',
+        extraMonthlyPayment: saved?.extraMonthlyPayment !== undefined ? saved.extraMonthlyPayment : 500,
+        currency: (saved?.currency || 'USD') as CurrencyCode
+    };
+}
+
+export async function loadDashboardLayoutFromVault(): Promise<DashboardConfig | null> {
+    const s = await getVaultSettings();
+    return (s.dashboardLayout as DashboardConfig) ?? null;
+}
+
 /**
  * Synchronizes client state with local SQLite database on boot.
  * 
@@ -1139,7 +1243,15 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'test' && !process
 }
 
 
-export function resetDashboardLayout(): void {
+export async function resetDashboardLayout(): Promise<void> {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(STORAGE_KEYS_DASHBOARD);
+    // The vault is the read source now — the key must go there too, otherwise
+    // the next load would resurrect the old layout. The vault key is
+    // 'dashboardLayout' (what saveDashboardLayout writes), not the localStorage key.
+    try {
+        await fetch('/api/settings?key=dashboardLayout', { method: 'DELETE' });
+    } catch (e) {
+        console.debug('Dashboard layout reset: vault delete notice:', e);
+    }
 }

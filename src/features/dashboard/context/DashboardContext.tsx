@@ -2,8 +2,9 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { DashboardConfig } from '@/types';
-import { loadDashboardLayout, saveDashboardLayout } from '@/infrastructure/local_driver';
+import { loadDashboardLayout, loadDashboardLayoutFromVault, saveDashboardLayout } from '@/infrastructure/local_driver';
 import { getDefaultLayout } from '@/lib/registry/widgetRegistry';
+import { useProfile } from '@/contexts/ProfileContext';
 
 interface DashboardContextType {
     // Layout State
@@ -26,24 +27,38 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
     // --- Layout State ---
+    const { isDemoMode } = useProfile(); // Provider nesting: ProfileProvider wraps DashboardProvider in layout.tsx
     const [isEditMode, setIsEditMode] = useState(false);
     const [layout, setLayout] = useState<DashboardConfig>(getDefaultLayout());
 
     useEffect(() => {
-        // Ensure consistent hydration - only load from storage on client mount.
+        // Ensure consistent hydration - only load saved layout on client mount.
         // Why the version check: when the shipped default grid changes (version bump in
         // widgetRegistry), stale saved grids would keep the old cramped layout forever.
         // A mismatch falls back to the new default; users can re-customize via Customize.
+        // Demo personas keep their state in localStorage until the demo rework (Phase 2.7);
+        // the real vault reads the layout from the SQLite settings kv.
+        let cancelled = false;
         const def = getDefaultLayout();
-        const saved = loadDashboardLayout();
-        if (saved && saved.version === def.version) {
-            // Saved configs from before the collapse feature lack collapsedWidgets;
-            // normalize so every consumer can rely on the field.
-            setLayout({ ...saved, collapsedWidgets: saved.collapsedWidgets ?? [] });
+        const apply = (saved: DashboardConfig | null) => {
+            if (cancelled) return;
+            if (saved && saved.version === def.version) {
+                // Saved configs from before the collapse feature lack collapsedWidgets;
+                // normalize so every consumer can rely on the field.
+                setLayout({ ...saved, collapsedWidgets: saved.collapsedWidgets ?? [] });
+            } else {
+                setLayout(def);
+            }
+        };
+        if (isDemoMode) {
+            apply(loadDashboardLayout());
         } else {
-            setLayout(def);
+            loadDashboardLayoutFromVault()
+                .then(apply)
+                .catch(() => apply(null));
         }
-    }, []);
+        return () => { cancelled = true; };
+    }, [isDemoMode]);
 
     const updateLayout = (newLayout: DashboardConfig) => {
         setLayout(prev => {
