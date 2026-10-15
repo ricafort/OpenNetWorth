@@ -1,5 +1,0 @@
-{
-  "/accounting/page": "app/accounting/page.js",
-  "/api/accounting/route": "app/api/accounting/route.js",
-  "/api/vault/route": "app/api/vault/route.js"
-}
