@@ -87,6 +87,8 @@ export interface RecordIncomeInput {
     description: string;
     idempotency_key?: string | null;
     evidence_refs?: any[] | null;
+    /** Defaults to 'manual'; the recurring autopilot generator passes 'recurring'. */
+    origin?: TransactionOrigin;
 }
 
 export interface RecordExpenseInput {
@@ -100,6 +102,8 @@ export interface RecordExpenseInput {
     description: string;
     idempotency_key?: string | null;
     evidence_refs?: any[] | null;
+    /** Defaults to 'manual'; the recurring autopilot generator passes 'recurring'. */
+    origin?: TransactionOrigin;
 }
 
 export interface RecordTransferInput {
@@ -686,7 +690,7 @@ export function recordIncome(db: Database.Database, input: RecordIncomeInput): T
             date: input.date,
             description: input.description,
             payee_or_payer: input.payer,
-            origin: 'manual',
+            origin: input.origin || 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,
             postings: [
@@ -765,7 +769,7 @@ export function recordExpense(db: Database.Database, input: RecordExpenseInput):
             date: input.date,
             description: input.description,
             payee_or_payer: input.payee,
-            origin: 'manual',
+            origin: input.origin || 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,
             postings: [
