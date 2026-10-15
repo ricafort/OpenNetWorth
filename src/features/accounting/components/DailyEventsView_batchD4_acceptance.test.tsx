@@ -75,7 +75,7 @@ describe('DailyEventsView Batch D4 Undo Match Acceptance Test', () => {
             ]
         });
         
-        const txs = db.prepare('SELECT id, description FROM m1_transactions WHERE date = ?').all('2025-03-10') as any[];
+        const txs = db.prepare('SELECT id, description FROM transactions WHERE date = ?').all('2025-03-10') as any[];
         const staplesTx = txs.find(t => t.description === 'Staples');
         testTxId = staplesTx.id;
 
@@ -100,7 +100,7 @@ describe('DailyEventsView Batch D4 Undo Match Acceptance Test', () => {
         dueFromAccountId = wf.due_from_account_id;
         dueToAccountId = wf.due_to_account_id;
 
-        const pReimbTx = db.prepare('SELECT * FROM m1_transactions WHERE description = ?').get('Reimbursement') as any;
+        const pReimbTx = db.prepare('SELECT * FROM transactions WHERE description = ?').get('Reimbursement') as any;
 
         // Match the reimbursement
         matchReimbursement(db, {
@@ -237,7 +237,7 @@ describe('DailyEventsView Batch D4 Undo Match Acceptance Test', () => {
         expect(unknownExpBalance).toBe(11000);
 
         // 9. Test Idempotency directly via API (simulate identical retry payload)
-        const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE amount_cents = 11000').get() as any;
+        const wf = db.prepare('SELECT * FROM reimbursement_workflows WHERE amount_cents = 11000').get() as any;
         expect(wf.status).toBe('awaiting_reimbursement');
 
         const lastUndo = JSON.parse(wf.last_undo_request);
@@ -265,12 +265,12 @@ describe('DailyEventsView Batch D4 Undo Match Acceptance Test', () => {
             performedBy: 'test'
         });
 
-        const reMatchedWf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(wf.id) as any;
+        const reMatchedWf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(wf.id) as any;
         expect(reMatchedWf.status).toBe('reimbursed');
 
         // Force the revisions of the NEW transactions to exactly match the expected revisions in the old undo payload
-        db.prepare('UPDATE m1_transactions SET revision = ? WHERE id = ?').run(lastUndo.expectedPersonalRevision, reMatchedWf.personal_reimbursement_tx_id);
-        db.prepare('UPDATE m1_transactions SET revision = ? WHERE id = ?').run(lastUndo.expectedBusinessRevision, reMatchedWf.business_reimbursement_tx_id);
+        db.prepare('UPDATE transactions SET revision = ? WHERE id = ?').run(lastUndo.expectedPersonalRevision, reMatchedWf.personal_reimbursement_tx_id);
+        db.prepare('UPDATE transactions SET revision = ? WHERE id = ?').run(lastUndo.expectedBusinessRevision, reMatchedWf.business_reimbursement_tx_id);
 
         // Replay the exact old undo payload again
         const regressionRes = await POST(new Request('http://localhost/api/accounting', {

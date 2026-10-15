@@ -5,7 +5,7 @@
  * This is the regression test for the "mentors refuse to estimate dates" complaint.
  *
  * Tricky logic:
- * - The recurring_transactions table is created by full app DB init, not initAccountingSchema,
+ * - The recurring_schedules table is created by full app DB init, not initAccountingSchema,
  *   so this test creates it explicitly in the in-memory DB.
  * - @/lib/api/localLlm is mocked to reject immediately so the offline fallback path is exercised
  *   with zero socket timeout.
@@ -51,7 +51,7 @@ describe('Mentor goal projection answers (offline fallback)', () => {
         db = new Database(':memory:');
         initAccountingSchema(db);
         db.exec(`
-            CREATE TABLE IF NOT EXISTS recurring_transactions (
+            CREATE TABLE IF NOT EXISTS recurring_schedules (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -88,11 +88,11 @@ describe('Mentor goal projection answers (offline fallback)', () => {
         });
         const now = new Date().toISOString();
         db.prepare(
-            `INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
+            `INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
              VALUES ('rec-sal', 'local_user', 'Salary', 2000, 'income', 'monthly', 'Income', '2026-01-01', 1, 'USD', ?)`
         ).run(now);
         db.prepare(
-            `INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
+            `INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
              VALUES ('rec-liv', 'local_user', 'Living costs', 1000, 'expense', 'monthly', 'Personal', '2026-01-01', 1, 'USD', ?)`
         ).run(now);
     }

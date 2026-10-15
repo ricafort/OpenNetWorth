@@ -54,7 +54,7 @@ import { Entity, CashFlowStatementResult, CashFlowItem, CurrencyCode, formatMone
 import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
 import Link from 'next/link';
 
-/** Raw `cash_flow_history` row shape returned by the entity-scoped vault GET. */
+/** Raw `cash_flow_summaries` row shape returned by the entity-scoped vault GET. */
 interface CashFlowRow {
     id: string;
     user_id: string;
@@ -205,7 +205,7 @@ export const CashflowPage = () => {
 
     // Load Manual Logs history from the SQLite vault.
     // Why this exists:
-    // The monthly logs live in `cash_flow_history` (renamed to `cash_flow_summaries`
+    // The monthly logs live in `cash_flow_summaries` (renamed to `cash_flow_summaries`
     // by the schema-collapse migration). Reads go through `/api/vault` so the list
     // always matches what saves and deletes write — no localStorage-first reads
     // disagreeing with SQLite writes.

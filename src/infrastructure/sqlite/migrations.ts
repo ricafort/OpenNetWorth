@@ -32,6 +32,7 @@ import { up as migration0004NetWorthHistoryCurrency } from './migrations/0004_ne
 import { up as migration0005EvidenceLinks } from './migrations/0005_evidence_links';
 import { up as migration0006BackfillLegacyLedger } from './migrations/0006_backfill_legacy_ledger';
 import { up as migration0007DropRetiredM0 } from './migrations/0007_drop_retired_m0';
+import { up as migration0008RenameM1Prefix } from './migrations/0008_rename_m1_prefix';
 
 export interface SqliteMigration {
     /** Stable, ordered identifier, e.g. '0001_baseline'. Never reused. */
@@ -67,12 +68,12 @@ export const MIGRATIONS: SqliteMigration[] = [
     },
     {
         id: '0004_net_worth_history_currency',
-        description: 'Add currency column to net_worth_history for pre-existing databases',
+        description: 'Add currency column to net_worth_snapshots for pre-existing databases',
         up: migration0004NetWorthHistoryCurrency,
     },
     {
         id: '0005_evidence_links',
-        description: 'Promote m1_evidence_links from test-only DDL into the canonical vault schema',
+        description: 'Promote evidence_links from test-only DDL into the canonical vault schema',
         up: migration0005EvidenceLinks,
     },
     {
@@ -85,6 +86,12 @@ export const MIGRATIONS: SqliteMigration[] = [
         description: 'Drop the retired m0 assets/liabilities tables (money rows now live in the ledger)',
         backupBefore: true,
         up: migration0007DropRetiredM0,
+    },
+    {
+        id: '0008_rename_m1_prefix',
+        description: 'Rename every m1_* table (and kept m0 history tables) to plain domain names; idx_* recreated as idx_*',
+        backupBefore: true,
+        up: migration0008RenameM1Prefix,
     },
 ];
 

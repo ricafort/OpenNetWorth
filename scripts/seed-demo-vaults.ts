@@ -161,7 +161,7 @@ export function seedPersona(cfg: ProfileConfig): void {
     });
 
     const insertRecurring = db.prepare(`
-        INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+        INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
         VALUES (?, 'local_user', ?, ?, ?, 'monthly', ?, '2024-01-01', NULL, 1, 'USD', ?)
     `);
     insertRecurring.run(`${cfg.id}-r-inc`, 'Primary Income', cfg.income, 'income', 'Salary', nowIso);
@@ -172,7 +172,7 @@ export function seedPersona(cfg: ProfileConfig): void {
     const totalAssets = cfg.assets.reduce((s, a) => s + a.value, 0);
     const totalLiabilities = cfg.liabilities.reduce((s, l) => s + l.balance, 0);
     const insertSnapshot = db.prepare(`
-        INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+        INSERT INTO net_worth_snapshots (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
         VALUES (?, 'local_user', ?, ?, ?, ?, 'USD')
     `);
     let curAssets = totalAssets;
@@ -191,7 +191,7 @@ export function seedPersona(cfg: ProfileConfig): void {
 
     // 12 months of cash-flow summaries with mild deterministic variety.
     const insertCashFlow = db.prepare(`
-        INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+        INSERT INTO cash_flow_summaries (id, user_id, month, income, expenses, currency)
         VALUES (?, 'local_user', ?, ?, ?, 'USD')
     `);
     for (let i = 0; i < 12; i++) {

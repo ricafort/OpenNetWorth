@@ -52,7 +52,7 @@ function assetTypeToSubType(type?: AssetType): string {
  * - Unknown balances map to 0, matching the summary's "known totals"
  *   semantics; unrecorded accounts are surfaced separately by
  *   `useSharedFinancialSummary`.
- * - `investment_details` has no `m1_accounts` column yet; consumers already
+ * - `investment_details` has no `accounts` column yet; consumers already
  *   handle its absence (flagged as a follow-up feature gap).
  */
 function toAsset(row: LedgerAccountRow): Asset {

@@ -15,7 +15,7 @@
  *   marker for `tracking_mode='transactions'`, never added to the sum) — so there is no
  *   double-count.
  * - Idempotency: rows whose mapped account id (`account-asset-<id>` / `account-liab-<id>`)
- *   already exists in m1_accounts are skipped entirely (account + transaction + postings),
+ *   already exists in accounts are skipped entirely (account + transaction + postings),
  *   and every insert is INSERT OR IGNORE. Re-running is a no-op.
  * - The caller owns the transaction (the migration runner wraps `up()`; bulk_restore has
  *   its own transaction). This module never opens one.
@@ -48,8 +48,31 @@ function tableExists(db: Database.Database, name: string): boolean {
     return (row?.cnt ?? 0) > 0;
 }
 
+/**
+ * Resolve the ledger table names at runtime. Migration 0006 can legitimately run
+ * on a vault that predates the migration runner — there the ledger still carries
+ * its pre-rename `m1_*` names (0008 renames it only afterwards). Every other
+ * caller (bulk_restore, post-0008 vaults) gets the plain names.
+ */
+function ledgerTables(db: Database.Database): {
+    entities: string;
+    accounts: string;
+    transactions: string;
+    journal_entries: string;
+} {
+    const preRename = tableExists(db, 'm1_accounts');
+    const suffix = preRename ? 'm1_' : '';
+    return {
+        entities: `${suffix}entities`,
+        accounts: `${suffix}accounts`,
+        transactions: `${suffix}transactions`,
+        journal_entries: `${suffix}journal_entries`,
+    };
+}
+
 function accountExists(db: Database.Database, accountId: string): boolean {
-    return db.prepare('SELECT 1 FROM m1_accounts WHERE id = ?').get(accountId) !== undefined;
+    const { accounts } = ledgerTables(db);
+    return db.prepare(`SELECT 1 FROM "${accounts}" WHERE id = ?`).get(accountId) !== undefined;
 }
 
 const EMPTY_RESULT: Omit<LegacyBackfillResult, 'skipped' | 'reason'> = {
@@ -61,7 +84,7 @@ const EMPTY_RESULT: Omit<LegacyBackfillResult, 'skipped' | 'reason'> = {
 
 /**
  * Maps a legacy payload (arrays may come from JSON, not tables) into the ledger.
- * Rows already represented in m1_accounts are skipped; everything else is inserted
+ * Rows already represented in accounts are skipped; everything else is inserted
  * inside the caller's transaction.
  */
 export function backfillLegacyLedgerFromPayload(
@@ -78,14 +101,15 @@ export function backfillLegacyLedgerFromPayload(
     }
 
     const mapped = mapLegacyDataToMilestone1({ ...payload, assets, liabilities }, opts.asOfDate);
+    const t = ledgerTables(db);
 
     db.prepare(`
-        INSERT OR IGNORE INTO m1_entities (id, name, type, currency, created_at, updated_at)
+        INSERT OR IGNORE INTO "${t.entities}" (id, name, type, currency, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
     `).run(mapped.entity.id, mapped.entity.name, mapped.entity.type, mapped.entity.currency, mapped.entity.created_at, mapped.entity.updated_at);
 
     const insertAccount = db.prepare(`
-        INSERT OR IGNORE INTO m1_accounts (
+        INSERT OR IGNORE INTO "${t.accounts}" (
             id, entity_id, name, type, sub_type, currency, is_active,
             opening_date, opening_balance_cents, tracking_mode,
             balance_revision, revision, created_at, updated_at
@@ -103,12 +127,12 @@ export function backfillLegacyLedgerFromPayload(
     }
 
     const insertTx = db.prepare(`
-        INSERT OR IGNORE INTO m1_transactions (
+        INSERT OR IGNORE INTO "${t.transactions}" (
             id, date, description, status, origin, idempotency_key, revision, created_at, updated_at
         ) VALUES (?, ?, ?, 'posted', 'opening_balance', ?, 1, ?, ?)
     `);
     const insertPosting = db.prepare(`
-        INSERT OR IGNORE INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
+        INSERT OR IGNORE INTO "${t.journal_entries}" (id, transaction_id, account_id, amount_cents, currency, memo)
         VALUES (?, ?, ?, ?, ?, ?)
     `);
     let transactionsInserted = 0;

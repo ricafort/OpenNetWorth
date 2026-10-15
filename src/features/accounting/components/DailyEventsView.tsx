@@ -13,7 +13,7 @@
  * - Double-entry transparency: Users can expand any transaction in the ledger
  *   to inspect balanced debit/credit journal postings.
  * - Auditable corrections (M1-DOM-05, T13): Users can void transactions with a mandatory
- *   justification, storing an immutable snapshot in m1_transaction_corrections.
+ *   justification, storing an immutable snapshot in transaction_corrections.
  * 
  * TODO: Add CSV/OFX bulk file drop zone in Slice 1G.
  */

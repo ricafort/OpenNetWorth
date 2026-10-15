@@ -7,7 +7,7 @@
  * 
  * Tricky logic:
  * - Supports both `multipart/form-data` (file upload from browser) and JSON payload (`file_base64`).
- * - Preserves original binary content in `m1_documents` and generates SHA-256 content hashes.
+ * - Preserves original binary content in `documents` and generates SHA-256 content hashes.
  * - Non-destructive reimport: If already approved, returns existing document without duplicate postings.
  * 
  * TODO: Add background asynchronous worker job dispatch for multi-page batch PDFs in Slice 1G.

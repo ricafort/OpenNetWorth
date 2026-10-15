@@ -3,7 +3,7 @@
  * 
  * Why this file exists:
  * Implements Delivery 1 deterministic structured parsing for pasted CSVs, TSVs, or tables.
- * Returns parsed balance proposals alongside match suggestions against existing `m1_accounts`.
+ * Returns parsed balance proposals alongside match suggestions against existing `accounts`.
  * 
  * Tricky logic:
  * - Match suggestions: Matches candidate accounts by name similarity or previous source mappings.

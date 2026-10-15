@@ -10,7 +10,7 @@ export interface ICashflowRepository extends IRepository<RecurringTransaction> {
     // Add specific methods here if needed
 }
 
-/** Raw `recurring_transactions` row shape returned by the entity-scoped vault GET. */
+/** Raw `recurring_schedules` row shape returned by the entity-scoped vault GET. */
 interface RecurringRow {
     id: string;
     user_id: string;
@@ -54,7 +54,7 @@ function rowToSchedule(row: RecurringRow): RecurringTransaction {
  * Authoritative Local SQLite-backed Cashflow Repository (DATA-01, DATA-04, DATA-05).
  *
  * Why this exists:
- * Recurring schedules live in the embedded SQLite vault (`recurring_transactions`,
+ * Recurring schedules live in the embedded SQLite vault (`recurring_schedules`,
  * renamed to `recurring_schedules` by the schema-collapse migration). Reads go
  * through `/api/vault?entity=recurring` so the Autopilot tab, the Wealth Momentum
  * widget, and the Debt Freedom Accelerator all observe the same schedules —

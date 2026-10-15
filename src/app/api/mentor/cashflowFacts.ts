@@ -1,6 +1,6 @@
 /**
  * Why this file exists:
- * Reads the user's recurring budget (Autopilot Budgets / recurring_transactions) and normalizes
+ * Reads the user's recurring budget (Autopilot Budgets / recurring_schedules) and normalizes
  * every active item to a MONTHLY amount grouped by currency, so mentor prompts and offline
  * fallbacks can answer cash-flow and goal-timeline questions with real numbers
  * (income, expenses, net monthly surplus) instead of only balance-sheet totals.
@@ -60,7 +60,7 @@ export function getRecurringMonthlySnapshot(db: Database.Database): RecurringMon
     let rows: any[];
     try {
         rows = db.prepare(
-            'SELECT name, category, amount, type, frequency, currency FROM recurring_transactions WHERE is_active = 1'
+            'SELECT name, category, amount, type, frequency, currency FROM recurring_schedules WHERE is_active = 1'
         ).all() as any[];
     } catch {
         // Table not present (e.g. in-memory test schema) — degrade gracefully
@@ -118,7 +118,7 @@ export function convertAmount(
     if (fromCurrency === toCurrency) return amount;
     try {
         const row = db.prepare(`
-            SELECT rate FROM m1_exchange_rates
+            SELECT rate FROM exchange_rates
             WHERE from_currency = ? AND to_currency = ? AND effective_date <= ?
             ORDER BY effective_date DESC
             LIMIT 1

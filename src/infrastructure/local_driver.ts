@@ -341,7 +341,8 @@ export async function exportAuthoritativeVault(): Promise<string> {
         const archive = {
             manifest: data.manifest || {
                 app: 'OpenNetWorth',
-                schemaVersion: 2,
+                schemaVersion: 3,
+                table_naming: 'plain',
                 exportTimestamp: new Date().toISOString()
             },
             vault: data.vault
@@ -438,7 +439,7 @@ export function toMonthlyAmount(amount: number, frequency: string): number {
     }
 }
 
-// NOTE: The old `applyRecurringToMonth` here fabricated fake cash_flow_history
+// NOTE: The old `applyRecurringToMonth` here fabricated fake cash_flow_summaries
 // rows from schedule sums. It was removed (zero callers) and replaced by
 // `applyRecurringToMonth` in `src/features/cashflow/data/autopilotGenerator.ts`,
 // which posts real double-entry transactions with origin='recurring'.

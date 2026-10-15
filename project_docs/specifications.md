@@ -13,7 +13,7 @@ This document consolidates the functional and technical specifications for OpenN
 **Goal**: Provide a 100% free, private, relational on-disk database with zero SaaS subscriptions or cloud databases.
 - **Engine**: Embedded `better-sqlite3` operating directly on the user's filesystem in `data/opennetworth.sqlite`.
 - **Durability**: ACID transactions with WAL (Write-Ahead Logging) for concurrent reads and resilient writes.
-- **Tables**: `profiles`, `assets`, `liabilities`, `goals`, `recurring_transactions`, `net_worth_history`, `cash_flow_history`, `settings`.
+- **Tables**: `profiles`, `assets`, `liabilities`, `goals`, `recurring_schedules`, `net_worth_snapshots`, `cash_flow_summaries`, `settings`.
 - **Bidirectional Sync**: Seamlessly syncs between client-side state and on-disk SQLite via `/api/vault`.
 - **Portability**: 1-click sovereign JSON export/import and direct SQLite file copying.
 

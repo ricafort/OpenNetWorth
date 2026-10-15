@@ -36,24 +36,24 @@ export function seedBatchBWalkthrough() {
 
     // Truncate tables for a completely pristine walkthrough
     db.exec(`
-        DELETE FROM m1_proposals;
-        DELETE FROM m1_document_jobs;
-        DELETE FROM m1_documents;
-        DELETE FROM m1_csv_mappings;
-        DELETE FROM m1_transaction_corrections;
-        DELETE FROM m1_journal_entries;
-        DELETE FROM m1_transactions;
-        DELETE FROM m1_account_ownership;
-        DELETE FROM m1_accounts;
-        DELETE FROM m1_entities;
-        DELETE FROM m1_balance_observations;
-        DELETE FROM m1_drafts;
+        DELETE FROM proposals;
+        DELETE FROM document_jobs;
+        DELETE FROM documents;
+        DELETE FROM csv_mappings;
+        DELETE FROM transaction_corrections;
+        DELETE FROM journal_entries;
+        DELETE FROM transactions;
+        DELETE FROM account_ownership;
+        DELETE FROM accounts;
+        DELETE FROM entities;
+        DELETE FROM balance_observations;
+        DELETE FROM drafts;
         DELETE FROM assets;
         DELETE FROM liabilities;
         DELETE FROM goals;
-        DELETE FROM recurring_transactions;
-        DELETE FROM net_worth_history;
-        DELETE FROM cash_flow_history;
+        DELETE FROM recurring_schedules;
+        DELETE FROM net_worth_snapshots;
+        DELETE FROM cash_flow_summaries;
     `);
 
     db.pragma('foreign_keys = ON');

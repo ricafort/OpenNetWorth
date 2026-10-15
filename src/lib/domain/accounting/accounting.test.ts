@@ -134,73 +134,73 @@ describe('Milestone 1 — Slice 1A: Accounting Foundation & Invariants', () => {
         it('enforces foreign key cascading from transactions to journal entries', () => {
             // Seed Entity & Accounts
             db.prepare(`
-                INSERT INTO m1_entities (id, name, type, currency, created_at, updated_at)
+                INSERT INTO entities (id, name, type, currency, created_at, updated_at)
                 VALUES ('ent-1', 'Test Entity', 'person', 'USD', datetime('now'), datetime('now'))
             `).run();
 
             db.prepare(`
-                INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, revision, created_at, updated_at)
+                INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, revision, created_at, updated_at)
                 VALUES ('acc-1', 'ent-1', 'Checking', 'asset', 'checking', 'USD', 1, datetime('now'), datetime('now')),
                        ('acc-2', 'ent-1', 'Savings', 'asset', 'savings', 'USD', 1, datetime('now'), datetime('now'))
             `).run();
 
             // Insert Transaction & Postings
             db.prepare(`
-                INSERT INTO m1_transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
+                INSERT INTO transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
                 VALUES ('tx-1', '2026-09-13', 'Inter-account transfer', 'posted', 'manual', 'idemp-1', 1, datetime('now'), datetime('now'))
             `).run();
 
             db.prepare(`
-                INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+                INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency)
                 VALUES ('j-1', 'tx-1', 'acc-1', -5000, 'USD'),
                        ('j-2', 'tx-1', 'acc-2', 5000, 'USD')
             `).run();
 
-            const postingsBefore = db.prepare("SELECT * FROM m1_journal_entries WHERE transaction_id = 'tx-1'").all();
+            const postingsBefore = db.prepare("SELECT * FROM journal_entries WHERE transaction_id = 'tx-1'").all();
             expect(postingsBefore).toHaveLength(2);
 
             // Delete transaction -> cascading delete removes all postings
-            db.prepare("DELETE FROM m1_transactions WHERE id = 'tx-1'").run();
-            const postingsAfter = db.prepare("SELECT * FROM m1_journal_entries WHERE transaction_id = 'tx-1'").all();
+            db.prepare("DELETE FROM transactions WHERE id = 'tx-1'").run();
+            const postingsAfter = db.prepare("SELECT * FROM journal_entries WHERE transaction_id = 'tx-1'").all();
             expect(postingsAfter).toHaveLength(0);
         });
 
         it('enforces idempotency key uniqueness to prevent duplicate posting retries', () => {
             db.prepare(`
-                INSERT INTO m1_transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
+                INSERT INTO transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
                 VALUES ('tx-a', '2026-09-13', 'Original Request', 'posted', 'manual', 'unique-idemp-123', 1, datetime('now'), datetime('now'))
             `).run();
 
             // Attempting to insert a duplicate with same idempotency key throws SQLite constraint error
             expect(() => {
                 db.prepare(`
-                    INSERT INTO m1_transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
+                    INSERT INTO transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
                     VALUES ('tx-b', '2026-09-13', 'Retry Request', 'posted', 'manual', 'unique-idemp-123', 1, datetime('now'), datetime('now'))
                 `).run();
-            }).toThrow(/UNIQUE constraint failed: m1_transactions.idempotency_key/);
+            }).toThrow(/UNIQUE constraint failed: transactions.idempotency_key/);
         });
 
         it('detects optimistic concurrency conflicts via revision tracking', () => {
             db.prepare(`
-                INSERT INTO m1_entities (id, name, type, currency, created_at, updated_at)
+                INSERT INTO entities (id, name, type, currency, created_at, updated_at)
                 VALUES ('ent-1', 'Test Entity', 'person', 'USD', datetime('now'), datetime('now'))
             `).run();
 
             db.prepare(`
-                INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, revision, created_at, updated_at)
+                INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, revision, created_at, updated_at)
                 VALUES ('acc-rev', 'ent-1', 'Brokerage', 'asset', 'brokerage', 'USD', 1, datetime('now'), datetime('now'))
             `).run();
 
             // Successful update with matching revision
             const res1 = db.prepare(`
-                UPDATE m1_accounts SET name = 'Vanguard Brokerage', revision = revision + 1
+                UPDATE accounts SET name = 'Vanguard Brokerage', revision = revision + 1
                 WHERE id = 'acc-rev' AND revision = 1
             `).run();
             expect(res1.changes).toBe(1);
 
             // Stale update using old revision 1 fails (0 rows updated)
             const res2 = db.prepare(`
-                UPDATE m1_accounts SET name = 'Fidelity Brokerage', revision = revision + 1
+                UPDATE accounts SET name = 'Fidelity Brokerage', revision = revision + 1
                 WHERE id = 'acc-rev' AND revision = 1
             `).run();
             expect(res2.changes).toBe(0); // Conflict detected!
@@ -255,17 +255,17 @@ describe('Milestone 1 — Slice 1A: Accounting Foundation & Invariants', () => {
             const hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
             db.prepare(`
-                INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+                INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
                 VALUES ('doc-1', 'statement.csv', ?, 'text/csv', 2048, datetime('now'))
             `).run(hash);
 
             // Re-uploading same file content under different name is caught by unique hash constraint
             expect(() => {
                 db.prepare(`
-                    INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+                    INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
                     VALUES ('doc-2', 'renamed_statement.csv', ?, 'text/csv', 2048, datetime('now'))
                 `).run(hash);
-            }).toThrow(/UNIQUE constraint failed: m1_documents.content_hash/);
+            }).toThrow(/UNIQUE constraint failed: documents.content_hash/);
         });
     });
 });

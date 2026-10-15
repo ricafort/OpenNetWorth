@@ -314,7 +314,7 @@ export interface BalanceObservation {
     is_component_of_total?: boolean;
     parent_observation_id?: string | null;
     /**
-     * Delivery 2B: Evidence reference to originating statement document in m1_documents.
+     * Delivery 2B: Evidence reference to originating statement document in documents.
      * Allows opening the exact original PDF via /api/documents/raw?id=...
      */
     document_id?: string | null;
@@ -446,7 +446,7 @@ export interface BalanceExtractionProposal {
      */
     explicit_classification_correction?: boolean;
     /**
-     * Delivery 2B: Document ID in m1_documents when proposal originates from an uploaded statement PDF.
+     * Delivery 2B: Document ID in documents when proposal originates from an uploaded statement PDF.
      */
     document_id?: string | null;
     /**

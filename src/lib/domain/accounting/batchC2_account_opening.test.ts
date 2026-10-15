@@ -53,14 +53,14 @@ describe('Account Service - setAccountOpeningBalance (Batch C2)', () => {
     it('establishes a nonzero asset opening balance and provisions equity account', () => {
         setAccountOpeningBalance(db, accountId, 50000, '2023-01-01');
 
-        const acc = db.prepare('SELECT opening_balance_cents, opening_date FROM m1_accounts WHERE id = ?').get(accountId) as any;
+        const acc = db.prepare('SELECT opening_balance_cents, opening_date FROM accounts WHERE id = ?').get(accountId) as any;
         expect(acc.opening_balance_cents).toBe(50000);
         expect(acc.opening_date).toBe('2023-01-01');
 
-        const eq = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND sub_type = 'opening_balance_equity'").get(householdId) as any;
+        const eq = db.prepare("SELECT * FROM accounts WHERE entity_id = ? AND sub_type = 'opening_balance_equity'").get(householdId) as any;
         expect(eq).not.toBeUndefined();
 
-        const entries = db.prepare('SELECT amount_cents, account_id, currency FROM m1_journal_entries').all() as any[];
+        const entries = db.prepare('SELECT amount_cents, account_id, currency FROM journal_entries').all() as any[];
         expect(entries.length).toBe(2);
         
         const assetEntry = entries.find(e => e.account_id === accountId);
@@ -75,11 +75,11 @@ describe('Account Service - setAccountOpeningBalance (Batch C2)', () => {
     it('establishes a nonzero liability opening balance', () => {
         setAccountOpeningBalance(db, liabilityId, 25000, '2023-01-01');
 
-        const entries = db.prepare('SELECT amount_cents, account_id FROM m1_journal_entries').all() as any[];
+        const entries = db.prepare('SELECT amount_cents, account_id FROM journal_entries').all() as any[];
         expect(entries.length).toBe(2);
 
         const liabilityEntry = entries.find(e => e.account_id === liabilityId);
-        const eq = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND sub_type = 'opening_balance_equity'").get(householdId) as any;
+        const eq = db.prepare("SELECT * FROM accounts WHERE entity_id = ? AND sub_type = 'opening_balance_equity'").get(householdId) as any;
         const equityEntry = entries.find(e => e.account_id === eq.id);
 
         expect(liabilityEntry.amount_cents).toBe(-25000); // credit liability
@@ -89,11 +89,11 @@ describe('Account Service - setAccountOpeningBalance (Batch C2)', () => {
     it('handles explicit zero opening balance correctly (no journal entries)', () => {
         setAccountOpeningBalance(db, accountId, 0, '2023-01-01');
 
-        const acc = db.prepare('SELECT opening_balance_cents, opening_date FROM m1_accounts WHERE id = ?').get(accountId) as any;
+        const acc = db.prepare('SELECT opening_balance_cents, opening_date FROM accounts WHERE id = ?').get(accountId) as any;
         expect(acc.opening_balance_cents).toBe(0);
         expect(acc.opening_date).toBe('2023-01-01');
 
-        const entries = db.prepare('SELECT * FROM m1_journal_entries').all();
+        const entries = db.prepare('SELECT * FROM journal_entries').all();
         expect(entries.length).toBe(0); // Zero balance shouldn't write postings
     });
 
@@ -105,7 +105,7 @@ describe('Account Service - setAccountOpeningBalance (Batch C2)', () => {
             setAccountOpeningBalance(db, accountId, 50000, '2023-01-01');
         }).not.toThrow();
 
-        const entries = db.prepare('SELECT * FROM m1_journal_entries').all();
+        const entries = db.prepare('SELECT * FROM journal_entries').all();
         expect(entries.length).toBe(2); // Still only one pair of entries
     });
 
@@ -127,21 +127,21 @@ describe('Account Service - setAccountOpeningBalance (Batch C2)', () => {
             setAccountOpeningBalance(db, accountId, 50000, '2023-02-30'); // Invalid date
         }).toThrow(ValidationError);
 
-        const acc = db.prepare('SELECT opening_balance_cents FROM m1_accounts WHERE id = ?').get(accountId) as any;
+        const acc = db.prepare('SELECT opening_balance_cents FROM accounts WHERE id = ?').get(accountId) as any;
         expect(acc.opening_balance_cents).toBeNull();
 
-        const entries = db.prepare('SELECT * FROM m1_journal_entries').all();
+        const entries = db.prepare('SELECT * FROM journal_entries').all();
         expect(entries.length).toBe(0);
     });
 
     it('rejects opening balance if posted activity predates the proposed opening date', () => {
         // Create an existing transaction on 2026-09-01
         db.prepare(`
-            INSERT INTO m1_transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
+            INSERT INTO transactions (id, date, description, status, origin, idempotency_key, revision, created_at, updated_at)
             VALUES ('tx-123', '2026-09-01', 'Test Deposit', 'posted', 'manual', 'idem-1', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')
         `).run();
         db.prepare(`
-            INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+            INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency)
             VALUES ('je-1', 'tx-123', ?, 100000, 'USD')
         `).run(accountId);
 
@@ -170,7 +170,7 @@ describe('Account Service - setAccountOpeningBalance (Batch C2)', () => {
         const res = await POST(req);
         expect(res.status).toBe(200);
 
-        const acc = db.prepare('SELECT opening_balance_cents, revision FROM m1_accounts WHERE id = ?').get(accountId) as any;
+        const acc = db.prepare('SELECT opening_balance_cents, revision FROM accounts WHERE id = ?').get(accountId) as any;
         expect(acc.opening_balance_cents).toBe(7500);
         expect(acc.revision).toBe(2); // Revision incremented
     });

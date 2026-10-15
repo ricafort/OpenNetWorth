@@ -171,7 +171,7 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
         expect(getAccountBalance(db, wf.due_from_account_id, '2025-01-02').balance_cents).toBe(11000);
 
         // Check auditable correction was recorded
-        const corrections = db.prepare('SELECT * FROM m1_transaction_corrections WHERE transaction_id = ?').all(importedTx.id);
+        const corrections = db.prepare('SELECT * FROM transaction_corrections WHERE transaction_id = ?').all(importedTx.id);
         expect(corrections.length).toBe(1);
     });
 
@@ -192,7 +192,7 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
             sourceType: 'draft', sourceId: draft.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
         })).toThrow('Draft must have reimbursement intent');
 
-        db.prepare(`UPDATE m1_drafts SET reimbursement_intent = 'yes' WHERE id = ?`).run(draft.id);
+        db.prepare(`UPDATE drafts SET reimbursement_intent = 'yes' WHERE id = ?`).run(draft.id);
 
         // Conflicting amount
         expect(() => processPersonallyPaidBusinessExpense(db, {
@@ -219,7 +219,7 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
         expect(wf1.id).toBe(wf2.id);
 
         // Update the draft facts so it passes draft validation but conflicts with the workflow
-        db.prepare(`UPDATE m1_drafts SET amount_cents = 6000 WHERE id = ?`).run(draft.id);
+        db.prepare(`UPDATE drafts SET amount_cents = 6000 WHERE id = ?`).run(draft.id);
 
         // Changed financial details throws conflict
         expect(() => processPersonallyPaidBusinessExpense(db, {
@@ -295,7 +295,7 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
         });
 
         // The business transaction MUST have inherited the Jan 2 date
-        const busTx = db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+        const busTx = db.prepare('SELECT date FROM transactions WHERE id = ?').get(wf.business_transaction_id) as any;
         expect(busTx.date).toBe('2025-01-02');
     });
 
@@ -414,7 +414,7 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
         });
 
         // Manually inject the structured evidence JSON directly into DB as it would come from document service
-        db.prepare('UPDATE m1_transactions SET evidence_refs = ? WHERE id = ?').run(structuredEvidence, importedTx.id);
+        db.prepare('UPDATE transactions SET evidence_refs = ? WHERE id = ?').run(structuredEvidence, importedTx.id);
 
         const wf = processPersonallyPaidBusinessExpense(db, {
             personalEntityId, businessEntityId, currency: 'AUD', amountCents: 11000, date: '2025-01-02', description: 'desc',
@@ -426,7 +426,7 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
         expect(wf.evidence_document_id).toBe('doc-structured-123');
 
         // Assert the new business transaction preserves the structured metadata in its evidence_refs
-        const busTx = db.prepare('SELECT evidence_refs FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+        const busTx = db.prepare('SELECT evidence_refs FROM transactions WHERE id = ?').get(wf.business_transaction_id) as any;
         const parsedBusRefs = JSON.parse(busTx.evidence_refs);
         expect(parsedBusRefs.length).toBe(2);
         expect(parsedBusRefs[0].document_id).toBe('doc-structured-123');
@@ -464,7 +464,7 @@ describe('Batch D1 Acceptance: Personally Paid Business Expenses', () => {
             sourceType: 'draft', sourceId: draft.id, paymentAccountId: personalBankId, businessExpenseAccountId: businessExpenseId, performedBy: 'user'
         });
 
-        const tx = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+        const tx = db.prepare('SELECT revision FROM transactions WHERE id = ?').get(wf.business_transaction_id) as any;
 
         // Attempting to void the linked transaction directly MUST throw a ValidationError guard
         expect(() => correctTransaction(db, {

@@ -1,0 +1,176 @@
+{
+  "_comment": "Synthetic Version 2 backup archive from the m1_-prefixed era. All records are fictional fixtures — never put real financial data in this file. Used by vault_backup_restore.test.ts to prove v2 archives restore into the plain-named (v3) schema.",
+  "manifest": {
+    "app": "OpenNetWorth",
+    "schemaVersion": 2,
+    "exportTimestamp": "2026-08-01T00:00:00.000Z",
+    "recordCounts": {
+      "goals": 1,
+      "recurring": 1,
+      "history": 1,
+      "cashFlow": 1,
+      "entities": 2,
+      "accounts": 2,
+      "transactions": 1,
+      "journal_entries": 2,
+      "drafts": 0,
+      "documents": 0,
+      "proposals": 0,
+      "categorization_rules": 0
+    }
+  },
+  "vault": {
+    "schemaVersion": 2,
+    "entities": [
+      {
+        "id": "ent-fixture-owner",
+        "name": "Fixture Owner",
+        "type": "person",
+        "currency": "AUD",
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "updated_at": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "ent-fixture-biz",
+        "name": "Fixture Consulting Co",
+        "type": "business",
+        "currency": "AUD",
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "updated_at": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "accounts": [
+      {
+        "id": "acc-fixture-chk",
+        "entity_id": "ent-fixture-owner",
+        "name": "Fixture Checking",
+        "type": "asset",
+        "sub_type": "checking",
+        "currency": "AUD",
+        "is_active": true,
+        "opening_balance_cents": 125000,
+        "tracking_mode": "transactions",
+        "balance_revision": 1,
+        "revision": 1,
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "updated_at": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "acc-fixture-exp",
+        "entity_id": "ent-fixture-biz",
+        "name": "Fixture Business Expenses",
+        "type": "expense",
+        "sub_type": "other",
+        "currency": "AUD",
+        "is_active": true,
+        "tracking_mode": "transactions",
+        "balance_revision": 1,
+        "revision": 1,
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "updated_at": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "account_ownership": [
+      {
+        "id": "own-fixture-1",
+        "account_id": "acc-fixture-chk",
+        "entity_id": "ent-fixture-owner",
+        "share_percentage": 100,
+        "created_at": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "transactions": [
+      {
+        "id": "tx-fixture-1",
+        "date": "2026-07-15",
+        "description": "Fixture coffee purchase",
+        "status": "posted",
+        "origin": "manual",
+        "revision": 1,
+        "created_at": "2026-07-15T00:00:00.000Z",
+        "updated_at": "2026-07-15T00:00:00.000Z"
+      }
+    ],
+    "journal_entries": [
+      {
+        "id": "je-fixture-1",
+        "transaction_id": "tx-fixture-1",
+        "account_id": "acc-fixture-exp",
+        "amount_cents": 450,
+        "currency": "AUD"
+      },
+      {
+        "id": "je-fixture-2",
+        "transaction_id": "tx-fixture-1",
+        "account_id": "acc-fixture-chk",
+        "amount_cents": -450,
+        "currency": "AUD"
+      }
+    ],
+    "transaction_corrections": [],
+    "exchange_rates": [],
+    "asset_valuations": [],
+    "drafts": [],
+    "documents": [],
+    "csv_mappings": [],
+    "document_jobs": [],
+    "proposals": [],
+    "assets": [
+      {
+        "id": "fixture-legacy-car",
+        "name": "Fixture Vehicle",
+        "type": "vehicle",
+        "value": 12000,
+        "currency": "AUD"
+      }
+    ],
+    "liabilities": [],
+    "goals": [
+      {
+        "id": "goal-fixture",
+        "name": "Fixture Emergency Fund",
+        "target_amount": 10000,
+        "current_amount": 2500,
+        "currency": "AUD",
+        "category": "Emergency",
+        "created_at": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "recurring": [
+      {
+        "id": "rec-fixture",
+        "name": "Fixture Rent",
+        "amount": 1800,
+        "type": "expense",
+        "frequency": "monthly",
+        "category": "Housing",
+        "start_date": "2026-01-01",
+        "is_active": true,
+        "currency": "AUD",
+        "created_at": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "history": [
+      {
+        "id": "hist-fixture",
+        "date": "2026-07-31",
+        "total_assets": 25000,
+        "total_liabilities": 4000,
+        "net_worth": 21000,
+        "currency": "AUD"
+      }
+    ],
+    "cashFlow": [
+      {
+        "id": "cf-fixture",
+        "month": "2026-07",
+        "income": 4200,
+        "expenses": 3100,
+        "currency": "AUD"
+      }
+    ],
+    "settings": {
+      "baseCurrency": "AUD"
+    }
+  }
+}

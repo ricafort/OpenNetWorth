@@ -270,7 +270,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(container.querySelector('input')).toBeNull();
 
         // Ensure zero writes to SQLite while loading
-        const initialRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const initialRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(initialRecurring).toBeUndefined();
 
         // Debts finish loading with USD debt (matching saved plan currency)
@@ -299,7 +299,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(container.textContent).toContain('Active plan saved (USD)');
 
         // Still zero writes to SQLite
-        const afterLoadRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const afterLoadRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(afterLoadRecurring).toBeUndefined();
     });
 
@@ -353,7 +353,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(container.textContent).toContain('Saved in USD — review required before saving');
 
         // Verify zero writes to SQLite
-        const recurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const recurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(recurring).toBeUndefined();
     });
 
@@ -459,7 +459,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(input.value).toBe('250');
 
         // Verify zero writes have occurred to SQLite
-        const recurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const recurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(recurring).toBeUndefined();
     });
 
@@ -495,7 +495,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         const beforeSaveSettings = testDb.prepare("SELECT value FROM settings WHERE key = 'freedomSettings'").get() as any;
         expect(JSON.parse(beforeSaveSettings.value).currency).toBe('USD');
 
-        const beforeSaveRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const beforeSaveRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(beforeSaveRecurring).toBeUndefined();
 
         // Find "Save Plan to Budget" button
@@ -517,7 +517,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(savedData.currency).toBe('AUD');
 
         // Verify recurring accelerator in SQLite
-        const afterSaveRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+        const afterSaveRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
         expect(afterSaveRecurring).toBeDefined();
         expect(afterSaveRecurring.amount).toBe(300);
         expect(afterSaveRecurring.currency).toBe('AUD');

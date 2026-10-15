@@ -49,14 +49,14 @@ export function getOrCreateClearingAccounts(db: Database.Database, personalEntit
     // Check existing workflows first
     const existingWf = db.prepare(`
         SELECT due_from_account_id, due_to_account_id 
-        FROM m1_reimbursement_workflows
+        FROM reimbursement_workflows
         WHERE personal_entity_id = ? AND business_entity_id = ? AND currency = ?
         LIMIT 1
     `).get(personalEntityId, businessEntityId, currency) as any;
 
     if (existingWf) {
-        const dueFromAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(existingWf.due_from_account_id) as Account;
-        const dueToAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(existingWf.due_to_account_id) as Account;
+        const dueFromAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(existingWf.due_from_account_id) as Account;
+        const dueToAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(existingWf.due_to_account_id) as Account;
         if (dueFromAccount && dueToAccount) {
             return { dueFromAccount, dueToAccount };
         }
@@ -102,7 +102,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
             throw new Error('Expense amount must be a positive safe integer.');
         }
 
-        const paymentAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.paymentAccountId) as Account;
+        const paymentAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.paymentAccountId) as Account;
         if (!paymentAccount || paymentAccount.entity_id !== input.personalEntityId) {
             throw new Error('Payment account must belong to the selected personal entity.');
         }
@@ -111,7 +111,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
         }
         assertEligiblePaymentAccount(paymentAccount);
 
-        const businessExpenseAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.businessExpenseAccountId) as Account;
+        const businessExpenseAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.businessExpenseAccountId) as Account;
         if (!businessExpenseAccount || businessExpenseAccount.entity_id !== input.businessEntityId || businessExpenseAccount.type !== 'expense') {
             throw new Error('Business expense account must belong to the business entity and be of type expense.');
         }
@@ -126,7 +126,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
         let evidenceRefs: any[] | undefined = input.evidenceDocumentId ? [input.evidenceDocumentId] : undefined;
 
         if (input.sourceType === 'draft') {
-            draft = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(input.sourceId) as any;
+            draft = db.prepare('SELECT * FROM drafts WHERE id = ?').get(input.sourceId) as any;
             if (!draft) throw new Error(`Draft not found: ${input.sourceId}`);
 
             if (draft.status !== 'draft' && draft.status !== 'posted') {
@@ -153,7 +153,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
 
         let plainEvidenceDocumentId = extractDocumentId(input.evidenceDocumentId) || extractDocumentId(draft?.source_document_id) || null;
         if (plainEvidenceDocumentId) {
-            const docExists = db.prepare('SELECT id FROM m1_documents WHERE id = ?').get(plainEvidenceDocumentId);
+            const docExists = db.prepare('SELECT id FROM documents WHERE id = ?').get(plainEvidenceDocumentId);
             if (!docExists) {
                 throw new Error(`Referenced evidence document not found: ${plainEvidenceDocumentId}`);
             }
@@ -169,20 +169,20 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
         let draftId = input.sourceType === 'draft' ? input.sourceId : null;
 
         if (effectiveSourceType === 'draft') {
-            const existingWf = db.prepare(`SELECT * FROM m1_reimbursement_workflows WHERE status != 'cancelled' AND draft_id = ?`).get(effectiveSourceId) as ReimbursementWorkflow;
+            const existingWf = db.prepare(`SELECT * FROM reimbursement_workflows WHERE status != 'cancelled' AND draft_id = ?`).get(effectiveSourceId) as ReimbursementWorkflow;
             if (existingWf) {
                 if (existingWf.amount_cents !== input.amountCents || existingWf.currency !== input.currency || existingWf.personal_entity_id !== input.personalEntityId || existingWf.business_entity_id !== input.businessEntityId) {
                     throw new Error('Conflicting reimbursement workflow exists for this draft. Changed financial details or owners require explicit correction.');
                 }
 
-                const personalPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingWf.personal_transaction_id) as any[];
-                const businessPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingWf.business_transaction_id) as any[];
+                const personalPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(existingWf.personal_transaction_id) as any[];
+                const businessPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(existingWf.business_transaction_id) as any[];
                 
                 const persCredit = personalPostings.find(p => p.amount_cents < 0 && p.account_id === input.paymentAccountId);
                 const busDebit = businessPostings.find(p => p.amount_cents > 0 && p.account_id === input.businessExpenseAccountId);
                 
-                const persTx = db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(existingWf.personal_transaction_id) as any;
-                const busTx = db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(existingWf.business_transaction_id) as any;
+                const persTx = db.prepare('SELECT date FROM transactions WHERE id = ?').get(existingWf.personal_transaction_id) as any;
+                const busTx = db.prepare('SELECT date FROM transactions WHERE id = ?').get(existingWf.business_transaction_id) as any;
 
                 if (!persCredit || !busDebit || persTx.date !== input.date || busTx.date !== input.date) {
                     throw new Error('Conflicting reimbursement workflow exists for this draft. Changed financial details or owners require explicit correction.');
@@ -213,10 +213,10 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
             });
             personalTxId = personalTx.id;
 
-            db.prepare('UPDATE m1_drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), effectiveSourceId);
+            db.prepare('UPDATE drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), effectiveSourceId);
 
         } else if (effectiveSourceType === 'posted_transaction') {
-            const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(effectiveSourceId) as any;
+            const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(effectiveSourceId) as any;
             if (!tx) throw new Error(`Transaction not found: ${effectiveSourceId}`);
 
             // Why this query exists:
@@ -226,28 +226,28 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
             // If a previous execution created the workflow with a null draft_id, retrying with the draft
             // updates the existing workflow atomically to associate draft_id, ensuring draft resolution.
             // TODO: In Milestone 2, provide an audit log entry when reconciling unlinked workflows to drafts.
-            const existingWf = db.prepare(`SELECT * FROM m1_reimbursement_workflows WHERE status != 'cancelled' AND (personal_transaction_id = ? OR (draft_id IS NOT NULL AND draft_id = ?))`).get(effectiveSourceId, draftId || '') as ReimbursementWorkflow;
+            const existingWf = db.prepare(`SELECT * FROM reimbursement_workflows WHERE status != 'cancelled' AND (personal_transaction_id = ? OR (draft_id IS NOT NULL AND draft_id = ?))`).get(effectiveSourceId, draftId || '') as ReimbursementWorkflow;
             if (existingWf) {
                 if (existingWf.amount_cents !== input.amountCents || existingWf.currency !== input.currency || existingWf.personal_entity_id !== input.personalEntityId || existingWf.business_entity_id !== input.businessEntityId) {
                     throw new Error('Conflicting reimbursement workflow exists for this transaction. Changed financial details or owners require explicit correction.');
                 }
                 
-                const personalPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingWf.personal_transaction_id) as any[];
-                const businessPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingWf.business_transaction_id) as any[];
+                const personalPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(existingWf.personal_transaction_id) as any[];
+                const businessPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(existingWf.business_transaction_id) as any[];
                 
                 const persCredit = personalPostings.find(p => p.amount_cents < 0 && p.account_id === input.paymentAccountId);
                 const busDebit = businessPostings.find(p => p.amount_cents > 0 && p.account_id === input.businessExpenseAccountId);
                 
-                const busTx = db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(existingWf.business_transaction_id) as any;
+                const busTx = db.prepare('SELECT date FROM transactions WHERE id = ?').get(existingWf.business_transaction_id) as any;
 
                 if (!persCredit || !busDebit || busTx.date !== input.date) {
                     throw new Error('Conflicting reimbursement workflow exists for this transaction. Changed financial details or owners require explicit correction.');
                 }
                 
                 if (input.sourceType === 'draft') {
-                    db.prepare('UPDATE m1_drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), input.sourceId);
+                    db.prepare('UPDATE drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), input.sourceId);
                     if (!existingWf.draft_id) {
-                        db.prepare('UPDATE m1_reimbursement_workflows SET draft_id = ? WHERE id = ?').run(input.sourceId, existingWf.id);
+                        db.prepare('UPDATE reimbursement_workflows SET draft_id = ? WHERE id = ?').run(input.sourceId, existingWf.id);
                         existingWf.draft_id = input.sourceId;
                     }
                 }
@@ -259,7 +259,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
                 throw new Error(`Transaction revision mismatch. Expected ${input.expectedRevision}, got ${tx.revision}.`);
             }
 
-            const postings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(effectiveSourceId) as any[];
+            const postings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(effectiveSourceId) as any[];
             if (postings.length !== 2) {
                 throw new Error('Can only reclassify simple 2-leg transactions.');
             }
@@ -274,7 +274,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
                 throw new Error('Transaction does not contain a debit leg to replace.');
             }
 
-            const originalExpenseAcc = db.prepare('SELECT type FROM m1_accounts WHERE id = ?').get(expensePosting.account_id) as Account;
+            const originalExpenseAcc = db.prepare('SELECT type FROM accounts WHERE id = ?').get(expensePosting.account_id) as Account;
             if (!originalExpenseAcc || originalExpenseAcc.type !== 'expense') {
                 throw new Error('Original transaction debit is not an expense account. Cannot reclassify transfers or non-expenses.');
             }
@@ -338,14 +338,14 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
             }
 
             if (input.sourceType === 'draft') {
-                db.prepare('UPDATE m1_drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), input.sourceId);
+                db.prepare('UPDATE drafts SET status = ?, updated_at = ? WHERE id = ?').run('posted', new Date().toISOString(), input.sourceId);
             }
         } else {
             throw new Error(`Unsupported source type: ${effectiveSourceType}`);
         }
 
         // Use authoritative purchase date (tx.date) if applicable, else input.date
-        const finalPurchaseDate = (effectiveSourceType === 'posted_transaction') ? (db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(effectiveSourceId) as any).date : input.date;
+        const finalPurchaseDate = (effectiveSourceType === 'posted_transaction') ? (db.prepare('SELECT date FROM transactions WHERE id = ?').get(effectiveSourceId) as any).date : input.date;
 
         if (effectiveSourceType === 'posted_transaction' && input.date !== finalPurchaseDate) {
              throw new Error('Conflicting input date: must use authoritative purchase date.');
@@ -379,7 +379,7 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
         const effectiveEvidenceDocId = plainEvidenceDocumentId || (evidenceRefs && evidenceRefs.length > 0 ? extractDocumentId(evidenceRefs[0]) : null);
         
         db.prepare(`
-            INSERT INTO m1_reimbursement_workflows (
+            INSERT INTO reimbursement_workflows (
                 id, personal_entity_id, business_entity_id, currency,
                 due_from_account_id, due_to_account_id, draft_id, evidence_document_id,
                 personal_transaction_id, business_transaction_id, amount_cents, status,
@@ -393,15 +393,15 @@ export function processPersonallyPaidBusinessExpense(db: Database.Database, inpu
         );
 
         if (effectiveEvidenceDocId && effectiveSourceType === 'posted_transaction') {
-            const curTx = db.prepare('SELECT evidence_refs FROM m1_transactions WHERE id = ?').get(personalTxId) as any;
+            const curTx = db.prepare('SELECT evidence_refs FROM transactions WHERE id = ?').get(personalTxId) as any;
             const curRefs = curTx?.evidence_refs ? JSON.parse(curTx.evidence_refs) : [];
             if (!curRefs.includes(effectiveEvidenceDocId)) {
                 curRefs.push(effectiveEvidenceDocId);
-                db.prepare('UPDATE m1_transactions SET evidence_refs = ? WHERE id = ?').run(JSON.stringify(curRefs), personalTxId);
+                db.prepare('UPDATE transactions SET evidence_refs = ? WHERE id = ?').run(JSON.stringify(curRefs), personalTxId);
             }
         }
 
-        return db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(workflowId) as ReimbursementWorkflow;
+        return db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(workflowId) as ReimbursementWorkflow;
     });
 
     return runAtomic();
@@ -439,7 +439,7 @@ export function getCandidateReimbursementTransactions(
     workflowId: string,
     leg: 'personal' | 'business'
 ): ReimbursementCandidate[] {
-    const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(workflowId) as ReimbursementWorkflow;
+    const wf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(workflowId) as ReimbursementWorkflow;
     if (!wf) throw new Error(`Workflow not found: ${workflowId}`);
 
     const entityIdToMatch = leg === 'personal' ? wf.personal_entity_id : wf.business_entity_id;
@@ -455,9 +455,9 @@ export function getCandidateReimbursementTransactions(
             t.id, t.date, t.description, t.payee_or_payer, t.status, t.revision,
             j.currency, j.amount_cents as leg_amount_cents, j.amount_cents as leg_amount, j.account_id as leg_account_id,
             a.name as account_name
-        FROM m1_transactions t
-        JOIN m1_journal_entries j ON t.id = j.transaction_id
-        JOIN m1_accounts a ON j.account_id = a.id
+        FROM transactions t
+        JOIN journal_entries j ON t.id = j.transaction_id
+        JOIN accounts a ON j.account_id = a.id
         WHERE a.entity_id = ?
           AND a.id != ?
           AND a.id != ?
@@ -469,13 +469,13 @@ export function getCandidateReimbursementTransactions(
           AND j.amount_cents ${isCredit ? '>' : '<'} 0
           AND ABS(j.amount_cents) = ?
           AND t.id NOT IN (
-              SELECT personal_transaction_id FROM m1_reimbursement_workflows WHERE personal_transaction_id IS NOT NULL
+              SELECT personal_transaction_id FROM reimbursement_workflows WHERE personal_transaction_id IS NOT NULL
               UNION
-              SELECT business_transaction_id FROM m1_reimbursement_workflows WHERE business_transaction_id IS NOT NULL
+              SELECT business_transaction_id FROM reimbursement_workflows WHERE business_transaction_id IS NOT NULL
               UNION
-              SELECT personal_reimbursement_tx_id FROM m1_reimbursement_workflows WHERE personal_reimbursement_tx_id IS NOT NULL
+              SELECT personal_reimbursement_tx_id FROM reimbursement_workflows WHERE personal_reimbursement_tx_id IS NOT NULL
               UNION
-              SELECT business_reimbursement_tx_id FROM m1_reimbursement_workflows WHERE business_reimbursement_tx_id IS NOT NULL
+              SELECT business_reimbursement_tx_id FROM reimbursement_workflows WHERE business_reimbursement_tx_id IS NOT NULL
           )
           AND t.origin != 'opening_balance'
           AND t.status NOT IN ('void', 'voided')
@@ -484,7 +484,7 @@ export function getCandidateReimbursementTransactions(
     `).all(entityIdToMatch, wf.due_from_account_id, wf.due_to_account_id, currencyToMatch, amountCentsToMatch) as any[];
 
     for (const c of candidates) {
-        c.postings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(c.id);
+        c.postings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(c.id);
     }
 
     return candidates;
@@ -524,16 +524,16 @@ export interface MatchReimbursementInput {
  */
 export function matchReimbursement(db: Database.Database, input: MatchReimbursementInput): ReimbursementWorkflow {
     const runAtomic = db.transaction(() => {
-        const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(input.workflowId) as ReimbursementWorkflow;
+        const wf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(input.workflowId) as ReimbursementWorkflow;
         if (!wf) throw new Error(`Reimbursement workflow not found: ${input.workflowId}`);
 
-        const personalReceivingAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.personalReceivingAccountId) as Account;
+        const personalReceivingAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.personalReceivingAccountId) as Account;
         if (!personalReceivingAcc || personalReceivingAcc.entity_id !== wf.personal_entity_id) {
             throw new Error('Personal receiving account must belong to the personal entity.');
         }
         assertEligiblePaymentAccount(personalReceivingAcc);
 
-        const businessBankAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.businessBankAccountId) as Account;
+        const businessBankAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.businessBankAccountId) as Account;
         if (!businessBankAcc || businessBankAcc.entity_id !== wf.business_entity_id) {
             throw new Error('Business bank account must belong to the business entity.');
         }
@@ -544,14 +544,14 @@ export function matchReimbursement(db: Database.Database, input: MatchReimbursem
         }
 
         if (wf.status === 'reimbursed') {
-            const personalPostings = wf.personal_reimbursement_tx_id ? db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(wf.personal_reimbursement_tx_id) as any[] : [];
-            const businessPostings = wf.business_reimbursement_tx_id ? db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(wf.business_reimbursement_tx_id) as any[] : [];
+            const personalPostings = wf.personal_reimbursement_tx_id ? db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(wf.personal_reimbursement_tx_id) as any[] : [];
+            const businessPostings = wf.business_reimbursement_tx_id ? db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(wf.business_reimbursement_tx_id) as any[] : [];
 
             const persDebit = personalPostings.find(p => p.amount_cents > 0 && p.account_id === input.personalReceivingAccountId);
             const busCredit = businessPostings.find(p => p.amount_cents < 0 && p.account_id === input.businessBankAccountId);
 
-            const persTx = wf.personal_reimbursement_tx_id ? db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(wf.personal_reimbursement_tx_id) as any : null;
-            const busTx = wf.business_reimbursement_tx_id ? db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(wf.business_reimbursement_tx_id) as any : null;
+            const persTx = wf.personal_reimbursement_tx_id ? db.prepare('SELECT date FROM transactions WHERE id = ?').get(wf.personal_reimbursement_tx_id) as any : null;
+            const busTx = wf.business_reimbursement_tx_id ? db.prepare('SELECT date FROM transactions WHERE id = ?').get(wf.business_reimbursement_tx_id) as any : null;
 
             const persTxDate = persTx?.date;
             const busTxDate = busTx?.date;
@@ -602,17 +602,17 @@ export function matchReimbursement(db: Database.Database, input: MatchReimbursem
         let businessTxId: string;
 
         if (input.personalReceivingBankTxId) {
-            const existingMatch = db.prepare('SELECT id FROM m1_reimbursement_workflows WHERE personal_reimbursement_tx_id = ? AND id != ?').get(input.personalReceivingBankTxId, input.workflowId);
+            const existingMatch = db.prepare('SELECT id FROM reimbursement_workflows WHERE personal_reimbursement_tx_id = ? AND id != ?').get(input.personalReceivingBankTxId, input.workflowId);
             if (existingMatch) throw new Error('Personal transaction is already matched to another workflow.');
             
-            const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(input.personalReceivingBankTxId) as any;
+            const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(input.personalReceivingBankTxId) as any;
             if (!tx) throw new Error(`Personal transaction not found: ${input.personalReceivingBankTxId}`);
 
             if (input.expectedPersonalRevision !== undefined && tx.revision !== input.expectedPersonalRevision) {
                 throw new Error(`Personal transaction revision mismatch. Expected ${input.expectedPersonalRevision}, got ${tx.revision}.`);
             }
 
-            const postings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(input.personalReceivingBankTxId) as any[];
+            const postings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(input.personalReceivingBankTxId) as any[];
             if (postings.length !== 2) throw new Error('Can only match simple 2-leg personal transactions.');
 
             const receivingPosting = postings.find(p => p.amount_cents > 0 && p.account_id === input.personalReceivingAccountId);
@@ -678,17 +678,17 @@ export function matchReimbursement(db: Database.Database, input: MatchReimbursem
         }
 
         if (input.businessBankTxId) {
-            const existingMatch = db.prepare('SELECT id FROM m1_reimbursement_workflows WHERE business_reimbursement_tx_id = ? AND id != ?').get(input.businessBankTxId, input.workflowId);
+            const existingMatch = db.prepare('SELECT id FROM reimbursement_workflows WHERE business_reimbursement_tx_id = ? AND id != ?').get(input.businessBankTxId, input.workflowId);
             if (existingMatch) throw new Error('Business transaction is already matched to another workflow.');
 
-            const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(input.businessBankTxId) as any;
+            const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(input.businessBankTxId) as any;
             if (!tx) throw new Error(`Business transaction not found: ${input.businessBankTxId}`);
 
             if (input.expectedBusinessRevision !== undefined && tx.revision !== input.expectedBusinessRevision) {
                 throw new Error(`Business transaction revision mismatch. Expected ${input.expectedBusinessRevision}, got ${tx.revision}.`);
             }
 
-            const postings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(input.businessBankTxId) as any[];
+            const postings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(input.businessBankTxId) as any[];
             if (postings.length !== 2) throw new Error('Can only match simple 2-leg business transactions.');
 
             const sendingPosting = postings.find(p => p.amount_cents < 0 && p.account_id === input.businessBankAccountId);
@@ -754,7 +754,7 @@ export function matchReimbursement(db: Database.Database, input: MatchReimbursem
         }
 
         db.prepare(`
-            UPDATE m1_reimbursement_workflows
+            UPDATE reimbursement_workflows
             SET status = 'reimbursed',
                 personal_reimbursement_tx_id = ?,
                 business_reimbursement_tx_id = ?,
@@ -762,7 +762,7 @@ export function matchReimbursement(db: Database.Database, input: MatchReimbursem
             WHERE id = ?
         `).run(personalTxId, businessTxId, new Date().toISOString(), wf.id);
 
-        return db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(wf.id) as ReimbursementWorkflow;
+        return db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(wf.id) as ReimbursementWorkflow;
     });
 
     return runAtomic();
@@ -778,11 +778,11 @@ export interface UndoPersonallyPaidExpenseInput {
 
 export function undoPersonallyPaidBusinessExpense(db: Database.Database, input: UndoPersonallyPaidExpenseInput): ReimbursementWorkflow {
     const runAtomic = db.transaction(() => {
-        const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(input.workflowId) as ReimbursementWorkflow;
+        const wf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(input.workflowId) as ReimbursementWorkflow;
         if (!wf) throw new Error(`Reimbursement workflow not found: ${input.workflowId}`);
 
         if (wf.status === 'cancelled') {
-            const persPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(wf.personal_transaction_id) as any[];
+            const persPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(wf.personal_transaction_id) as any[];
             const expenseDebit = persPostings.find(p => p.amount_cents > 0);
             if (expenseDebit && expenseDebit.account_id !== input.personalExpenseAccountId) {
                 throw new ConflictError('Workflow is already cancelled but the transaction is in a different category. Cannot retry with a different category.');
@@ -794,14 +794,14 @@ export function undoPersonallyPaidBusinessExpense(db: Database.Database, input: 
             throw new Error('Only unsettled reimbursements (awaiting reimbursement) can be undone.');
         }
 
-        const targetAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.personalExpenseAccountId) as any;
+        const targetAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.personalExpenseAccountId) as any;
         if (!targetAcc) throw new Error('Target expense account not found.');
         if (targetAcc.entity_id !== wf.personal_entity_id) throw new Error('Target expense account does not belong to the personal entity.');
         if (targetAcc.type !== 'expense') throw new Error('Target account must be an expense account.');
         if (targetAcc.currency !== wf.currency) throw new Error('Target expense account currency must match the workflow currency.');
 
-        const persTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(wf.personal_transaction_id) as any;
-        const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+        const persTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(wf.personal_transaction_id) as any;
+        const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(wf.business_transaction_id) as any;
         
         if (!persTx || !busTx) {
             throw new Error('Underlying transactions not found for this workflow.');
@@ -811,7 +811,7 @@ export function undoPersonallyPaidBusinessExpense(db: Database.Database, input: 
             throw new ConflictError('Underlying transactions have changed since preview. Please refresh and try again.');
         }
 
-        const persPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(persTx.id) as any[];
+        const persPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(persTx.id) as any[];
         
         // Find the clearing debit on the personal transaction
         const clearingDebit = persPostings.find(p => p.account_id === wf.due_from_account_id && p.amount_cents > 0);
@@ -861,12 +861,12 @@ export function undoPersonallyPaidBusinessExpense(db: Database.Database, input: 
 
         // 3. Mark the workflow cancelled
         db.prepare(`
-            UPDATE m1_reimbursement_workflows
+            UPDATE reimbursement_workflows
             SET status = 'cancelled', updated_at = ?
             WHERE id = ?
         `).run(new Date().toISOString(), wf.id);
 
-        return db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(wf.id) as ReimbursementWorkflow;
+        return db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(wf.id) as ReimbursementWorkflow;
     });
 
     return runAtomic();
@@ -885,7 +885,7 @@ export interface UndoReimbursementMatchInput {
 
 export function undoReimbursementMatch(db: Database.Database, input: UndoReimbursementMatchInput): ReimbursementWorkflow {
     const runAtomic = db.transaction(() => {
-        const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(input.workflowId) as ReimbursementWorkflow & { last_undo_request?: string };
+        const wf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(input.workflowId) as ReimbursementWorkflow & { last_undo_request?: string };
         if (!wf) throw new Error(`Reimbursement workflow not found: ${input.workflowId}`);
 
         if (wf.status !== 'reimbursed') {
@@ -912,8 +912,8 @@ export function undoReimbursementMatch(db: Database.Database, input: UndoReimbur
             throw new Error('Missing reimbursement transactions on workflow.');
         }
 
-        const persTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(persTxId) as any;
-        const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(busTxId) as any;
+        const persTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(persTxId) as any;
+        const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(busTxId) as any;
 
         if (
             persTx.id !== input.expectedPersonalTxId ||
@@ -932,7 +932,7 @@ export function undoReimbursementMatch(db: Database.Database, input: UndoReimbur
                 if (newAccId === wf.due_from_account_id || newAccId === wf.due_to_account_id) {
                     throw new Error(`Cannot reassign manual transaction to the reimbursement clearing accounts.`);
                 }
-                const newAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(newAccId) as Account;
+                const newAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(newAccId) as Account;
                 if (!newAcc) throw new Error(`Invalid account selected: ${newAccId}`);
                 if (newAcc.entity_id !== (isPersonal ? wf.personal_entity_id : wf.business_entity_id)) {
                     throw new Error(`Replacement account must belong to the ${isPersonal ? 'personal' : 'business'} entity.`);
@@ -941,7 +941,7 @@ export function undoReimbursementMatch(db: Database.Database, input: UndoReimbur
                     throw new Error(`Replacement account currency must match workflow currency.`);
                 }
                 
-                const postings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(tx.id) as any[];
+                const postings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(tx.id) as any[];
                 
                 // Identify the bank leg (the one that is NOT the clearing account)
                 const bankLeg = postings.find(p => p.account_id !== wfLegAccId);
@@ -980,10 +980,10 @@ export function undoReimbursementMatch(db: Database.Database, input: UndoReimbur
                 });
 
                 // Clear idempotency key so it doesn't conflict if we match the workflow again
-                db.prepare('UPDATE m1_transactions SET idempotency_key = NULL WHERE id = ?').run(tx.id);
+                db.prepare('UPDATE transactions SET idempotency_key = NULL WHERE id = ?').run(tx.id);
             } else {
                 // Was an imported/linked transaction. Look up the correction history to restore previous state.
-                const corrections = db.prepare('SELECT * FROM m1_transaction_corrections WHERE transaction_id = ? ORDER BY timestamp DESC').all(tx.id) as any[];
+                const corrections = db.prepare('SELECT * FROM transaction_corrections WHERE transaction_id = ? ORDER BY timestamp DESC').all(tx.id) as any[];
                 const matchCorrection = corrections.find(c => c.reason === 'Matched to reimbursement workflow');
                 if (!matchCorrection) throw new Error(`Could not find match correction history for ${isPersonal ? 'personal' : 'business'} transaction.`);
 
@@ -1006,7 +1006,7 @@ export function undoReimbursementMatch(db: Database.Database, input: UndoReimbur
 
         // Disconnect the transactions from the workflow and change status back to awaiting_reimbursement
         db.prepare(`
-            UPDATE m1_reimbursement_workflows 
+            UPDATE reimbursement_workflows 
             SET status = 'awaiting_reimbursement', 
                 personal_reimbursement_tx_id = NULL, 
                 business_reimbursement_tx_id = NULL,
@@ -1015,7 +1015,7 @@ export function undoReimbursementMatch(db: Database.Database, input: UndoReimbur
             WHERE id = ?
         `).run(JSON.stringify(input), new Date().toISOString(), wf.id);
 
-        return db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(wf.id) as ReimbursementWorkflow;
+        return db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(wf.id) as ReimbursementWorkflow;
     });
 
     return runAtomic();

@@ -4,7 +4,7 @@
  * Domain hook for the net worth snapshot series.
  *
  * Why this exists:
- * The series lives in the embedded SQLite vault (`net_worth_history`, renamed
+ * The series lives in the embedded SQLite vault (`net_worth_snapshots`, renamed
  * to `net_worth_snapshots` by the schema-collapse migration). Reads and writes
  * go through `/api/vault` so the chart widget, the stat widgets, and the
  * HistoryEditor all observe the exact same series — no localStorage-first
@@ -27,7 +27,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { NetWorthSnapshot } from '@/types';
 import { useProfile } from '@/contexts/ProfileContext';
 
-/** Raw `net_worth_history` row shape returned by the entity-scoped vault GET. */
+/** Raw `net_worth_snapshots` row shape returned by the entity-scoped vault GET. */
 interface HistoryRow {
     id: string;
     date: string;

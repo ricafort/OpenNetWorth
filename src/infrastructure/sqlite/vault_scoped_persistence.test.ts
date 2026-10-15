@@ -7,7 +7,7 @@
  * from `local_driver.ts`. These tests pin the surviving surface end-to-end:
  * - DATA-01/02/04/05 (T-01/T-02): scoped save/delete go through /api/vault and throw on failure.
  * - Finding 1: settings, snapshots, freedom plan, and the Debt Freedom Accelerator schedule
- *   are durable in SQLite (settings kv, net_worth_history, recurring_transactions).
+ *   are durable in SQLite (settings kv, net_worth_snapshots, recurring_schedules).
  * - Finding 7 / Issue 2: route validation errors (bad numbers, bad dates, missing rows)
  *   propagate to the caller with the route's own message.
  * - ID agreement: cashFlow/history scoped saves reuse the existing row id (month/date key),
@@ -165,7 +165,7 @@ describe('Scoped persistence (DATA-01, DATA-02, DATA-04, DATA-05, T-01, T-02)', 
 });
 
 describe('Net worth snapshots (history entity)', () => {
-    it('saveFullSnapshot writes a snake_case row into net_worth_history', async () => {
+    it('saveFullSnapshot writes a snake_case row into net_worth_snapshots', async () => {
         installFetchBridge();
         await saveFullSnapshot({
             id: 'snap-1',
@@ -176,7 +176,7 @@ describe('Net worth snapshots (history entity)', () => {
             currency: 'AUD'
         } as any);
 
-        const row = testDb.prepare("SELECT * FROM net_worth_history WHERE id = 'snap-1'").get() as any;
+        const row = testDb.prepare("SELECT * FROM net_worth_snapshots WHERE id = 'snap-1'").get() as any;
         expect(row).toBeDefined();
         expect(row.total_assets).toBe(120000);
         expect(row.total_liabilities).toBe(45000);
@@ -192,7 +192,7 @@ describe('Net worth snapshots (history entity)', () => {
         } as any);
 
         expect(second.id).toBe('snap-first');
-        const rows = testDb.prepare("SELECT * FROM net_worth_history WHERE date = '2026-03-05'").all() as any[];
+        const rows = testDb.prepare("SELECT * FROM net_worth_snapshots WHERE date = '2026-03-05'").all() as any[];
         expect(rows).toHaveLength(1);
         expect(rows[0].id).toBe('snap-first');
         expect(rows[0].total_assets).toBe(200);
@@ -204,7 +204,7 @@ describe('Net worth snapshots (history entity)', () => {
             id: 'snap-bad', date: '2026-03-06', totalAssets: 100, totalLiabilities: 50, netWorth: 'not-money'
         } as any)).rejects.toThrow('Net worth must be a valid finite number, received: "not-money"');
 
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM net_worth_history WHERE id = 'snap-bad'").get()).toMatchObject({ cnt: 0 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM net_worth_snapshots WHERE id = 'snap-bad'").get()).toMatchObject({ cnt: 0 });
     });
 
     it('a malformed snapshot date is rejected', async () => {
@@ -218,7 +218,7 @@ describe('Net worth snapshots (history entity)', () => {
         installFetchBridge();
         await saveFullSnapshot({ id: 'snap-del', date: '2026-03-09', totalAssets: 10, totalLiabilities: 5, netWorth: 5 } as any);
         await deleteScopedRecord('history', 'snap-del');
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM net_worth_history WHERE id = 'snap-del'").get()).toMatchObject({ cnt: 0 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM net_worth_snapshots WHERE id = 'snap-del'").get()).toMatchObject({ cnt: 0 });
     });
 });
 
@@ -230,13 +230,13 @@ describe('Cash flow summaries keep their row id (month key agreement)', () => {
         const second = await persistScopedRecord('cashFlow', { id: 'cf-different', month: '2026-05', income: 120, expenses: 60 } as any);
         expect(second.id).toBe('cf-original');
 
-        const rows = testDb.prepare("SELECT * FROM cash_flow_history WHERE month = '2026-05'").all() as any[];
+        const rows = testDb.prepare("SELECT * FROM cash_flow_summaries WHERE month = '2026-05'").all() as any[];
         expect(rows).toHaveLength(1);
         expect(rows[0].id).toBe('cf-original');
         expect(rows[0].income).toBe(120);
 
         await deleteScopedRecord('cashFlow', 'cf-original');
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM cash_flow_history WHERE month = '2026-05'").get()).toMatchObject({ cnt: 0 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM cash_flow_summaries WHERE month = '2026-05'").get()).toMatchObject({ cnt: 0 });
     });
 });
 
@@ -314,12 +314,12 @@ describe('Settings kv durability (Finding 1)', () => {
     });
 });
 
-describe('Debt Freedom Accelerator schedule (recurring_transactions)', () => {
+describe('Debt Freedom Accelerator schedule (recurring_schedules)', () => {
     it('updateDebtRecurringTransaction creates the accelerator row when absent', async () => {
         installFetchBridge();
         await updateDebtRecurringTransaction(650, 'AUD' as any);
 
-        const row = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+        const row = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
         expect(row).toBeDefined();
         expect(row.amount).toBe(650);
         expect(row.currency).toBe('AUD');
@@ -329,13 +329,13 @@ describe('Debt Freedom Accelerator schedule (recurring_transactions)', () => {
     it('updateDebtRecurringTransaction(0) deactivates an existing row instead of deleting it', async () => {
         installFetchBridge();
         testDb.prepare(`
-            INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
+            INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
             VALUES ('debt-freedom-accelerator', 'local_user', 'Debt Freedom Accelerator', 650, 'expense', 'monthly', 'Debt Repayment', '2026-01-01', 1, 'AUD', datetime('now'))
         `).run();
 
         await updateDebtRecurringTransaction(0, 'AUD' as any);
 
-        const row = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+        const row = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
         expect(row.amount).toBe(0);
         expect(row.is_active).toBe(0);
     });
@@ -343,7 +343,7 @@ describe('Debt Freedom Accelerator schedule (recurring_transactions)', () => {
     it('updateDebtRecurringTransaction(0) with no existing row writes nothing', async () => {
         installFetchBridge();
         await updateDebtRecurringTransaction(0, 'AUD' as any);
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM recurring_transactions").get()).toMatchObject({ cnt: 0 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM recurring_schedules").get()).toMatchObject({ cnt: 0 });
     });
 });
 
@@ -437,15 +437,15 @@ describe('Backup validation and restore (TRUST-09, TRUST-10, TRUST-11)', () => {
         expect(res).toEqual({ success: true });
 
         expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM goals WHERE id = 'goal-1'").get()).toMatchObject({ cnt: 1 });
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM recurring_transactions WHERE id = 'rec-1'").get()).toMatchObject({ cnt: 1 });
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM net_worth_history WHERE id = 'hist-1'").get()).toMatchObject({ cnt: 1 });
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM cash_flow_history WHERE id = 'cf-1'").get()).toMatchObject({ cnt: 1 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM recurring_schedules WHERE id = 'rec-1'").get()).toMatchObject({ cnt: 1 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM net_worth_snapshots WHERE id = 'hist-1'").get()).toMatchObject({ cnt: 1 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM cash_flow_summaries WHERE id = 'cf-1'").get()).toMatchObject({ cnt: 1 });
         expect(settingValue('baseCurrency')).toBe('USD');
     });
 });
 
 describe('Authoritative export (Version 2 snapshot)', () => {
-    it('exportAuthoritativeVault returns a v2 archive built from the live vault', async () => {
+    it('exportAuthoritativeVault returns a v3 archive built from the live vault', async () => {
         installFetchBridge();
         testDb.prepare(`
             INSERT INTO goals (id, user_id, name, target_amount, currency, category, created_at)
@@ -456,9 +456,9 @@ describe('Authoritative export (Version 2 snapshot)', () => {
         const raw = await exportAuthoritativeVault();
         const archive = JSON.parse(raw);
         expect(archive.manifest.app).toBe('OpenNetWorth');
-        expect(archive.manifest.schemaVersion).toBe(2);
+        expect(archive.manifest.schemaVersion).toBe(3);
         expect(archive.manifest.recordCounts.goals).toBe(1);
-        expect(archive.vault.schemaVersion).toBe(2);
+        expect(archive.vault.schemaVersion).toBe(3);
         expect(archive.vault.goals[0].name).toBe('Holiday Fund');
         expect(archive.vault.settings.baseCurrency).toBe('AUD');
     });
@@ -501,11 +501,11 @@ describe('clearAllData (DATA-01, DATA-05)', () => {
         `).run();
         testDb.prepare("INSERT INTO settings (key, value) VALUES ('baseCurrency', 'USD')").run();
         testDb.prepare(`
-            INSERT INTO m1_entities (id, name, type, currency, created_at, updated_at)
+            INSERT INTO entities (id, name, type, currency, created_at, updated_at)
             VALUES ('ent-keep', 'Owner', 'person', 'USD', datetime('now'), datetime('now'))
         `).run();
         testDb.prepare(`
-            INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, created_at, updated_at)
+            INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, created_at, updated_at)
             VALUES ('acc-keep', 'ent-keep', 'Checking', 'asset', 'checking', 'USD', datetime('now'), datetime('now'))
         `).run();
         mockLocalStorage['opennetworth_settings'] = '{"baseCurrency":"USD"}';
@@ -514,8 +514,8 @@ describe('clearAllData (DATA-01, DATA-05)', () => {
 
         expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM goals").get()).toMatchObject({ cnt: 0 });
         expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM settings").get()).toMatchObject({ cnt: 0 });
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM m1_entities").get()).toMatchObject({ cnt: 1 });
-        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM m1_accounts").get()).toMatchObject({ cnt: 1 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM entities").get()).toMatchObject({ cnt: 1 });
+        expect(testDb.prepare("SELECT COUNT(*) AS cnt FROM accounts").get()).toMatchObject({ cnt: 1 });
         expect(Object.keys(mockLocalStorage)).toHaveLength(0);
     });
 });

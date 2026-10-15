@@ -1,15 +1,15 @@
 /**
  * Why this file exists:
  * Proves /api/mentor grounds the user turn in the stored extracted_text of
- * attached m1_documents rows: text/CSV content lands in the prompt (truncated
+ * attached documents rows: text/CSV content lands in the prompt (truncated
  * at 8000 chars), images are disclosed as unanalyzed (vision off), rows without
  * extraction get an explicit "answer without it" line, and unknown attachment
  * ids are skipped without breaking the reply contract.
  *
  * Tricky logic:
- * - The recurring_transactions table is created by full app DB init, not
+ * - The recurring_schedules table is created by full app DB init, not
  *   initAccountingSchema, so this test creates it explicitly in the in-memory DB.
- * - m1_documents rows are seeded directly (the ingest route has its own test);
+ * - documents rows are seeded directly (the ingest route has its own test);
  *   this file only checks how the mentor route consumes them.
  * - The untrusted-content footer must always follow the attachment block so a
  *   malicious CSV cannot override the system prompt.
@@ -45,7 +45,7 @@ function makeRequest(body: any) {
 
 function seedDocument(id: string, filename: string, mimeType: string, extractedText: string | null, rawContent = 'raw') {
     db.prepare(`
-        INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, raw_content, extracted_text, created_at)
+        INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, raw_content, extracted_text, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, filename, `hash-${id}`, mimeType, 10, rawContent, extractedText, new Date().toISOString());
 }
@@ -58,7 +58,7 @@ describe('/api/mentor attachments grounding', () => {
         initAccountingSchema(db);
         initDocumentSchema(db);
         db.exec(`
-            CREATE TABLE IF NOT EXISTS recurring_transactions (
+            CREATE TABLE IF NOT EXISTS recurring_schedules (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 name TEXT NOT NULL,

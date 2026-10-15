@@ -77,9 +77,9 @@ export async function POST(req: NextRequest) {
             
             const txQuery = `
                 SELECT DISTINCT t.id 
-                FROM m1_journal_entries j
-                JOIN m1_accounts a ON j.account_id = a.id
-                JOIN m1_transactions t ON j.transaction_id = t.id
+                FROM journal_entries j
+                JOIN accounts a ON j.account_id = a.id
+                JOIN transactions t ON j.transaction_id = t.id
                 ${intent.entityId === 'all' ? 'WHERE a.type = \'expense\'' : 'WHERE a.entity_id = ? AND a.type = \'expense\''} AND t.status = 'posted'
                 ${intent.startDate ? 'AND t.date >= ?' : ''}
                 ${intent.endDate ? 'AND t.date <= ?' : ''}
@@ -360,7 +360,7 @@ STRICT CONSTRAINTS:
             : [];
 
         // Optional file attachments (additive field): the client already ingested them
-        // into m1_documents via /api/mentor/attachments; we only look up the stored
+        // into documents via /api/mentor/attachments; we only look up the stored
         // plain-text extraction here and ground the user turn in it. Images are sent
         // to the model only when the user opted into vision in Local AI settings;
         // otherwise they are disclosed as attached-but-not-analyzed.
@@ -371,7 +371,7 @@ STRICT CONSTRAINTS:
             const lines: string[] = [];
             for (const att of attachments.slice(0, 4)) {
                 if (!att || typeof att.id !== 'string') continue;
-                const row = db.prepare('SELECT filename, mime_type, extracted_text, raw_content FROM m1_documents WHERE id = ?').get(att.id) as any;
+                const row = db.prepare('SELECT filename, mime_type, extracted_text, raw_content FROM documents WHERE id = ?').get(att.id) as any;
                 if (!row) continue;
                 const filename = row.filename || 'attachment';
                 const isImage = typeof row.mime_type === 'string' && row.mime_type.startsWith('image/');

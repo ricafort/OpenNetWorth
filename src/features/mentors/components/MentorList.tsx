@@ -143,7 +143,7 @@ export default function MentorList({
                 </button>
             </div>
 
-            {/* Chat History — persisted conversations (m1_mentor_sessions) */}
+            {/* Chat History — persisted conversations (mentor_sessions) */}
             <div className="space-y-3">
                 <div className="flex items-center justify-between pr-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Chat History</p>

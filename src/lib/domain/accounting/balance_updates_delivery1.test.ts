@@ -253,7 +253,7 @@ describe('Delivery 1: Balance Updates & Shared Financial Summary Acceptance Test
 
             // Configure Alice 50% ownership of Joint Property
             db.prepare(`
-                INSERT INTO m1_account_ownership (id, account_id, entity_id, share_percentage, created_at)
+                INSERT INTO account_ownership (id, account_id, entity_id, share_percentage, created_at)
                 VALUES (?, ?, ?, ?, ?)
             `).run(crypto.randomUUID(), jointHouse.id, soloEntity.id, 50.0, new Date().toISOString());
 
@@ -379,7 +379,7 @@ describe('Delivery 1: Balance Updates & Shared Financial Summary Acceptance Test
             });
 
             // Inspect account revision
-            const row1 = db.prepare(`SELECT balance_revision FROM m1_accounts WHERE id = ?`).get(acct.id) as { balance_revision: number };
+            const row1 = db.prepare(`SELECT balance_revision FROM accounts WHERE id = ?`).get(acct.id) as { balance_revision: number };
             expect(row1.balance_revision).toBe(2);
 
             // Trying to use stale revision 1 again should throw ConflictError
@@ -405,7 +405,7 @@ describe('Delivery 1: Balance Updates & Shared Financial Summary Acceptance Test
             });
 
             // Supersession verification: obs1 must now have superseded_by_id = obs2.id
-            const obs1Row = db.prepare(`SELECT superseded_by_id FROM m1_balance_observations WHERE id = ?`).get(obs1.id) as { superseded_by_id: string };
+            const obs1Row = db.prepare(`SELECT superseded_by_id FROM balance_observations WHERE id = ?`).get(obs1.id) as { superseded_by_id: string };
             expect(obs1Row.superseded_by_id).toBe(obs2.id);
         });
     });
@@ -475,7 +475,7 @@ Tesla Stock | USD 4,500.00 | 15/09/2026 | Market Value
             }).not.toThrow();
 
             // Verify tables and columns remain intact
-            const cols = db.prepare(`PRAGMA table_info(m1_accounts)`).all() as Array<{ name: string }>;
+            const cols = db.prepare(`PRAGMA table_info(accounts)`).all() as Array<{ name: string }>;
             const colNames = cols.map(c => c.name);
             expect(colNames).toContain('tracking_mode');
             expect(colNames).toContain('balance_revision');

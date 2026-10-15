@@ -495,7 +495,7 @@ Closing Balance: $4,989.77
             // Unproven trust entity without joint-ownership evidence remains unresolved
             expect(isOwnerCompatible('Alice Smith', trustEntity).compatible).toBe(false);
 
-            // Established joint-ownership / trustee relationship in m1_account_ownership succeeds
+            // Established joint-ownership / trustee relationship in account_ownership succeeds
             expect(isOwnerCompatible('Alice Smith', trustEntity, [{ name: 'Alice Smith' }]).compatible).toBe(true);
 
             // Narrow personal middle-initial allowance: [First, M, Last] vs [First, Last]
