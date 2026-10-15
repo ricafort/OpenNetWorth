@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ClearWorth will be documented in this file.
+All notable changes to OpenNetWorth will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
@@ -67,15 +67,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Re-architected Mentor Assistant API to utilize deterministic data extraction directly from `PeriodIncomeExpenseResult` instead of generic LLM formatting.
 - Updated `FreedomDateCard` and `DebtPayoffCalculator` UI components to show appropriate warnings and loading states to avoid misleading zero debt screens.
 - OpenSpec baseline specifications for 5 capabilities
-
-### Changed
 - Consolidated `supabase_schema.sql` (126 → 326 lines)
 - Simplified documentation (8 → 5 files)
 - Updated `.gitignore` with IDE and OS patterns
 
 ---
 
-## [1.0.0] - 2026-01-XX
+## [1.0.0] - 2026-01 (untagged; month precision)
 
 ### Added
 - Initial release

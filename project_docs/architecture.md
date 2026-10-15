@@ -81,7 +81,7 @@ The application is structured by **Business Domain** first. CODE THAT CHANGES TO
 See [Project Structure](project_structure.md) for the detailed breakdown.
 
 ### Service Repository Pattern
-To support both **Demo Mode** (local data, no auth) and **Real Mode** (authenticated, cloud data), we use the Repository Pattern via `src/infrastructure`.
+The default data path is the embedded **SQLite Local Vault** (`data/opennetworth.sqlite`, `better-sqlite3`). **Supabase** is an optional adapter for self-hosters; browser LocalStorage powers demo mode. The Repository Pattern lives in `src/infrastructure`.
 
 - **Interface**: `src/features/[feature]/data/repository.ts` defines contracts.
 - **Implementation**: `src/infrastructure/*` implements these contracts.
@@ -117,7 +117,7 @@ UI ─────────────▶ Hook ─────────�
                                             │                        │
                                             │                  ┌─────┴─────┐
                                             │                  ▼           ▼
-                                            │             [LocalStorage] [Supabase]
+                                            │            [SQLite Vault] [Supabase*]
                                             │                  │           │
                                             │                  └─────┬─────┘
                                             │                        │
@@ -127,10 +127,12 @@ UI ◀───────────── Cache ◀────────�
 
 1. **Component** calls a Feature Hook (e.g., `useAssetsQuery`).
 2. **Hook** instantiates the Repository based on `ProfileContext.isDemoMode`.
-3. **Repository** fetches data (from Supabase or LocalStorage).
+3. **Repository** fetches data (from the SQLite vault by default; `*` Supabase only when a self-hosted deployment configures it).
 4. **Hook** returns data via TanStack Query cache.
 
-### Demo Data Migration (Guest to Auth)
+### Legacy: Local → Supabase Migration (optional self-hosted path only)
+> **Not part of the default flow.** The default vault is embedded SQLite — there is no login and no cloud.
+> This path (`src/features/migration/migrationService.ts`) only applies when a self-hosted Supabase backend is configured.
 When a user clicks "Keep Data & Exit" in Demo Mode:
 
 ```text
@@ -154,12 +156,11 @@ When a user clicks "Keep Data & Exit" in Demo Mode:
 
 ### Demo Mode ("God Mode")
 - Activated via URL parameter or Admin selection.
-- **Requires Guest State**: Users must be logged out to access Demo Mode (data matches LocalStorage).
-- Completely isolated from Supabase Backend (except for read-only benchmarks).
-- Data persists in browser `localStorage`.
+- A sandbox backed by browser `localStorage` — never touches the SQLite vault.
+- Isolated from the optional Supabase backend (except read-only benchmarks).
 - **Time Machine**: Calculates historical states on the fly based on current snapshot and growth logic.
 
-## 3. Delivery 1: Sovereign Balance Updates & Observation Ledger Architecture
+## 4. Delivery 1: Sovereign Balance Updates & Observation Ledger Architecture
 
 Delivery 1 establishes a sovereign, double-entry and observation-based accounting core designed to track wealth without fabricating artificial cash-flow journal entries.
 
@@ -199,12 +200,12 @@ Delivery 1 establishes a sovereign, double-entry and observation-based accountin
 - **Strict Multi-Currency**: Balances are calculated in native minor units per currency (AUD, USD, JPY, EUR, GBP). Subtotals are explicitly reported per currency. Converted totals are only produced if exact dated FX rates exist—no 1:1 synthetic conversions are ever assumed.
 - **Unrecorded Account Transparency**: Accounts without eligible valuation observations render as *`Needs balance`* rather than coercing `null` into `$0.00` or claiming a false delta from zero.
 
-## 4. Coding Standards
+## 5. Coding Standards
 
 1.  **Strict Typing**: All domain entities must have Zod schemas and TypeScript interfaces.
 2.  **Feature Isolation**: Features should communicate via defined public interfaces (e.g., Hooks, Contexts), not deep internal imports.
 3.  **Repository First**: UI components must NEVER call `supabase` directly. All data access goes through Repositories.
 4.  **No `src/lib/data` imports**: Old data structures are deprecated. Use `src/features/[name]/types` and `src/infrastructure`.
 
-## 5. Future Roadmap
-See [Architecture Roadmap](architecture_roadmap.md) for the next phases involving Domain Services and Advanced AI Simulations.
+## 6. Future Roadmap
+See the archived [Architecture Roadmap](archive/architecture_roadmap.md) for earlier phase plans (Tier-2 Domain Services has since shipped under `src/lib/domain/`).

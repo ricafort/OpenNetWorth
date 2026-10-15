@@ -1,6 +1,6 @@
 # ADR 001: Trusted Financial Document Workflow Architecture & Component Reuse
 
-**Status**: Proposed / Initial Review  
+**Status**: Accepted / Implemented (shipped in 1.2.0 — `/api/documents`, `m1_documents`, `pdfTextExtractor`)  
 **Date**: 2026-09-13  
 **Deciders**: OpenNetWorth Engineering  
 **Consulted**: OpenTax-AU Reference Project (`D:\AntiGravityProjects\opentax-au`)

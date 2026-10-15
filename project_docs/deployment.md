@@ -11,7 +11,7 @@ No cloud accounts, third-party database keys, or API subscriptions are required.
 
 ### Prerequisites
 - Node.js 18+
-- *(Optional for AI)* [LM Studio](https://lmstudio.ai/) on port 1234 or [Ollama](https://ollama.ai/) on port 11434.
+- *(Optional for AI)* [LM Studio](https://lmstudio.ai/) on port 1234, [Ollama](https://ollama.ai/) on port 11434, or [Strata](http://127.0.0.1:8080) on port 8080.
 
 ### Steps
 ```bash
@@ -28,7 +28,9 @@ Open [http://localhost:4000](http://localhost:4000). Your data is preserved enti
 
 ---
 
-## 3. Option B: Self-Hosted Cloud Deployment (Vercel + Supabase)
+## 3. Appendix (Optional): Self-Hosted Cloud Deployment (Vercel + Supabase)
+
+> **Not the default path.** The app is local-first with an embedded SQLite vault; this appendix only applies if you deliberately opt into a self-hosted Supabase backend for multi-device sync. The OAuth redirect setup below is legacy — it only exists for that optional adapter.
 
 For users who want multi-device synchronization across home and mobile via their own private Supabase instance.
 

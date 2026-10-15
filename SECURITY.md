@@ -8,6 +8,6 @@ If you discover a security vulnerability, please report it privately via email r
 
 
 ## Security Policy
-For security implementation details (RLS, Token Handling) and development rules, please refer to:
-- [`project_docs/techStack.md`](project_docs/techStack.md) (Section 3: Security Implementation)
-- [`project_docs/agents.md`](project_docs/agents.md) (Rule 3: Security & Best Practices)
+For security implementation details and development rules, please refer to:
+- [`project_docs/techStack.md`](project_docs/techStack.md) (Section 2: Engineering Standards & Rules)
+- [`project_docs/agents.md`](project_docs/agents.md) (Core Directive 1: Zero Cloud Data Leakage)

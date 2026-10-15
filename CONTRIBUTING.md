@@ -6,13 +6,7 @@ Welcome to the **OpenNetWorth** contributor community! This guide is for develop
 
 ## 🛠️ Tech Stack Overview
 
-- **Frontend Framework**: [Next.js 16 (App Router)](https://nextjs.org/) with Turbopack
-- **UI Library**: [React 19](https://react.dev/)
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **Local Database**: [SQLite](https://sqlite.org/) via `better-sqlite3` (`data/opennetworth.sqlite`)
-- **AI Mentorship**: Local LLMs via [LM Studio](https://lmstudio.ai/) (`:1234`), [Ollama](https://ollama.ai/) (`:11434`), or [Strata](http://127.0.0.1:8080) (`:8080`, OpenAI-compatible `/v1`)
-- **State Management**: React Hooks & Context + [TanStack Query](https://tanstack.com/query)
-- **Testing**: [Vitest](https://vitest.dev/)
+See [`project_docs/techStack.md`](project_docs/techStack.md) — the single source of truth for the stack and engineering rules.
 
 ---
 
@@ -28,40 +22,7 @@ Welcome to the **OpenNetWorth** contributor community! This guide is for develop
 
 ## 🛠️ Quick Setup (Zero Friction)
 
-### Prerequisites
-- Node.js 18+ (LTS recommended)
-- Git installed
-- *(Optional)* [LM Studio](https://lmstudio.ai/) on port 1234, [Ollama](https://ollama.ai/) on port 11434, or [Strata](http://127.0.0.1:8080) on port 8080 for local AI mentorship
-
-### Installation
-```bash
-git clone https://github.com/ricafort/OpenNetWorth.git
-cd OpenNetWorth
-npm install
-```
-
-### Database Setup
-**Zero manual setup needed!**
-OpenNetWorth automatically initializes the local embedded SQLite database at `data/opennetworth.sqlite` and creates all required tables on first startup.
-
-### Environment Configuration (Optional)
-OpenNetWorth runs out-of-the-box with **ZERO mandatory environment variables**.
-If you wish to customize your local LLM model endpoints:
-```bash
-cp .env.example .env.local
-```
-
-### Run Locally
-```bash
-npm run dev        # Starts on port 4000
-npm test -- --run  # Runs the Vitest test suite
-```
-
-### Verify Installation
-```bash
-npm run dev        # Starts on http://localhost:4000
-npm test -- --run  # Should pass all test suites
-```
+See the [README Quickstart](README.md) and [`project_docs/deployment.md`](project_docs/deployment.md) — zero mandatory env vars, SQLite auto-initializes on first run, dev server on port 4000.
 
 ---
 
