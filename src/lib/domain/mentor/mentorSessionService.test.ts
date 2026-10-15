@@ -6,8 +6,8 @@
  * cascade delete. A regression here silently corrupts restored conversations.
  *
  * Tricky logic:
- * - createTestDb() only runs the core schema, so this test initializes the mentor
- *   tables explicitly via initMentorChatSchema (same as every route handler does).
+ * - The full migration list (runMigrations) creates the mentor chat tables, exactly
+ *   as production boot does — no separate mentor init is needed.
  * - saveSession must converge the DB to exactly the sent array — deleted bubbles
  *   disappear and seq values are reassigned from 0.
  *
@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initMentorChatSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import {
     MentorSessionValidationError,
     appendMessage,
@@ -36,7 +36,7 @@ describe('mentorSessionService', () => {
     beforeEach(() => {
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initMentorChatSchema(db);
+        runMigrations(db);
     });
 
     afterEach(() => {

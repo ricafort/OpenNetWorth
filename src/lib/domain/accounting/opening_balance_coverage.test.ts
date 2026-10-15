@@ -22,7 +22,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from './accountService';
 import { getSharedFinancialSummary } from './sharedFinancialSummaryService';
 import { postTransaction } from './transactionService';
@@ -35,7 +35,8 @@ describe('Transaction-tracked Account Opening Balance Coverage & Anchoring', () 
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
 
         const alice = createEntity(db, {
             name: 'Alice Household',

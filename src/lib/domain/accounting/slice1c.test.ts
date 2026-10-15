@@ -37,7 +37,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount, ConflictError, ValidationError } from './accountService';
 import { getAccountBalance, getEntityNetWorth, getPeriodIncomeAndExpenses } from './balanceService';
 import {
@@ -62,7 +62,7 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
         // Pristine in-memory database for each test (M1-SAFE-01)
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
         // Inject in-memory database into db.ts so API routes use this isolated instance
         setTestDb(db);
     });

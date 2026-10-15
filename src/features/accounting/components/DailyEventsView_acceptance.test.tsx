@@ -35,7 +35,6 @@ import Database from 'better-sqlite3';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { postTransaction } from '@/lib/domain/accounting/transactionService';
 import { saveDraft } from '@/lib/domain/accounting/draftService';
@@ -66,7 +65,6 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Setup entities
         personalEntity = createEntity(db, { name: 'Household', type: 'household', currency: 'AUD' });

@@ -23,7 +23,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createEntity, createAccount, getAccount } from '../accounting/accountService';
 import { getSharedFinancialSummary } from '../accounting/sharedFinancialSummaryService';
 import { markStatementProposalsSaved } from '../accounting/statementReviewService';
@@ -51,7 +50,6 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Seed Sovereign Entity
         householdEntity = createEntity(db, {
@@ -413,7 +411,6 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
         // 3. Restore into clean test database
         const cleanDb = createTestDb();
         setTestDb(cleanDb);
-        initAccountingSchema(cleanDb);
 
         const restoreReq = new Request('http://localhost:3000/api/vault', {
             method: 'POST',

@@ -18,7 +18,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, closeDb, setTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount } from '../accounting/accountService';
 import { getAccountBalance } from '../accounting/balanceService';
 import {
@@ -40,7 +39,6 @@ describe('Slice 1E Assessor Remediations', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         db.prepare(`
             INSERT INTO entities (id, name, type, created_at, updated_at)

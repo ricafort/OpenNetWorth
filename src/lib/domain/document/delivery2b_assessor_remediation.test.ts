@@ -38,8 +38,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { jsPDF } from 'jspdf';
 import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
-import { initDocumentSchema } from './schema';
 import { createEntity, createAccount, getAccount } from '../accounting/accountService';
 import { recordBalanceObservation } from '../accounting/balanceObservationService';
 import {
@@ -95,8 +93,6 @@ describe('Delivery 2B: Independent Assessment Focused Remediation', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initDocumentSchema(db);
-        initAccountingSchema(db);
 
         householdEntity = createEntity(db, {
             name: 'Remediation Household',

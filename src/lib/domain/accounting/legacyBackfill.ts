@@ -9,7 +9,7 @@
  *   the tables are gone by then, so the payload path maps straight from JSON arrays)
  *
  * Tricky logic:
- * - `mapLegacyDataToMilestone1` emits accounts with `opening_balance_cents` AND balanced
+ * - `mapLegacyDataToLedger` emits accounts with `opening_balance_cents` AND balanced
  *   opening transactions. That is exactly the shape `createAccount` produces, and
  *   `getAccountBalance` aggregates POSTINGS ONLY (opening_balance_cents is an anchor
  *   marker for `tracking_mode='transactions'`, never added to the sum) — so there is no
@@ -23,7 +23,7 @@
 
 import type Database from 'better-sqlite3';
 import {
-    mapLegacyDataToMilestone1,
+    mapLegacyDataToLedger,
     type LegacyAsset,
     type LegacyLiability,
     type LegacyDataPayload,
@@ -100,7 +100,7 @@ export function backfillLegacyLedgerFromPayload(
         return { skipped: true, reason: hadRows ? 'all_already_mapped' : 'no_rows', ...EMPTY_RESULT };
     }
 
-    const mapped = mapLegacyDataToMilestone1({ ...payload, assets, liabilities }, opts.asOfDate);
+    const mapped = mapLegacyDataToLedger({ ...payload, assets, liabilities }, opts.asOfDate);
     const t = ledgerTables(db);
 
     db.prepare(`

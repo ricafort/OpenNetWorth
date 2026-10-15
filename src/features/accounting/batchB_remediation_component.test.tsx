@@ -41,7 +41,6 @@ if (typeof (globalThis as any).ResizeObserver === 'undefined') {
 }
 
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { getActualCashFlowStatement } from '@/lib/domain/accounting/balanceService';
 import { recordBalanceObservation } from '@/lib/domain/accounting/balanceObservationService';
 import { recordIncome } from '@/lib/domain/accounting/transactionService';
@@ -152,7 +151,6 @@ describe('Batch B Remediation - Component and Domain Verification', () => {
 
         testDb = createTestDb();
         setTestDb(testDb);
-        initAccountingSchema(testDb);
 
         mockSummaryData = null;
         mockSummaryLoading = false;

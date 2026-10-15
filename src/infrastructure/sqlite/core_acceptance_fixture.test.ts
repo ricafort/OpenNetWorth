@@ -29,8 +29,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { postTransaction } from '@/lib/domain/accounting/transactionService';
 import { getAccountBalance } from '@/lib/domain/accounting/balanceService';
@@ -65,8 +63,6 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
 
     beforeEach(() => {
         testDb = createTestDb();
-        initAccountingSchema(testDb);
-        initDocumentSchema(testDb);
         setTestDb(testDb);
 
         // Core Fixture Entities
@@ -570,8 +566,6 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
         // 2. Create a brand new pristine in-memory test database
         closeDb();
         const freshDb = createTestDb();
-        initAccountingSchema(freshDb);
-        initDocumentSchema(freshDb);
         setTestDb(freshDb);
 
         // 3. Restore snapshot into fresh isolated database via POST /api/vault

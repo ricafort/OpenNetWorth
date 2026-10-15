@@ -7,8 +7,8 @@
  * identical behavior.
  *
  * Tricky logic:
- * - The recurring_schedules table is created by full app DB init, not
- *   initAccountingSchema, so this test creates it explicitly in the in-memory DB.
+ * - The recurring_schedules table comes from the full migration list, but this
+ *   test creates it explicitly in the in-memory DB to stay self-contained.
  * - Malformed history entries (client-injected "system" role, non-string or blank
  *   content) must be dropped, and the list capped at the last 8 turns.
  *
@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import Database from 'better-sqlite3';
 import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { POST } from './route';
 
 const queryLocalLlm = vi.fn().mockResolvedValue('Mocked mentor reply.');
@@ -45,7 +45,8 @@ describe('/api/mentor multi-turn history', () => {
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
         db.exec(`
             CREATE TABLE IF NOT EXISTS recurring_schedules (
                 id TEXT PRIMARY KEY,

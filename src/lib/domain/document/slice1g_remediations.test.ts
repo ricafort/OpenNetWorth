@@ -22,11 +22,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, setTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount, createEntity } from '../accounting/accountService';
 import { getAccountBalance } from '../accounting/balanceService';
 import { postTransaction } from '../accounting/transactionService';
-import { initDocumentSchema } from './schema';
+import { DOCUMENT_SCHEMA_DDL, migrateDocumentSchema } from './schema';
 import {
     approveProposals,
     getCandidateTransactionsForProposal,
@@ -88,7 +87,6 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         const entity = createEntity(db, { name: 'Remediation Test Entity', type: 'person', currency: 'AUD' });
         entityId = entity.id;
@@ -181,8 +179,11 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
             ) VALUES (?, ?, '2026-09-09', 'AUD', -1250, 'Officeworks Pen', 'expense', 'office_supplies', '{"page":1}', 'v1', '[]', 'unreviewed', '2026-09-10T12:01:00Z', '2026-09-10T12:01:00Z')
         `).run(prop2Id, docId);
 
-        // Run initDocumentSchema (which applies migrateDocumentSchema first)
-        expect(() => initDocumentSchema(legacyDb)).not.toThrow();
+        // Apply the document repairs + DDL in the same order migration 0003 uses
+        expect(() => {
+            migrateDocumentSchema(legacyDb);
+            legacyDb.exec(DOCUMENT_SCHEMA_DDL);
+        }).not.toThrow();
 
         // 1. Verify documents has raw_content column
         const docCols = legacyDb.prepare("PRAGMA table_info(documents)").all() as any[];

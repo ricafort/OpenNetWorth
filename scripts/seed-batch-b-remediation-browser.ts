@@ -14,8 +14,7 @@
 
 import Database from 'better-sqlite3';
 import path from 'path';
-import { initSchema } from '../src/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../src/lib/domain/accounting/schema';
+import { runMigrations } from '../src/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '../src/lib/domain/accounting/accountService';
 import { recordBalanceObservation } from '../src/lib/domain/accounting/balanceObservationService';
 
@@ -33,8 +32,7 @@ export function seedBatchBRemediation() {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = OFF');
 
-    initSchema(db);
-    initAccountingSchema(db);
+    runMigrations(db);
 
     // Clean test tables
     db.exec(`

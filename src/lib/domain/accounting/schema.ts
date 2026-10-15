@@ -15,7 +15,6 @@
  */
 
 import Database from 'better-sqlite3';
-import { initDocumentSchema } from '../document/schema';
 
 export const ACCOUNTING_SCHEMA_DDL = `
     -- Entities (Persons, Households, Businesses, Trusts)
@@ -711,13 +710,3 @@ export function migrateAccountingSchema(db: Database.Database): void {
     }
 }
 
-/**
- * Initializes the Milestone 1 accounting schema on a SQLite database,
- * then applies any pending schema migrations.
- */
-export function initAccountingSchema(db: Database.Database): void {
-    db.pragma('foreign_keys = ON');
-    db.exec(ACCOUNTING_SCHEMA_DDL);
-    migrateAccountingSchema(db);
-    initDocumentSchema(db);
-}

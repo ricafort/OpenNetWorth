@@ -13,8 +13,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { initSchema } from '../src/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../src/lib/domain/accounting/schema';
+import { runMigrations } from '../src/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '../src/lib/domain/accounting/accountService';
 
 const TEST_VAULT_PATH = path.resolve(process.cwd(), 'data', 'test_browser_vault.sqlite');
@@ -31,8 +30,7 @@ export function seedBatchBWalkthrough() {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = OFF');
 
-    initSchema(db);
-    initAccountingSchema(db);
+    runMigrations(db);
 
     // Truncate tables for a completely pristine walkthrough
     db.exec(`

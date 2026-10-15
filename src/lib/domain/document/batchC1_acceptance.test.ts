@@ -26,8 +26,6 @@ import path from 'path';
 import fs from 'fs';
 import { jsPDF } from 'jspdf';
 import { createTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
-import { initDocumentSchema } from './schema';
 import { createEntity, createAccount } from '../accounting/accountService';
 import { extractStatementBalancesFromPdf } from './pdfStatementExtractor';
 import { bulkUpdateProposalAccount } from './documentInboxService';
@@ -39,8 +37,6 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
 
     beforeEach(() => {
         db = createTestDb();
-        initAccountingSchema(db);
-        initDocumentSchema(db);
 
         // Seed household entity and checking account
         const entity = createEntity(db, { name: 'Alex and Morgan Nguyen household', type: 'household', currency: 'AUD' });

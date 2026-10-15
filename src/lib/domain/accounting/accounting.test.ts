@@ -28,9 +28,8 @@ import {
     validateTransactionBalance,
     assertValidMoneyCents
 } from './types';
-import { initAccountingSchema } from './schema';
-import { initDocumentSchema } from '../document/schema';
-import { mapLegacyDataToMilestone1, LegacyDataPayload } from './migrationMapping';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
+import { mapLegacyDataToLedger, LegacyDataPayload } from './migrationMapping';
 
 describe('Milestone 1 — Slice 1A: Accounting Foundation & Invariants', () => {
     let db: Database.Database;
@@ -39,8 +38,7 @@ describe('Milestone 1 — Slice 1A: Accounting Foundation & Invariants', () => {
         // Pristine in-memory database for each test (M1-SAFE-01)
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
-        initDocumentSchema(db);
+        runMigrations(db);
     });
 
     afterEach(() => {
@@ -221,7 +219,7 @@ describe('Milestone 1 — Slice 1A: Accounting Foundation & Invariants', () => {
                 ]
             };
 
-            const mapped = mapLegacyDataToMilestone1(syntheticLegacy, '2026-09-01');
+            const mapped = mapLegacyDataToLedger(syntheticLegacy, '2026-09-01');
 
             // 1. Entity mapped correctly
             expect(mapped.entity.name).toBe('Jane Doe');

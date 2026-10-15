@@ -24,7 +24,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import {
     createEntity,
     createAccount,
@@ -55,7 +55,7 @@ describe('Transaction Entry UX & Accounting Invariants', () => {
         // Pristine in-memory database for each test
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
     });
 
     afterEach(() => {

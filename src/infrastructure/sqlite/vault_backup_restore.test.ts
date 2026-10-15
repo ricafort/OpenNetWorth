@@ -22,8 +22,6 @@ import fs from 'fs';
 import path from 'path';
 import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
-import { initMentorChatSchema } from '@/lib/domain/mentor/schema';
 import { appendMessage, createSession } from '@/lib/domain/mentor/mentorSessionService';
 import Database from 'better-sqlite3';
 
@@ -32,7 +30,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
 
     beforeEach(() => {
         testDb = createTestDb();
-        initAccountingSchema(testDb);
         setTestDb(testDb);
     });
 
@@ -485,7 +482,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
 
     it('Test 9: Version 2 restore without mentor collections succeeds and preserves existing mentor chats', async () => {
         // Seed a live conversation before the restore
-        initMentorChatSchema(testDb);
         const session = createSession(testDb, 'Moats and margins');
         appendMessage(testDb, session.id, { id: 'msg-u1', role: 'user', content: 'How is my posture?' });
         appendMessage(testDb, session.id, { id: 'msg-m1', role: 'mentor', mentorName: 'Warren Buffett', content: 'Moats matter.' });
@@ -508,7 +504,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
     });
 
     it('Test 10: Mentor chats round-trip through snapshot export and V2 restore', async () => {
-        initMentorChatSchema(testDb);
         const session = createSession(testDb, 'Liquidity ratios');
         appendMessage(testDb, session.id, { id: 'msg-u1', role: 'user', content: 'Explain liquidity ratios.' });
         appendMessage(testDb, session.id, {

@@ -25,7 +25,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount, createEntity } from '../accounting/accountService';
 import {
     approveProposals,
@@ -46,7 +45,6 @@ describe('Slice 1F Focused Remediation Tests', () => {
     beforeEach(() => {
         // Complete isolation from production vault (M1-SAFE-01)
         db = createTestDb();
-        initAccountingSchema(db);
 
         // Setup test entity
         const entity = createEntity(db, { name: 'Remediation Test Entity', type: 'person', currency: 'AUD' });

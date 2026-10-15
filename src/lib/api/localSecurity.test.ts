@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import Database from 'better-sqlite3';
 import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { validateLocalSecurity, applySensitiveHeaders } from './localSecurity';
 import proxy from '@/proxy';
 import { GET as vaultGet } from '@/app/api/vault/route';
@@ -29,7 +29,8 @@ describe('Local Security & Network Isolation (Item 4)', () => {
 
     beforeEach(() => {
         testDb = new Database(':memory:');
-        initAccountingSchema(testDb);
+        testDb.pragma('foreign_keys = ON');
+        runMigrations(testDb);
         setTestDb(testDb);
     });
 

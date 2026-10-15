@@ -36,7 +36,6 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
 import { createEntity, createAccount, getAccount } from './accountService';
 import {
     recordBalanceObservation,
@@ -59,7 +58,6 @@ describe('Delivery 2A: Focused Remediation Acceptance Tests', () => {
 
     beforeEach(() => {
         db = createTestDb();
-        initAccountingSchema(db);
         setTestDb(db);
     });
 
@@ -500,7 +498,6 @@ Basic Checking, $100.00
 
             // 2. Clear database to simulate restore onto fresh database
             const freshDb = createTestDb();
-            initAccountingSchema(freshDb);
             setTestDb(freshDb);
 
             // 3. Restore vault backup via POST /api/vault

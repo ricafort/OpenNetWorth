@@ -21,8 +21,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { jsPDF } from 'jspdf';
-import { initAccountingSchema } from './schema';
-import { initDocumentSchema } from '../document/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from './accountService';
 import { recordExpense, postTransaction } from './transactionService';
 import {
@@ -45,8 +44,8 @@ describe('Batch A Remediation Tests', () => {
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
-        initDocumentSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
     });
 
     afterEach(() => {

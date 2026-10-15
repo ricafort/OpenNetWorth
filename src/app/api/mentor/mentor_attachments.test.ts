@@ -7,8 +7,8 @@
  * ids are skipped without breaking the reply contract.
  *
  * Tricky logic:
- * - The recurring_schedules table is created by full app DB init, not
- *   initAccountingSchema, so this test creates it explicitly in the in-memory DB.
+ * - The recurring_schedules table comes from the full migration list, but this
+ *   test creates it explicitly in the in-memory DB to stay self-contained.
  * - documents rows are seeded directly (the ingest route has its own test);
  *   this file only checks how the mentor route consumes them.
  * - The untrusted-content footer must always follow the attachment block so a
@@ -21,8 +21,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import Database from 'better-sqlite3';
 import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { POST } from './route';
 
 const queryLocalLlm = vi.fn().mockResolvedValue('Mocked mentor reply.');
@@ -55,8 +54,8 @@ let db: Database.Database;
 describe('/api/mentor attachments grounding', () => {
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
-        initDocumentSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
         db.exec(`
             CREATE TABLE IF NOT EXISTS recurring_schedules (
                 id TEXT PRIMARY KEY,

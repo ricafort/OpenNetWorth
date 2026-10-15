@@ -13,7 +13,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from '../src/lib/domain/accounting/schema';
+import { runMigrations } from '../src/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '../src/lib/domain/accounting/accountService';
 import { extractBalancesFromText } from '../src/lib/domain/accounting/balanceExtractionService';
 
@@ -21,7 +21,7 @@ async function main() {
     console.log('--- Testing Live Local Model Extraction (LM Studio: http://127.0.0.1:1234/v1) ---');
 
     const db = new Database(':memory:');
-    initAccountingSchema(db);
+    runMigrations(db);
 
     const entity = createEntity(db, {
         name: 'Jane Sovereign',

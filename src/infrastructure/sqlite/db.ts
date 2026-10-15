@@ -191,16 +191,6 @@ export function getDb(): Database.Database {
     return dbInstance;
 }
 
-/**
- * @deprecated Use `runMigrations(db)` from `./migrations`. Kept as a thin wrapper
- * until the single-data-layer refactor cleanup (Phase 5) removes the remaining
- * callers (seed scripts and a few test bootstraps). Behavior is unchanged: it
- * applies the ordered migration list, skipping already-applied entries.
- */
-export function initSchema(db: Database.Database): void {
-    runMigrations(db);
-}
-
 /* ------------------------------------------------------------------ */
 /* Demo vaults (Phase 2.7 — read-only sample personas)                 */
 /* ------------------------------------------------------------------ */
