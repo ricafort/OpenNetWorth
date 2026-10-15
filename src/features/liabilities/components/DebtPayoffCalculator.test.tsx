@@ -248,10 +248,12 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
      * - Zero writes to SQLite occur during loading or mounting.
      */
     it('Loading → matching currency: restores matching saved plan correctly without writing', async () => {
-        // Seed saved plan in USD 500
+        // Seed saved plan in USD 500 — saveFreedomSettings writes the settings kv
+        // in the SQLite vault (no localStorage writes after Phase 2.5).
         await saveFreedomSettings({ strategy: 'avalanche', extraMonthlyPayment: 500, currency: 'USD' });
-        const stored = window.localStorage.getItem('opennetworth_freedom_settings');
-        expect(stored).toContain('"extraMonthlyPayment":500');
+        const stored = testDb.prepare("SELECT value FROM settings WHERE key = 'freedomSettings'").get() as any;
+        expect(stored).toBeTruthy();
+        expect(JSON.parse(stored.value).extraMonthlyPayment).toBe(500);
 
         // Dashboard is AUD, debts initially loading
         mockBaseCurrency = 'AUD';

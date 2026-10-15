@@ -24,7 +24,6 @@ import { useState } from 'react';
 import { FileDown, Loader2 } from 'lucide-react';
 import { buildFinancialReportHtml, HtmlReportInput, HtmlReportSegment } from '../htmlReport';
 import { classifyCategory } from '@/features/assets/utils/classifyCategory';
-import { loadNetWorthHistory } from '@/infrastructure/local_driver';
 import { downloadBlob } from '@/lib/utils/download';
 import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
 
@@ -115,11 +114,13 @@ export default function HtmlReportDownloadButton({ entityId, entityName, variant
                 .map((b: any) => ({ label: b.account_name, cents: Math.abs(b.total_cents) }))
                 .sort((a: HtmlReportSegment, b: HtmlReportSegment) => b.cents - a.cents);
 
-            const history = loadNetWorthHistory()
+            const histRes = await fetch('/api/vault?entity=history');
+            const histJson = histRes.ok ? await histRes.json().catch(() => null) : null;
+            const history = (((histJson as any)?.data ?? []) as any[])
                 .slice()
                 .sort((a, b) => String(a.date).localeCompare(String(b.date)))
                 .slice(-24)
-                .map(s => ({ date: s.date, netWorth: s.netWorth }));
+                .map(s => ({ date: s.date, netWorth: s.net_worth }));
 
             const input: HtmlReportInput = {
                 entityName: targetName || 'My Finances',
