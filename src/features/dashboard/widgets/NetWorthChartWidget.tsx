@@ -9,7 +9,6 @@ import HistoryEditor from '@/features/dashboard/modals/HistoryEditor';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 
 import { useHistory } from '@/hooks/useHistory';
-import { useAssetsQuery } from '@/features/assets/hooks/useAssetsQuery';
 import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { formatCurrency } from '@/lib/utils/currencyService';
@@ -17,10 +16,9 @@ import { centsToMajorUnits } from '@/lib/domain/accounting/types';
 
 export default function NetWorthChartWidget() {
     // TUTORIAL: Separation of Concerns (SoC).
-    // The widget doesn't know *how* to fetch data. It just asks the 'useHistory' hook.
-    // This allows us to swap the data source (Supabase vs LocalStorage) without changing the UI.
+    // The widget doesn't know *how* to fetch data. It just asks the 'useHistory' hook
+    // (SQLite vault series) and 'useSharedFinancialSummary' (live ledger totals).
     const { history: netWorthHistory, refreshHistory, addSnapshot } = useHistory();
-    const { assets } = useAssetsQuery();
     const { summary } = useSharedFinancialSummary();
     const { baseCurrency } = useNetWorth();
     const { isEditMode, hideWidget } = useDashboard();
@@ -106,9 +104,12 @@ export default function NetWorthChartWidget() {
     // Distinguishes completely new workspaces with zero accounts from users who already have
     // active bank/ledger accounts but haven't accumulated multiple historical daily snapshots yet.
     // Tricky logic:
-    // Checks both authoritative summary accounts (from double-entry engine) and legacy assets.
-    // TODO: In Milestone 2, synthesize historical snapshots from ledger posting timestamps.
-    const hasTrackedAccounts = (summary?.accounts && summary.accounts.length > 0) || assets.length > 0;
+    // Accounts without any recorded balance still count as "tracked" — they appear in
+    // `unrecorded_accounts`, not in `accounts`, so both must be checked.
+    // TODO: Synthesize historical snapshots from ledger posting timestamps.
+    const hasTrackedAccounts =
+        (summary?.accounts && summary.accounts.length > 0) ||
+        (summary?.unrecorded_count ?? 0) > 0;
 
     // Custom Header Controls
     const HeaderControls = (
@@ -216,6 +217,7 @@ export default function NetWorthChartWidget() {
                 isOpen={isHistoryOpen}
                 onClose={() => setIsHistoryOpen(false)}
                 onSave={refreshHistory}
+                history={netWorthHistory}
             />
         </WidgetWrapper>
     );
