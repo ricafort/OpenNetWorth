@@ -159,7 +159,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
             expect(updatedNetWorth.net_worth_cents_by_currency['AUD']).toBe(90000000); // 750k + 150k = 900k
 
             // Verify the balancing credit went to Unrealized Valuation Reserve under equity
-            const equityAccounts = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity'").all(person.id) as any[];
+            const equityAccounts = db.prepare("SELECT * FROM accounts WHERE entity_id = ? AND type = 'equity'").all(person.id) as any[];
             expect(equityAccounts.length).toBeGreaterThanOrEqual(1);
             const valReserve = equityAccounts.find(a => a.sub_type === 'valuation_reserve');
             expect(valReserve).toBeDefined();
@@ -1211,7 +1211,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
             expect(nwMarch.net_worth_cents_by_currency['AUD']).toBe(120000);
 
             // Total unrealized reserve as of March 1 is exactly 20,000 cents
-            const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+            const reserve = db.prepare("SELECT * FROM accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
             expect(getAccountBalance(db, reserve.id, '2026-03-01').balance_cents).toBe(20000);
         });
 
@@ -1252,7 +1252,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
             expect(getAccountBalance(db, painting.id).balance_cents).toBe(500000);
 
             // Total transactions in DB remains exactly 2 (opening balance + 1 valuation)
-            const txCount = (db.prepare("SELECT COUNT(*) as cnt FROM m1_transactions WHERE origin = 'manual'").get() as any).cnt;
+            const txCount = (db.prepare("SELECT COUNT(*) as cnt FROM transactions WHERE origin = 'manual'").get() as any).cnt;
             expect(txCount).toBe(1);
 
             // 2. Changed request using the same key throws ConflictError without mutating DB
@@ -1333,7 +1333,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 evidence_refs: [{ ...structuredRefA, document_id: 'doc-invoice-999' }]
             });
             expect(result2.id).toBe(tx.id);
-            const storedEvidenceJson2 = (db.prepare('SELECT evidence_refs FROM m1_transactions WHERE id = ?').get(tx.id) as { evidence_refs: string }).evidence_refs;
+            const storedEvidenceJson2 = (db.prepare('SELECT evidence_refs FROM transactions WHERE id = ?').get(tx.id) as { evidence_refs: string }).evidence_refs;
             const refs2 = JSON.parse(storedEvidenceJson2);
             expect(refs2).toHaveLength(1);
             expect(refs2[0]).toMatchObject({
@@ -1352,7 +1352,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 evidence_refs: [{ ...structuredRefA, content_hash: 'sha256-tampered-hash' }]
             });
             expect(result3.id).toBe(tx.id);
-            const storedEvidenceJson3 = (db.prepare('SELECT evidence_refs FROM m1_transactions WHERE id = ?').get(tx.id) as { evidence_refs: string }).evidence_refs;
+            const storedEvidenceJson3 = (db.prepare('SELECT evidence_refs FROM transactions WHERE id = ?').get(tx.id) as { evidence_refs: string }).evidence_refs;
             const refs3 = JSON.parse(storedEvidenceJson3);
             expect(refs3).toHaveLength(1);
             expect(refs3[0]).toMatchObject({
@@ -1447,9 +1447,9 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
 
                 // Verify initial valuation state
                 expect(getAccountBalance(db, property.id, '2026-05-15').balance_cents).toBe(120000000);
-                const txCountBefore = (db.prepare('SELECT COUNT(*) as c FROM m1_transactions').get() as any).c;
-                const valCountBefore = (db.prepare('SELECT COUNT(*) as c FROM m1_asset_valuations').get() as any).c;
-                const journalCountBefore = (db.prepare('SELECT COUNT(*) as c FROM m1_journal_entries').get() as any).c;
+                const txCountBefore = (db.prepare('SELECT COUNT(*) as c FROM transactions').get() as any).c;
+                const valCountBefore = (db.prepare('SELECT COUNT(*) as c FROM asset_valuations').get() as any).c;
+                const journalCountBefore = (db.prepare('SELECT COUNT(*) as c FROM journal_entries').get() as any).c;
 
                 // 2. Second valuation target on the SAME date (2026-05-15) must be rejected with ValidationError
                 expect(() => {
@@ -1464,15 +1464,15 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
 
                 // 3. Unchanged-state assertions: database must be identical to state before rejection
                 expect(getAccountBalance(db, property.id, '2026-05-15').balance_cents).toBe(120000000);
-                const txCountAfter = (db.prepare('SELECT COUNT(*) as c FROM m1_transactions').get() as any).c;
-                const valCountAfter = (db.prepare('SELECT COUNT(*) as c FROM m1_asset_valuations').get() as any).c;
-                const journalCountAfter = (db.prepare('SELECT COUNT(*) as c FROM m1_journal_entries').get() as any).c;
+                const txCountAfter = (db.prepare('SELECT COUNT(*) as c FROM transactions').get() as any).c;
+                const valCountAfter = (db.prepare('SELECT COUNT(*) as c FROM asset_valuations').get() as any).c;
+                const journalCountAfter = (db.prepare('SELECT COUNT(*) as c FROM journal_entries').get() as any).c;
                 expect(txCountAfter).toBe(txCountBefore);
                 expect(valCountAfter).toBe(valCountBefore);
                 expect(journalCountAfter).toBe(journalCountBefore);
 
                 // Verify the stored valuation record was not mutated
-                const storedVal = db.prepare('SELECT * FROM m1_asset_valuations WHERE account_id = ?').get(property.id) as any;
+                const storedVal = db.prepare('SELECT * FROM asset_valuations WHERE account_id = ?').get(property.id) as any;
                 expect(storedVal.target_valuation_cents).toBe(120000000);
                 expect(storedVal.source).toBe('Knight Frank Appraisal');
             });
@@ -1552,7 +1552,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 // --- Part B: Edit V1 (Feb 1 appraisal) ---
                 // Change Feb 1 valuation from $120,000 to $110,000.
                 // Apr 1 target of $200,000 MUST STILL BE PRESERVED.
-                const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+                const reserve = db.prepare("SELECT * FROM accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
                 correctTransaction(db, {
                     transaction_id: v1.id,
                     operation: 'edit',
@@ -1577,7 +1577,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
             /**
              * Why this test exists:
              * Assessor Finding 3: Eliminates silent updates to posted journal entries. Cascading adjustments
-             * must write to m1_transaction_corrections (operation: 'revaluation_cascade') with causal linkage
+             * must write to transaction_corrections (operation: 'revaluation_cascade') with causal linkage
              * in reason and atomically bump transaction revision. Stale correction requests with old revisions
              * must conflict.
              * 
@@ -1612,7 +1612,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 expect(marVal.revision).toBe(1);
 
                 // Verify initial revision
-                const marTxBefore = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(marVal.id) as any;
+                const marTxBefore = db.prepare('SELECT * FROM transactions WHERE id = ?').get(marVal.id) as any;
                 expect(marTxBefore.revision).toBe(1);
 
                 // Now insert an earlier valuation on Feb 1: target $60,000 (delta +$10,000)
@@ -1627,12 +1627,12 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 expect(febVal.id).toBeDefined();
 
                 // 1. Check that Mar 1 transaction revision was atomically incremented from 1 to 2
-                const marTxAfter = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(marVal.id) as any;
+                const marTxAfter = db.prepare('SELECT * FROM transactions WHERE id = ?').get(marVal.id) as any;
                 expect(marTxAfter.revision).toBe(2);
 
-                // 2. Check that m1_transaction_corrections has an audit row with operation = 'revaluation_cascade'
+                // 2. Check that transaction_corrections has an audit row with operation = 'revaluation_cascade'
                 const corrections = db.prepare(
-                    "SELECT * FROM m1_transaction_corrections WHERE transaction_id = ? AND operation = 'revaluation_cascade'"
+                    "SELECT * FROM transaction_corrections WHERE transaction_id = ? AND operation = 'revaluation_cascade'"
                 ).all(marVal.id) as any[];
                 expect(corrections.length).toBe(1);
                 expect(corrections[0].reason).toContain('Cascaded valuation adjustment preserving target 8000000 cents');
@@ -1790,12 +1790,12 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 // to prove that the reconciliation engine identifies and flags discrepancies
                 const orphanTxId = crypto.randomUUID();
                 db.prepare(`
-                    INSERT INTO m1_transactions (id, date, description, status, origin, revision, created_at, updated_at)
+                    INSERT INTO transactions (id, date, description, status, origin, revision, created_at, updated_at)
                     VALUES (?, '2026-06-20', 'Discrepancy Drift', 'posted', 'migration', 1, datetime('now'), datetime('now'))
                 `).run(orphanTxId);
 
                 db.prepare(`
-                    INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+                    INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency)
                     VALUES (?, ?, ?, ?, ?)
                 `).run('test-discrepancy-001', orphanTxId, bank.id, 50000, 'AUD');
 
@@ -2083,12 +2083,12 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
              * Assessor Item 1: Versioned, transactional schema migrations on populated databases.
              * 
              * Why this test exists:
-             * Existing databases from prior committed schemas (lacking the 'source' column on m1_asset_valuations
-             * and lacking 'revaluation_cascade' on m1_transaction_corrections) must be upgraded seamlessly
+             * Existing databases from prior committed schemas (lacking the 'source' column on asset_valuations
+             * and lacking 'revaluation_cascade' on transaction_corrections) must be upgraded seamlessly
              * and transactionally without data loss, preserving all balances, evidence, revisions, and audit history.
              * 
              * Tricky logic:
-             * - Rebuilding m1_transaction_corrections in SQLite requires temporarily disabling foreign keys
+             * - Rebuilding transaction_corrections in SQLite requires temporarily disabling foreign keys
              *   and restoring them transactionally to prevent foreign key cascade errors.
              */
             it('Assessor Item 1: Upgrades populated legacy schema transactionally, preserving balances, evidence, and audit history', () => {
@@ -2098,7 +2098,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 legacyDb.exec(`
                     PRAGMA foreign_keys = ON;
 
-                    CREATE TABLE IF NOT EXISTS m1_entities (
+                    CREATE TABLE IF NOT EXISTS entities (
                         id TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
                         type TEXT NOT NULL CHECK(type IN ('person', 'company', 'trust')),
@@ -2107,9 +2107,9 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
                     );
 
-                    CREATE TABLE IF NOT EXISTS m1_accounts (
+                    CREATE TABLE IF NOT EXISTS accounts (
                         id TEXT PRIMARY KEY,
-                        entity_id TEXT NOT NULL REFERENCES m1_entities(id),
+                        entity_id TEXT NOT NULL REFERENCES entities(id),
                         name TEXT NOT NULL,
                         type TEXT NOT NULL CHECK(type IN ('asset', 'liability', 'equity', 'income', 'expense')),
                         sub_type TEXT NOT NULL,
@@ -2119,7 +2119,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
                     );
 
-                    CREATE TABLE IF NOT EXISTS m1_transactions (
+                    CREATE TABLE IF NOT EXISTS transactions (
                         id TEXT PRIMARY KEY,
                         date TEXT NOT NULL,
                         description TEXT NOT NULL,
@@ -2132,30 +2132,30 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
                     );
 
-                    CREATE TABLE IF NOT EXISTS m1_journal_entries (
+                    CREATE TABLE IF NOT EXISTS journal_entries (
                         id TEXT PRIMARY KEY,
-                        transaction_id TEXT NOT NULL REFERENCES m1_transactions(id) ON DELETE CASCADE,
-                        account_id TEXT NOT NULL REFERENCES m1_accounts(id),
+                        transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+                        account_id TEXT NOT NULL REFERENCES accounts(id),
                         amount_cents INTEGER NOT NULL,
                         currency TEXT NOT NULL DEFAULT 'AUD',
                         memo TEXT,
                         created_at TEXT NOT NULL DEFAULT (datetime('now'))
                     );
 
-                    -- Prior m1_asset_valuations WITHOUT 'source' column
-                    CREATE TABLE IF NOT EXISTS m1_asset_valuations (
+                    -- Prior asset_valuations WITHOUT 'source' column
+                    CREATE TABLE IF NOT EXISTS asset_valuations (
                         id TEXT PRIMARY KEY,
                         transaction_id TEXT NOT NULL UNIQUE,
                         account_id TEXT NOT NULL,
                         valuation_date TEXT NOT NULL,
                         target_valuation_cents INTEGER NOT NULL,
                         created_at TEXT NOT NULL,
-                        FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE,
-                        FOREIGN KEY (account_id) REFERENCES m1_accounts(id) ON DELETE CASCADE
+                        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+                        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
                     );
 
-                    -- Prior m1_transaction_corrections with OLD CHECK constraint (only 'edit', 'void', 'reversal')
-                    CREATE TABLE IF NOT EXISTS m1_transaction_corrections (
+                    -- Prior transaction_corrections with OLD CHECK constraint (only 'edit', 'void', 'reversal')
+                    CREATE TABLE IF NOT EXISTS transaction_corrections (
                         id TEXT PRIMARY KEY,
                         transaction_id TEXT NOT NULL,
                         operation TEXT NOT NULL CHECK (operation IN ('edit', 'void', 'reversal')),
@@ -2164,12 +2164,12 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                         corrected_state TEXT NOT NULL,
                         performed_by TEXT NOT NULL,
                         timestamp TEXT NOT NULL,
-                        FOREIGN KEY (transaction_id) REFERENCES m1_transactions(id) ON DELETE CASCADE
+                        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
                     );
 
-                    CREATE TABLE IF NOT EXISTS m1_evidence_links (
+                    CREATE TABLE IF NOT EXISTS evidence_links (
                         id TEXT PRIMARY KEY,
-                        transaction_id TEXT NOT NULL REFERENCES m1_transactions(id) ON DELETE CASCADE,
+                        transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
                         document_id TEXT NOT NULL,
                         content_hash TEXT,
                         page_number INTEGER,
@@ -2180,36 +2180,36 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
 
                 // 2. Populate legacy database with existing records
                 const entityId = 'legacy-entity-001';
-                legacyDb.prepare(`INSERT INTO m1_entities (id, name, type, currency) VALUES (?, 'Legacy Alice', 'person', 'AUD')`).run(entityId);
+                legacyDb.prepare(`INSERT INTO entities (id, name, type, currency) VALUES (?, 'Legacy Alice', 'person', 'AUD')`).run(entityId);
 
                 const assetId = 'legacy-asset-001';
-                legacyDb.prepare(`INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency) VALUES (?, ?, 'Classic Porsche', 'asset', 'vehicle', 'AUD')`).run(assetId, entityId);
+                legacyDb.prepare(`INSERT INTO accounts (id, entity_id, name, type, sub_type, currency) VALUES (?, ?, 'Classic Porsche', 'asset', 'vehicle', 'AUD')`).run(assetId, entityId);
 
                 const reserveId = 'legacy-reserve-001';
-                legacyDb.prepare(`INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency) VALUES (?, ?, 'Valuation Reserve', 'equity', 'valuation_reserve', 'AUD')`).run(reserveId, entityId);
+                legacyDb.prepare(`INSERT INTO accounts (id, entity_id, name, type, sub_type, currency) VALUES (?, ?, 'Valuation Reserve', 'equity', 'valuation_reserve', 'AUD')`).run(reserveId, entityId);
 
                 const txId = 'legacy-tx-001';
-                legacyDb.prepare(`INSERT INTO m1_transactions (id, date, description, status, origin, revision) VALUES (?, '2026-01-10', 'Initial Legacy Valuation', 'posted', 'valuation', 1)`).run(txId);
+                legacyDb.prepare(`INSERT INTO transactions (id, date, description, status, origin, revision) VALUES (?, '2026-01-10', 'Initial Legacy Valuation', 'posted', 'valuation', 1)`).run(txId);
 
-                legacyDb.prepare(`INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency) VALUES (?, ?, ?, ?, 'AUD')`).run('legacy-j1', txId, assetId, 15000000);
-                legacyDb.prepare(`INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency) VALUES (?, ?, ?, ?, 'AUD')`).run('legacy-j2', txId, reserveId, -15000000);
+                legacyDb.prepare(`INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency) VALUES (?, ?, ?, ?, 'AUD')`).run('legacy-j1', txId, assetId, 15000000);
+                legacyDb.prepare(`INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency) VALUES (?, ?, ?, ?, 'AUD')`).run('legacy-j2', txId, reserveId, -15000000);
 
                 const valId = 'legacy-val-001';
-                legacyDb.prepare(`INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, created_at) VALUES (?, ?, ?, '2026-01-10', 15000000, datetime('now'))`).run(valId, txId, assetId);
+                legacyDb.prepare(`INSERT INTO asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, created_at) VALUES (?, ?, ?, '2026-01-10', 15000000, datetime('now'))`).run(valId, txId, assetId);
 
                 const corrId = 'legacy-corr-001';
-                legacyDb.prepare(`INSERT INTO m1_transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp) VALUES (?, ?, 'edit', 'Prior audit edit', '{}', '{}', 'Auditor User', datetime('now'))`).run(corrId, txId);
+                legacyDb.prepare(`INSERT INTO transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp) VALUES (?, ?, 'edit', 'Prior audit edit', '{}', '{}', 'Auditor User', datetime('now'))`).run(corrId, txId);
 
-                legacyDb.prepare(`INSERT INTO m1_evidence_links (id, transaction_id, document_id, content_hash, page_number) VALUES (?, ?, 'doc-legacy-001', 'sha256-legacy', 1)`).run('legacy-ev-001', txId);
+                legacyDb.prepare(`INSERT INTO evidence_links (id, transaction_id, document_id, content_hash, page_number) VALUES (?, ?, 'doc-legacy-001', 'sha256-legacy', 1)`).run('legacy-ev-001', txId);
 
-                // Verify pre-migration state: m1_asset_valuations lacks 'source'
-                const colsBefore = legacyDb.prepare(`PRAGMA table_info(m1_asset_valuations)`).all() as any[];
+                // Verify pre-migration state: asset_valuations lacks 'source'
+                const colsBefore = legacyDb.prepare(`PRAGMA table_info(asset_valuations)`).all() as any[];
                 expect(colsBefore.some(c => c.name === 'source')).toBe(false);
 
-                // Verify pre-migration state: m1_transaction_corrections rejects 'revaluation_cascade'
+                // Verify pre-migration state: transaction_corrections rejects 'revaluation_cascade'
                 expect(() => {
                     legacyDb.prepare(`
-                        INSERT INTO m1_transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp)
+                        INSERT INTO transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp)
                         VALUES ('cascade-fail', '${txId}', 'revaluation_cascade', 'Cascade test', '{}', '{}', 'System', datetime('now'))
                     `).run();
                 }).toThrow();
@@ -2218,37 +2218,37 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 migrateAccountingSchema(legacyDb);
 
                 // 4. Verify post-migration schema upgrades
-                const colsAfter = legacyDb.prepare(`PRAGMA table_info(m1_asset_valuations)`).all() as any[];
+                const colsAfter = legacyDb.prepare(`PRAGMA table_info(asset_valuations)`).all() as any[];
                 expect(colsAfter.some(c => c.name === 'source')).toBe(true);
 
                 // Verify pre-existing data is strictly preserved
-                const preservedVal = legacyDb.prepare(`SELECT * FROM m1_asset_valuations WHERE id = ?`).get(valId) as any;
+                const preservedVal = legacyDb.prepare(`SELECT * FROM asset_valuations WHERE id = ?`).get(valId) as any;
                 expect(preservedVal).toBeDefined();
                 expect(preservedVal.target_valuation_cents).toBe(15000000);
                 expect(preservedVal.source).toBeNull(); // Column added, prior row has null source
 
-                const preservedCorr = legacyDb.prepare(`SELECT * FROM m1_transaction_corrections WHERE id = ?`).get(corrId) as any;
+                const preservedCorr = legacyDb.prepare(`SELECT * FROM transaction_corrections WHERE id = ?`).get(corrId) as any;
                 expect(preservedCorr).toBeDefined();
                 expect(preservedCorr.operation).toBe('edit');
 
-                const preservedEv = legacyDb.prepare(`SELECT * FROM m1_evidence_links WHERE id = 'legacy-ev-001'`).get() as any;
+                const preservedEv = legacyDb.prepare(`SELECT * FROM evidence_links WHERE id = 'legacy-ev-001'`).get() as any;
                 expect(preservedEv.document_id).toBe('doc-legacy-001');
 
                 // 5. Verify upgraded constraint now permits 'revaluation_cascade'
                 expect(() => {
                     legacyDb.prepare(`
-                        INSERT INTO m1_transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp)
+                        INSERT INTO transaction_corrections (id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp)
                         VALUES ('cascade-success', '${txId}', 'revaluation_cascade', 'Cascade test', '{}', '{}', 'System', datetime('now'))
                     `).run();
                 }).not.toThrow();
 
                 // 6. Verify inserting new valuation with source succeeds on upgraded database
                 const tx2Id = 'legacy-tx-002';
-                legacyDb.prepare(`INSERT INTO m1_transactions (id, date, description, status, origin, revision) VALUES (?, '2026-02-01', 'Upgraded Valuation', 'posted', 'valuation', 1)`).run(tx2Id);
+                legacyDb.prepare(`INSERT INTO transactions (id, date, description, status, origin, revision) VALUES (?, '2026-02-01', 'Upgraded Valuation', 'posted', 'valuation', 1)`).run(tx2Id);
 
                 expect(() => {
                     legacyDb.prepare(`
-                        INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
+                        INSERT INTO asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
                         VALUES ('new-val-002', '${tx2Id}', '${assetId}', '2026-02-01', 16000000, 'Sydney Prestige Appraisals', datetime('now'))
                     `).run();
                 }).not.toThrow();
@@ -2264,7 +2264,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
              * Assessor Item 2: Valuation corrections and stored authoritative targets consistency.
              * 
              * Why this test exists:
-             * An accepted valuation edit must update its authoritative target in m1_asset_valuations.
+             * An accepted valuation edit must update its authoritative target in asset_valuations.
              * Later cascades must preserve the corrected target.
              * If a correction cannot be interpreted safely (e.g. invalid accounts), it must be rejected atomically.
              */
@@ -2301,7 +2301,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 expect(getAccountBalance(db, painting.id, '2026-02-01').balance_cents).toBe(15000000);
                 expect(getAccountBalance(db, painting.id, '2026-04-01').balance_cents).toBe(20000000);
 
-                const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+                const reserve = db.prepare("SELECT * FROM accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
 
                 // 1. Edit V1: correct valuation downward from $150,000 to $130,000 (delta +$30,000 instead of +$50,000)
                 correctTransaction(db, {
@@ -2318,8 +2318,8 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                     }
                 });
 
-                // Check: authoritative target in m1_asset_valuations was updated to $130,000!
-                const v1Row = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(v1.id) as any;
+                // Check: authoritative target in asset_valuations was updated to $130,000!
+                const v1Row = db.prepare('SELECT * FROM asset_valuations WHERE transaction_id = ?').get(v1.id) as any;
                 expect(v1Row.target_valuation_cents).toBe(13000000);
 
                 // Check: Feb 1 balance is now $130,000
@@ -2353,7 +2353,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                     currency: 'AUD'
                 }).account;
 
-                const v2Current = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(v2.id) as any;
+                const v2Current = db.prepare('SELECT revision FROM transactions WHERE id = ?').get(v2.id) as any;
 
                 expect(() => {
                     correctTransaction(db, {
@@ -2380,7 +2380,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
              * 
              * Why this test exists:
              * When an appraisal confirms the existing carrying value (delta === 0), it must NOT return
-             * an unrelated opening balance transaction. A dedicated transaction and m1_asset_valuations
+             * an unrelated opening balance transaction. A dedicated transaction and asset_valuations
              * record must be created, preserving appraisal date, source, description, and evidence.
              */
             it('Assessor Item 3: Records dedicated transaction and valuation row for zero-delta appraisal, preserving evidence and supporting idempotency', () => {
@@ -2396,7 +2396,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 }).account;
 
                 // Look up opening balance transaction
-                const openingTx = db.prepare(`SELECT * FROM m1_transactions WHERE origin = 'opening_balance'`).get() as any;
+                const openingTx = db.prepare(`SELECT * FROM transactions WHERE origin = 'opening_balance'`).get() as any;
                 expect(openingTx).toBeDefined();
 
                 const evidenceRef = {
@@ -2429,8 +2429,8 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 expect(vZero.postings[0].amount_cents).toBe(0);
                 expect(vZero.postings[1].amount_cents).toBe(0);
 
-                // 4. m1_asset_valuations record exists with accurate source and target
-                const valRow = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(vZero.id) as any;
+                // 4. asset_valuations record exists with accurate source and target
+                const valRow = db.prepare('SELECT * FROM asset_valuations WHERE transaction_id = ?').get(vZero.id) as any;
                 expect(valRow).toBeDefined();
                 expect(valRow.target_valuation_cents).toBe(50000000);
                 expect(valRow.source).toBe('Opteon Property Group');
@@ -2621,7 +2621,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 expect(getAccountBalance(db, asset.id, '2026-04-01').balance_cents).toBe(15000000);
 
                 // Step 2: Edit V1 from $120,000 to $130,000 (delta +$30,000)
-                const reserve = db.prepare("SELECT * FROM m1_accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
+                const reserve = db.prepare("SELECT * FROM accounts WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve'").get(entity.id) as any;
                 correctTransaction(db, {
                     transaction_id: v1.id,
                     operation: 'edit',
@@ -2658,7 +2658,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 expect(getAccountBalance(db, asset.id, '2026-04-01').balance_cents).toBe(15000000);
 
                 // Step 5: Void V1 (Feb 1 appraisal retracted)
-                const v1CurrentRev = (db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(v1.id) as any).revision;
+                const v1CurrentRev = (db.prepare('SELECT revision FROM transactions WHERE id = ?').get(v1.id) as any).revision;
                 correctTransaction(db, {
                     transaction_id: v1.id,
                     operation: 'void',
@@ -2710,7 +2710,7 @@ describe('Milestone 1 — Slice 1D: Reports, Ownership Allocation & Evidence Lin
                 }).toThrow(ConflictError);
 
                 // Verify full audit log integrity
-                const allCorrections = db.prepare('SELECT * FROM m1_transaction_corrections').all() as any[];
+                const allCorrections = db.prepare('SELECT * FROM transaction_corrections').all() as any[];
                 expect(allCorrections.length).toBeGreaterThan(0);
                 for (const c of allCorrections) {
                     expect(['edit', 'void', 'reversal', 'revaluation_cascade']).toContain(c.operation);

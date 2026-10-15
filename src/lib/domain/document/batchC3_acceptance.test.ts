@@ -16,12 +16,12 @@ describe('Batch C3: Categorization Rules Acceptance', () => {
         // Setup base entities and accounts
         const ownerId = `ent-${crypto.randomUUID()}`;
         db.prepare(`
-            INSERT INTO m1_entities (id, name, type, created_at, updated_at) VALUES (?, 'Test Owner', 'person', datetime('now'), datetime('now'))
+            INSERT INTO entities (id, name, type, created_at, updated_at) VALUES (?, 'Test Owner', 'person', datetime('now'), datetime('now'))
         `).run(ownerId);
 
         const accountId = `acc-${crypto.randomUUID()}`;
         db.prepare(`
-            INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, created_at, updated_at)
+            INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, created_at, updated_at)
             VALUES (?, ?, 'Checking', 'asset', 'checking', 'USD', datetime('now'), datetime('now'))
         `).run(accountId, ownerId);
 
@@ -72,7 +72,7 @@ describe('Batch C3: Categorization Rules Acceptance', () => {
         });
 
         // Check if rule was saved
-        const rules = db.prepare('SELECT * FROM m1_categorization_rules').all() as any[];
+        const rules = db.prepare('SELECT * FROM categorization_rules').all() as any[];
         expect(rules.length).toBe(1);
         expect(rules[0].target_category).toBe('entertainment');
         expect(rules[0].match_string).toBe('starbucks seattle');
@@ -113,7 +113,7 @@ describe('Batch C3: Categorization Rules Acceptance', () => {
 
         // Save a rule manually
         db.prepare(`
-            INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+            INSERT INTO categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `).run('rule-1', accountId, 'shell', 'exact', 'transportation');
 
@@ -145,7 +145,7 @@ describe('Batch C3: Categorization Rules Acceptance', () => {
         const { accountId, ownerId } = setupDatabase();
 
         db.prepare(`
-            INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+            INSERT INTO categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `).run('rule-1', accountId, 'starbucks seattle', 'exact', 'entertainment');
 
@@ -167,7 +167,7 @@ describe('Batch C3: Categorization Rules Acceptance', () => {
         });
 
         // Check if rule was updated instead of duplicated
-        const rules = db.prepare('SELECT * FROM m1_categorization_rules').all() as any[];
+        const rules = db.prepare('SELECT * FROM categorization_rules').all() as any[];
         expect(rules.length).toBe(1);
         expect(rules[0].target_category).toBe('living_expense');
     });

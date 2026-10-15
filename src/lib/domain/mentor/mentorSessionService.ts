@@ -2,7 +2,7 @@
  * Mentor Chat Session Service
  *
  * Why this file exists:
- * Single authoritative CRUD layer over `m1_mentor_sessions` / `m1_mentor_messages`,
+ * Single authoritative CRUD layer over `mentor_sessions` / `mentor_messages`,
  * mirroring the draftService pattern (crypto.randomUUID ids, db.transaction
  * atomicity, snake_case rows ↔ camelCase client payloads). The /api/mentor/sessions
  * route and its tests both go through these functions so persistence semantics
@@ -140,24 +140,24 @@ export function createSession(db: Database.Database, title?: string): MentorSess
         created_at: now,
         updated_at: now
     };
-    db.prepare('INSERT INTO m1_mentor_sessions (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)')
+    db.prepare('INSERT INTO mentor_sessions (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)')
         .run(session);
     return session;
 }
 
 export function listSessions(db: Database.Database, limit = 50): Array<MentorSessionRow & { message_count: number }> {
     return db.prepare(`
-        SELECT s.*, (SELECT COUNT(*) FROM m1_mentor_messages m WHERE m.session_id = s.id) AS message_count
-        FROM m1_mentor_sessions s
+        SELECT s.*, (SELECT COUNT(*) FROM mentor_messages m WHERE m.session_id = s.id) AS message_count
+        FROM mentor_sessions s
         ORDER BY s.updated_at DESC
         LIMIT ?
     `).all(limit) as Array<MentorSessionRow & { message_count: number }>;
 }
 
 export function getSession(db: Database.Database, sessionId: string): { session: MentorSessionRow; messages: MentorMessageRow[] } | null {
-    const session = db.prepare('SELECT * FROM m1_mentor_sessions WHERE id = ?').get(sessionId) as MentorSessionRow | undefined;
+    const session = db.prepare('SELECT * FROM mentor_sessions WHERE id = ?').get(sessionId) as MentorSessionRow | undefined;
     if (!session) return null;
-    const messages = db.prepare('SELECT * FROM m1_mentor_messages WHERE session_id = ? ORDER BY seq ASC').all(sessionId) as MentorMessageRow[];
+    const messages = db.prepare('SELECT * FROM mentor_messages WHERE session_id = ? ORDER BY seq ASC').all(sessionId) as MentorMessageRow[];
     return { session, messages };
 }
 
@@ -183,10 +183,10 @@ export function saveSession(
     const run = db.transaction(() => {
         let session: MentorSessionRow;
         if (input.id) {
-            const existing = db.prepare('SELECT * FROM m1_mentor_sessions WHERE id = ?').get(input.id) as MentorSessionRow | undefined;
+            const existing = db.prepare('SELECT * FROM mentor_sessions WHERE id = ?').get(input.id) as MentorSessionRow | undefined;
             if (existing) {
                 const title = typeof input.title === 'string' && input.title.trim() ? input.title.trim().slice(0, 120) : existing.title;
-                db.prepare('UPDATE m1_mentor_sessions SET title = ?, updated_at = ? WHERE id = ?').run(title, now, existing.id);
+                db.prepare('UPDATE mentor_sessions SET title = ?, updated_at = ? WHERE id = ?').run(title, now, existing.id);
                 session = { ...existing, title, updated_at: now };
             } else {
                 session = {
@@ -195,7 +195,7 @@ export function saveSession(
                     created_at: now,
                     updated_at: now
                 };
-                db.prepare('INSERT INTO m1_mentor_sessions (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)').run(session);
+                db.prepare('INSERT INTO mentor_sessions (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)').run(session);
             }
         } else {
             session = {
@@ -204,13 +204,13 @@ export function saveSession(
                 created_at: now,
                 updated_at: now
             };
-            db.prepare('INSERT INTO m1_mentor_sessions (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)').run(session);
+            db.prepare('INSERT INTO mentor_sessions (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)').run(session);
         }
 
         // Full replace: converge the message list to exactly what the client sent.
-        db.prepare('DELETE FROM m1_mentor_messages WHERE session_id = ?').run(session.id);
+        db.prepare('DELETE FROM mentor_messages WHERE session_id = ?').run(session.id);
         const insert = db.prepare(`
-            INSERT INTO m1_mentor_messages (
+            INSERT INTO mentor_messages (
                 id, session_id, seq, role, content, mentor_id, mentor_name,
                 action_intent_json, facts_json, pending_intent_json, action_intent_resolved, attachments_json, created_at
             ) VALUES (
@@ -232,12 +232,12 @@ export function saveSession(
 
 export function appendMessage(db: Database.Database, sessionId: string, msg: SessionMessageInput): MentorMessageRow | null {
     const run = db.transaction(() => {
-        const session = db.prepare('SELECT id FROM m1_mentor_sessions WHERE id = ?').get(sessionId) as any;
+        const session = db.prepare('SELECT id FROM mentor_sessions WHERE id = ?').get(sessionId) as any;
         if (!session) return null;
-        const maxSeq = db.prepare('SELECT COALESCE(MAX(seq), -1) AS max_seq FROM m1_mentor_messages WHERE session_id = ?').get(sessionId) as any;
+        const maxSeq = db.prepare('SELECT COALESCE(MAX(seq), -1) AS max_seq FROM mentor_messages WHERE session_id = ?').get(sessionId) as any;
         const row = toRowParams(sessionId, (maxSeq?.max_seq ?? -1) + 1, msg);
         db.prepare(`
-            INSERT INTO m1_mentor_messages (
+            INSERT INTO mentor_messages (
                 id, session_id, seq, role, content, mentor_id, mentor_name,
                 action_intent_json, facts_json, pending_intent_json, action_intent_resolved, attachments_json, created_at
             ) VALUES (
@@ -245,18 +245,18 @@ export function appendMessage(db: Database.Database, sessionId: string, msg: Ses
                 @action_intent_json, @facts_json, @pending_intent_json, @action_intent_resolved, @attachments_json, @created_at
             )
         `).run(row);
-        db.prepare('UPDATE m1_mentor_sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
+        db.prepare('UPDATE mentor_sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
         return row;
     });
     const inserted = run();
     if (!inserted) return null;
-    return db.prepare('SELECT * FROM m1_mentor_messages WHERE id = ?').get(inserted.id) as MentorMessageRow;
+    return db.prepare('SELECT * FROM mentor_messages WHERE id = ?').get(inserted.id) as MentorMessageRow;
 }
 
 export function deleteMessage(db: Database.Database, sessionId: string, messageId: string): boolean {
-    const result = db.prepare('DELETE FROM m1_mentor_messages WHERE id = ? AND session_id = ?').run(messageId, sessionId);
+    const result = db.prepare('DELETE FROM mentor_messages WHERE id = ? AND session_id = ?').run(messageId, sessionId);
     if (result.changes > 0) {
-        db.prepare('UPDATE m1_mentor_sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
+        db.prepare('UPDATE mentor_sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
     }
     return result.changes > 0;
 }
@@ -264,8 +264,8 @@ export function deleteMessage(db: Database.Database, sessionId: string, messageI
 export function deleteSession(db: Database.Database, sessionId: string): boolean {
     // FK cascade removes the messages; kept explicit for clarity and older FK settings.
     const run = db.transaction(() => {
-        db.prepare('DELETE FROM m1_mentor_messages WHERE session_id = ?').run(sessionId);
-        const result = db.prepare('DELETE FROM m1_mentor_sessions WHERE id = ?').run(sessionId);
+        db.prepare('DELETE FROM mentor_messages WHERE session_id = ?').run(sessionId);
+        const result = db.prepare('DELETE FROM mentor_sessions WHERE id = ?').run(sessionId);
         return result.changes > 0;
     });
     return run();

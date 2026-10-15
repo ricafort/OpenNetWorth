@@ -44,7 +44,7 @@ function liabilityTypeToSubType(type?: LiabilityType): string {
  * - `account_id` is set to the account id itself so the pages' "unlinked
  *   legacy" dedupe collapses ledger-backed rows out of the legacy section.
  * - Unknown balances map to 0, matching the summary's "known totals".
- * - `interest_rate`/`minimum_payment` have no `m1_accounts` columns yet;
+ * - `interest_rate`/`minimum_payment` have no `accounts` columns yet;
  *   consumers already handle missing terms ("Repayment details needed").
  *   Flagged as a follow-up feature gap.
  */

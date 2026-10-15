@@ -6,7 +6,7 @@
  * Why this file exists:
  * Fulfills Batch B Delivery 1 (Consistent Assets):
  * Connects the Assets view directly to the authoritative modern accounting engine
- * (m1_accounts, balance observations, and double-entry ledger).
+ * (accounts, balance observations, and double-entry ledger).
  * 
  * Tricky logic:
  * - Distinguishes known zero ($0.00) from unknown balances (unrecorded valuation observation).

@@ -29,7 +29,7 @@
  * 
  * Tricky logic:
  * - Direct execution of Next.js Route handlers and domain services against isolated in-memory SQLite (`setTestDb()`).
- * - Validates strict immutability of double-entry transaction ledgers (m1_transactions / m1_journal_entries).
+ * - Validates strict immutability of double-entry transaction ledgers (transactions / journal_entries).
  * 
  * TODO: In Milestone 2, add automated layout visual regression check for statement review drawer.
  */
@@ -64,7 +64,7 @@ import {
 
 function insertTestDocument(db: Database.Database, id: string, filename: string = 'test.pdf') {
     db.prepare(`
-        INSERT INTO m1_documents (
+        INSERT INTO documents (
             id, filename, content_hash, mime_type, byte_size, storage_path, created_at
         ) VALUES (
             ?, ?, ?, 'application/pdf', 1024, '/dummy/path', datetime('now')
@@ -305,7 +305,7 @@ describe('Delivery 2B: Independent Assessment Focused Remediation', () => {
             expect(revisionAfterFirstSave).toBeGreaterThanOrEqual(initialRevision);
 
             // Verify exactly 1 observation exists
-            const count1 = (db.prepare('SELECT COUNT(*) as cnt FROM m1_balance_observations WHERE account_id = ?').get(cardAccount.id) as any).cnt;
+            const count1 = (db.prepare('SELECT COUNT(*) as cnt FROM balance_observations WHERE account_id = ?').get(cardAccount.id) as any).cnt;
             expect(count1).toBe(1);
 
             // 2. Repeat the unchanged save (identical document_id, page_number, amount, date, kind)
@@ -327,7 +327,7 @@ describe('Delivery 2B: Independent Assessment Focused Remediation', () => {
             expect(obsRepeat.id).toBe(obs1.id);
 
             // Verify count remains strictly 1 (no duplicate row)
-            const count2 = (db.prepare('SELECT COUNT(*) as cnt FROM m1_balance_observations WHERE account_id = ?').get(cardAccount.id) as any).cnt;
+            const count2 = (db.prepare('SELECT COUNT(*) as cnt FROM balance_observations WHERE account_id = ?').get(cardAccount.id) as any).cnt;
             expect(count2).toBe(1);
 
             // Revision must NOT have incremented on repeated unchanged save
@@ -434,7 +434,7 @@ describe('Delivery 2B: Independent Assessment Focused Remediation', () => {
             const saveRes = await balancesPost(saveReq);
             expect(saveRes.status).toBe(200);
 
-            // Verify m1_statement_reviews status in SQLite:
+            // Verify statement_reviews status in SQLite:
             // Status must remain 'pending_review' because prop1 and prop2 are still unsaved!
             const review = getStatementReviewByDocumentId(db, docId)!;
             expect(review.status).toBe('pending_review');
@@ -536,7 +536,7 @@ describe('Delivery 2B: Independent Assessment Focused Remediation', () => {
             expect(saveData.items[0].amount_cents).toBe(155000);
 
             // 1. Accepted observation shows 1550 (155000 cents)
-            const obsInDb = db.prepare('SELECT * FROM m1_balance_observations WHERE document_id = ?').get(docId) as any;
+            const obsInDb = db.prepare('SELECT * FROM balance_observations WHERE document_id = ?').get(docId) as any;
             expect(obsInDb.amount_cents).toBe(155000);
 
             // 2. Reopened saved review in SQLite shows 1550 (155000 cents)

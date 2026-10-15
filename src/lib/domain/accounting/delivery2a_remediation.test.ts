@@ -22,7 +22,7 @@
  *    - No fabricated quotes (returns null if missing).
  * 
  * C. Retain source evidence at explicit Save:
- *    - Raw pasted text retained once per batch in m1_balance_import_batches.
+ *    - Raw pasted text retained once per batch in balance_import_batches.
  *    - Observations retain source_excerpt, is_user_modified, is_component_of_total, parent_observation_id.
  *    - Vault backup and restore round-trip preserves all batch and observation evidence.
  *    - Zero financial writes during preview/extraction.
@@ -415,14 +415,14 @@ Basic Checking, $100.00
             const res = await postBatchBalances(req);
             expect(res.status).toBe(200);
 
-            // Assert batch was stored in m1_balance_import_batches
-            const storedBatch = db.prepare('SELECT * FROM m1_balance_import_batches WHERE id = ?').get(batchId) as any;
+            // Assert batch was stored in balance_import_batches
+            const storedBatch = db.prepare('SELECT * FROM balance_import_batches WHERE id = ?').get(batchId) as any;
             expect(storedBatch).toBeDefined();
             expect(storedBatch.raw_text).toBe(rawStatement);
             expect(storedBatch.extraction_method).toBe('local_llm');
 
             // Assert observation evidence fields were stored
-            const storedObs = db.prepare('SELECT * FROM m1_balance_observations WHERE account_id = ?').get(acc.id) as any;
+            const storedObs = db.prepare('SELECT * FROM balance_observations WHERE account_id = ?').get(acc.id) as any;
             expect(storedObs).toBeDefined();
             expect(storedObs.source_excerpt).toBe('$2,450.00 as of 2026-09-18');
             expect(storedObs.is_user_modified).toBe(1);
@@ -516,12 +516,12 @@ Basic Checking, $100.00
             expect(importRes.status).toBe(200);
 
             // 4. Verify restored state in freshDb
-            const restoredBatches = freshDb.prepare('SELECT * FROM m1_balance_import_batches').all() as any[];
+            const restoredBatches = freshDb.prepare('SELECT * FROM balance_import_batches').all() as any[];
             expect(restoredBatches).toHaveLength(1);
             expect(restoredBatches[0].id).toBe(batchId);
             expect(restoredBatches[0].raw_text).toContain('Superannuation Fund Total');
 
-            const restoredObservations = freshDb.prepare('SELECT * FROM m1_balance_observations').all() as any[];
+            const restoredObservations = freshDb.prepare('SELECT * FROM balance_observations').all() as any[];
             expect(restoredObservations).toHaveLength(2);
 
             const restoredChild = restoredObservations.find(o => o.is_component_of_total === 1);
@@ -546,8 +546,8 @@ Basic Checking, $100.00
                 tracking_mode: 'balance'
             });
 
-            const initialObsCount = (db.prepare('SELECT count(*) as cnt FROM m1_balance_observations').get() as any).cnt;
-            const initialBatchCount = (db.prepare('SELECT count(*) as cnt FROM m1_balance_import_batches').get() as any).cnt;
+            const initialObsCount = (db.prepare('SELECT count(*) as cnt FROM balance_observations').get() as any).cnt;
+            const initialBatchCount = (db.prepare('SELECT count(*) as cnt FROM balance_import_batches').get() as any).cnt;
 
             // Extract balances using structured parser / extraction service
             await extractBalancesFromText(db, {
@@ -555,8 +555,8 @@ Basic Checking, $100.00
                 strategy: 'table'
             });
 
-            const postObsCount = (db.prepare('SELECT count(*) as cnt FROM m1_balance_observations').get() as any).cnt;
-            const postBatchCount = (db.prepare('SELECT count(*) as cnt FROM m1_balance_import_batches').get() as any).cnt;
+            const postObsCount = (db.prepare('SELECT count(*) as cnt FROM balance_observations').get() as any).cnt;
+            const postBatchCount = (db.prepare('SELECT count(*) as cnt FROM balance_import_batches').get() as any).cnt;
 
             // Assert absolute zero database writes during extraction
             expect(postObsCount).toBe(initialObsCount);
@@ -740,7 +740,7 @@ Basic Checking, $100.00
             }).toThrow(/Concurrent balance observation detected/i);
 
             // Verify no mutation occurred on stale attempt
-            const staleCheckRow = db.prepare('SELECT is_component_of_total, is_user_modified FROM m1_balance_observations WHERE id = ?').get(obs1.id) as any;
+            const staleCheckRow = db.prepare('SELECT is_component_of_total, is_user_modified FROM balance_observations WHERE id = ?').get(obs1.id) as any;
             expect(staleCheckRow.is_component_of_total).toBe(1); // Unchanged!
             expect(staleCheckRow.is_user_modified).toBe(0);
             expect((getAccount(db, acc.id)?.balance_revision)).toBe(revisionAfterSave);
@@ -791,7 +791,7 @@ Basic Checking, $100.00
             expect(revisionAfterCorrection).toBe(revisionAfterSave + 1);
 
             // Verify database row was explicitly updated
-            const rowInDb = db.prepare('SELECT is_component_of_total, is_user_modified FROM m1_balance_observations WHERE id = ?').get(obs1.id) as any;
+            const rowInDb = db.prepare('SELECT is_component_of_total, is_user_modified FROM balance_observations WHERE id = ?').get(obs1.id) as any;
             expect(rowInDb.is_component_of_total).toBe(0);
             expect(rowInDb.is_user_modified).toBe(1);
 
@@ -816,7 +816,7 @@ Basic Checking, $100.00
             expect(obsReimportedWithConfirmRow.is_user_modified).toBe(true);
 
             // Verify DB still retains the reviewed correction and revision was NOT incremented
-            const rowAfterReimport = db.prepare('SELECT is_component_of_total, is_user_modified FROM m1_balance_observations WHERE id = ?').get(obs1.id) as any;
+            const rowAfterReimport = db.prepare('SELECT is_component_of_total, is_user_modified FROM balance_observations WHERE id = ?').get(obs1.id) as any;
             expect(rowAfterReimport.is_component_of_total).toBe(0);
             expect(rowAfterReimport.is_user_modified).toBe(1);
             expect((getAccount(db, acc.id)?.balance_revision)).toBe(revisionAfterCorrection);
@@ -1020,8 +1020,8 @@ Basic Checking, $100.00
             const saveRes = await postBatchBalances(saveReq);
             expect(saveRes.status).toBe(200);
 
-            // Query SQLite m1_balance_import_batches to verify provenance
-            const savedBatch = db.prepare('SELECT * FROM m1_balance_import_batches WHERE id = ?').get(batchId) as any;
+            // Query SQLite balance_import_batches to verify provenance
+            const savedBatch = db.prepare('SELECT * FROM balance_import_batches WHERE id = ?').get(batchId) as any;
             expect(savedBatch.extraction_method).toBe('deterministic_table');
             expect(savedBatch.extraction_method).not.toBe('local_llm');
         });

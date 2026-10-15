@@ -5,8 +5,8 @@
  * Comprehensive independent verification for Delivery 2B (Statement Files to Reviewed Balances):
  * 1. Upload statement PDF -> Portable extraction -> Durable review session in SQLite.
  * 2. Reload during review: Modifying proposals, reloading/fetching session, verifying edits preserved.
- * 3. Save Balances: Commits accepted observations with document_id and page_number to m1_balance_observations.
- *    STRICT INVARIANT: Double-entry ledger (m1_transactions / m1_journal_entries) is 100% untouched.
+ * 3. Save Balances: Commits accepted observations with document_id and page_number to balance_observations.
+ *    STRICT INVARIANT: Double-entry ledger (transactions / journal_entries) is 100% untouched.
  * 4. Duplicate upload preservation: Re-uploading saved statement preserves saved decisions with zero duplicates.
  * 5. Retry failed extraction without duplicating financial effects.
  * 6. Financial rules: Credit limits, redraw, and portfolio components do NOT inflate net worth.
@@ -131,8 +131,8 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
             expect(p.source_excerpt).toBeDefined();
         }
 
-        // Verify document is retained in m1_documents
-        const docRow = db.prepare('SELECT * FROM m1_documents WHERE id = ?').get(data.document.id) as any;
+        // Verify document is retained in documents
+        const docRow = db.prepare('SELECT * FROM documents WHERE id = ?').get(data.document.id) as any;
         expect(docRow).toBeDefined();
         expect(docRow.filename).toBe('cba_card_march.pdf');
         expect(docRow.mime_type).toBe('application/pdf');
@@ -220,8 +220,8 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
         const saveRes = await balancesPost(saveReq);
         expect(saveRes.status).toBe(200);
 
-        // 1. Verify observation exists in m1_balance_observations with document_id and page_number
-        const obs = db.prepare('SELECT * FROM m1_balance_observations WHERE account_id = ?').get(cardAccount.id) as any;
+        // 1. Verify observation exists in balance_observations with document_id and page_number
+        const obs = db.prepare('SELECT * FROM balance_observations WHERE account_id = ?').get(cardAccount.id) as any;
         expect(obs).toBeDefined();
         expect(obs.amount_cents).toBe(150000);
         expect(obs.document_id).toBe(docId);
@@ -230,19 +230,19 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
         expect(obs.review_status).toBe('accepted');
 
         // 2. CRITICAL INVARIANT: Verify double-entry ledger is 100% UNTOUCHED
-        const txCount = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
-        const journalCount = (db.prepare('SELECT COUNT(*) as cnt FROM m1_journal_entries').get() as any).cnt;
+        const txCount = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
+        const journalCount = (db.prepare('SELECT COUNT(*) as cnt FROM journal_entries').get() as any).cnt;
         expect(txCount).toBe(0);
         expect(journalCount).toBe(0);
 
-        // 3. Complete review session and verify m1_statement_reviews status is marked 'saved'
+        // 3. Complete review session and verify statement_reviews status is marked 'saved'
         // Why this exists:
         // Delivery 2B: Full statement review completion requires all proposals in session to be marked saved.
         // Tricky logic:
         // Partial saves leave status as 'pending_review'; saving all items completes the review session.
         // TODO: In Milestone 2, support explicit dismissal of supporting metadata rows.
         markStatementProposalsSaved(db, docId, proposals.map((p: any) => p.id));
-        const review = db.prepare('SELECT * FROM m1_statement_reviews WHERE document_id = ?').get(docId) as any;
+        const review = db.prepare('SELECT * FROM statement_reviews WHERE document_id = ?').get(docId) as any;
         expect(review.status).toBe('saved');
     });
 
@@ -286,7 +286,7 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
         expect(data2.message).toContain('previously imported and its balances were saved');
 
         // Verify exactly 1 observation exists (zero duplicates created)
-        const obsCount = (db.prepare('SELECT COUNT(*) as cnt FROM m1_balance_observations WHERE account_id = ?').get(cardAccount.id) as any).cnt;
+        const obsCount = (db.prepare('SELECT COUNT(*) as cnt FROM balance_observations WHERE account_id = ?').get(cardAccount.id) as any).cnt;
         expect(obsCount).toBe(1);
     });
 
@@ -322,7 +322,7 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
             })
         }));
 
-        const obsRows = db.prepare('SELECT * FROM m1_balance_observations WHERE account_id = ?').all(mortgageAccount.id) as any[];
+        const obsRows = db.prepare('SELECT * FROM balance_observations WHERE account_id = ?').all(mortgageAccount.id) as any[];
         expect(obsRows.length).toBe(1);
         expect(obsRows[0].amount_cents).toBe(45000000);
     });
@@ -427,14 +427,14 @@ describe('Delivery 2B: Statement Files to Reviewed Balances Acceptance', () => {
         expect(restoreRes.status).toBe(200);
 
         // Verify observation and evidence links were restored into cleanDb
-        const restoredObs = cleanDb.prepare('SELECT * FROM m1_balance_observations WHERE account_id = ?').get(cardAccount.id) as any;
+        const restoredObs = cleanDb.prepare('SELECT * FROM balance_observations WHERE account_id = ?').get(cardAccount.id) as any;
         expect(restoredObs).toBeDefined();
         expect(restoredObs.amount_cents).toBe(150000);
         expect(restoredObs.document_id).toBe(docId);
         expect(restoredObs.page_number).toBe(1);
 
         // Verify statement review session was restored
-        const restoredReview = cleanDb.prepare('SELECT * FROM m1_statement_reviews WHERE document_id = ?').get(docId) as any;
+        const restoredReview = cleanDb.prepare('SELECT * FROM statement_reviews WHERE document_id = ?').get(docId) as any;
         expect(restoredReview).toBeDefined();
         expect(restoredReview.status).toBe('saved');
     });

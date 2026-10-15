@@ -7,7 +7,7 @@
  * identical behavior.
  *
  * Tricky logic:
- * - The recurring_transactions table is created by full app DB init, not
+ * - The recurring_schedules table is created by full app DB init, not
  *   initAccountingSchema, so this test creates it explicitly in the in-memory DB.
  * - Malformed history entries (client-injected "system" role, non-string or blank
  *   content) must be dropped, and the list capped at the last 8 turns.
@@ -47,7 +47,7 @@ describe('/api/mentor multi-turn history', () => {
         db = new Database(':memory:');
         initAccountingSchema(db);
         db.exec(`
-            CREATE TABLE IF NOT EXISTS recurring_transactions (
+            CREATE TABLE IF NOT EXISTS recurring_schedules (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 name TEXT NOT NULL,

@@ -49,7 +49,7 @@ describe('DailyEventsView Batch D2 Acceptance Test', () => {
         entities = [personalEntity, businessEntity];
 
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, storage_path, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run('doc-123', 'receipt.pdf', 'hash-123', 'application/pdf', 1024, '/docs/receipt.pdf', '2025-03-10T12:00:00Z');
 
@@ -108,7 +108,7 @@ describe('DailyEventsView Batch D2 Acceptance Test', () => {
             ]
         });
 
-        const txRow = db.prepare('SELECT id FROM m1_transactions WHERE origin = ?').get('document_extraction') as any;
+        const txRow = db.prepare('SELECT id FROM transactions WHERE origin = ?').get('document_extraction') as any;
         testTxId = txRow.id;
 
         // Attach supporting document using actual linkProposalToTransaction
@@ -275,7 +275,7 @@ describe('DailyEventsView Batch D2 Acceptance Test', () => {
         expect(finalBusiness).toBe(50000);
 
         // Check workflow exists
-        const workflow = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE personal_transaction_id = ?').get(testTxId) as any;
+        const workflow = db.prepare('SELECT * FROM reimbursement_workflows WHERE personal_transaction_id = ?').get(testTxId) as any;
         if (!workflow) {
             console.error('Workflow not found! DOM Content:', container.innerHTML);
         }
@@ -284,12 +284,12 @@ describe('DailyEventsView Batch D2 Acceptance Test', () => {
         expect(workflow.evidence_document_id).toBe(testDocId); // Should carry forward evidence!
         
         // Verify business expense exists (the reclassified or newly recorded part)
-        const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(workflow.business_transaction_id) as any;
+        const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(workflow.business_transaction_id) as any;
         expect(busTx).toBeDefined();
         expect(busTx.date).toBe('2025-03-10'); // Same date
         
         // Assert Source transaction and evidence remain linked.
-        const sourceTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(workflow.personal_transaction_id) as any;
+        const sourceTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(workflow.personal_transaction_id) as any;
         expect(sourceTx.evidence_refs).toContain(testDocId);
     });
 });

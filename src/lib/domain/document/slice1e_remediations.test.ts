@@ -43,7 +43,7 @@ describe('Slice 1E Assessor Remediations', () => {
         initAccountingSchema(db);
 
         db.prepare(`
-            INSERT INTO m1_entities (id, name, type, created_at, updated_at)
+            INSERT INTO entities (id, name, type, created_at, updated_at)
             VALUES (?, 'Test Entity', 'person', datetime('now'), datetime('now'))
         `).run(ENTITY_ID);
     });
@@ -179,7 +179,7 @@ describe('Slice 1E Assessor Remediations', () => {
             // Verify Row 1 is approved and balance changed: 500,000 - 8,500 = 491,500
             expect(getAccountBalance(db, bankAccount.id).balance_cents).toBe(491500);
 
-            const txCountBefore = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+            const txCountBefore = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
 
             // Now, suppose the user wants to reprocess the unapproved rows using a corrected mapping:
             // e.g. corrected mapping changes default or uses a modified description column or date format
@@ -216,7 +216,7 @@ describe('Slice 1E Assessor Remediations', () => {
             expect(prop1?.amount_cents).toBe(-8500);
 
             // 2. The confirmed ledger transaction MUST NOT be modified or duplicated
-            const txCountAfter = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+            const txCountAfter = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
             expect(txCountAfter).toBe(txCountBefore);
             expect(getAccountBalance(db, bankAccount.id).balance_cents).toBe(491500);
 

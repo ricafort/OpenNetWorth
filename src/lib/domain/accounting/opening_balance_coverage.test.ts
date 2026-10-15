@@ -339,12 +339,12 @@ describe('Transaction-tracked Account Opening Balance Coverage & Anchoring', () 
             source_type: 'document'
         });
 
-        const initialTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const initialTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
 
         // Run summary
         getSharedFinancialSummary(db, { reporting_currency: 'AUD', asOfDate: '2026-09-24' });
 
-        const finalTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const finalTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
 
         // Transaction count in SQLite must NOT increase (no unexplained adjustments)
         expect(finalTxCount).toBe(initialTxCount);

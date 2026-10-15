@@ -11,6 +11,14 @@
 import Database from 'better-sqlite3';
 
 export function up(db: Database.Database): void {
+    // Fresh vaults migrated after the 0008 rename era already have the plain-named
+    // `evidence_links` from the canonical DDL — creating the old-prefixed twin here
+    // would leave an orphan table behind (0008's rename guard would skip it).
+    const exists = db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name IN ('evidence_links', 'm1_evidence_links')")
+        .get();
+    if (exists) return;
+
     db.exec(`
         CREATE TABLE IF NOT EXISTS m1_evidence_links (
             id TEXT PRIMARY KEY,

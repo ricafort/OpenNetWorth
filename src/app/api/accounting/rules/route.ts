@@ -11,7 +11,7 @@ export async function GET(request: Request) {
         }
 
         const db = getDb();
-        const rules = db.prepare('SELECT * FROM m1_categorization_rules WHERE account_id = ? ORDER BY match_string ASC').all(accountId);
+        const rules = db.prepare('SELECT * FROM categorization_rules WHERE account_id = ? ORDER BY match_string ASC').all(accountId);
 
         return NextResponse.json(rules);
     } catch (error: any) {
@@ -29,7 +29,7 @@ export async function DELETE(request: Request) {
         }
 
         const db = getDb();
-        db.prepare('DELETE FROM m1_categorization_rules WHERE id = ?').run(id);
+        db.prepare('DELETE FROM categorization_rules WHERE id = ?').run(id);
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
@@ -50,7 +50,7 @@ export async function PATCH(request: Request) {
         const now = new Date().toISOString();
         
         const result = db.prepare(`
-            UPDATE m1_categorization_rules 
+            UPDATE categorization_rules 
             SET target_category = ?, updated_at = ? 
             WHERE id = ?
         `).run(target_category, now, id);

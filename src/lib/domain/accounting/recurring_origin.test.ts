@@ -80,7 +80,7 @@ describe('Recurring origin passthrough (Autopilot generator)', () => {
         expect(expense.origin).toBe('recurring');
 
         const count = db
-            .prepare("SELECT COUNT(*) AS c FROM m1_transactions WHERE origin = 'recurring'")
+            .prepare("SELECT COUNT(*) AS c FROM transactions WHERE origin = 'recurring'")
             .get() as any;
         expect(count.c).toBe(2);
     });
@@ -113,7 +113,7 @@ describe('Recurring origin passthrough (Autopilot generator)', () => {
         expect(replay.id).toBe(first.id);
 
         const count = db
-            .prepare("SELECT COUNT(*) AS c FROM m1_transactions WHERE origin = 'recurring'")
+            .prepare("SELECT COUNT(*) AS c FROM transactions WHERE origin = 'recurring'")
             .get() as any;
         expect(count.c).toBe(1);
     });

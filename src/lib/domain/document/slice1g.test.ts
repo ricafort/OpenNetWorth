@@ -147,8 +147,8 @@ describe('Slice 1G: Receipt-to-Transaction Linking & Invariants', () => {
         expect(balanceAfterCsv.balance_cents).toBe(497800);
 
         // Count total transactions in ledger
-        const txCountBeforeLink = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
-        const postingCountBeforeLink = (db.prepare('SELECT COUNT(*) as cnt FROM m1_journal_entries').get() as any).cnt;
+        const txCountBeforeLink = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
+        const postingCountBeforeLink = (db.prepare('SELECT COUNT(*) as cnt FROM journal_entries').get() as any).cnt;
 
         // ====================================================================
         // STEP 2: Import its matching PDF receipt (AUD 22.00)
@@ -216,8 +216,8 @@ describe('Slice 1G: Receipt-to-Transaction Linking & Invariants', () => {
         // STEP 5: Verify Acceptance Invariants
         // ====================================================================
         // Invariant A: No second transaction created (still exactly the same transaction count!)
-        const txCountAfterLink = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
-        const postingCountAfterLink = (db.prepare('SELECT COUNT(*) as cnt FROM m1_journal_entries').get() as any).cnt;
+        const txCountAfterLink = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
+        const postingCountAfterLink = (db.prepare('SELECT COUNT(*) as cnt FROM journal_entries').get() as any).cnt;
         expect(txCountAfterLink).toBe(txCountBeforeLink);
         expect(postingCountAfterLink).toBe(postingCountBeforeLink);
 
@@ -227,7 +227,7 @@ describe('Slice 1G: Receipt-to-Transaction Linking & Invariants', () => {
         expect(balanceAfterLink.balance_cents).toBe(497800);
 
         // Invariant C: Accessible supporting evidence on the transaction
-        const updatedTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(bankTxId) as any;
+        const updatedTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(bankTxId) as any;
         expect(updatedTx.evidence_refs).toBeTruthy();
         const evidenceArray = JSON.parse(updatedTx.evidence_refs);
         expect(evidenceArray.length).toBeGreaterThanOrEqual(1);
@@ -253,7 +253,7 @@ describe('Slice 1G: Receipt-to-Transaction Linking & Invariants', () => {
         expect(reimportResult.proposals[0].linked_transaction_id).toBe(bankTxId);
 
         // Verify zero duplicate transactions or balance changes after reimport
-        const txCountAfterReimport = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const txCountAfterReimport = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
         expect(txCountAfterReimport).toBe(txCountBeforeLink);
 
         const balanceAfterReimport = getAccountBalance(db, audBankAccountId, '2026-09-30');

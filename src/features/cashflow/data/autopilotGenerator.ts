@@ -6,7 +6,7 @@ import { toMonthlyAmount } from '@/infrastructure/local_driver';
  *
  * Why this exists:
  * The retired `applyRecurringToMonth` in `local_driver.ts` fabricated fake
- * `cash_flow_history` rows from schedule sums — numbers that looked like
+ * `cash_flow_summaries` rows from schedule sums — numbers that looked like
  * activity but were never posted to the ledger. Per the schema-collapse plan,
  * the generator now writes REAL m1 transactions with `origin='recurring'`
  * (the CHECK value already exists on the transactions table), so the Actual

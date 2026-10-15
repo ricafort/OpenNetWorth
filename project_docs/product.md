@@ -58,7 +58,7 @@
 -   **Data Isolation**: The vault is a single-user local SQLite file — isolation is inherent. The former Supabase adapter and its RLS policies were removed (git history preserves them).
 
 ### Fast Balance Updates & Observation Ledger (Delivery 1)
--   **Observation-Based Ledger**: Non-destructive tracking of balance snapshots in `m1_balance_observations` without fabricating journal entries. Supports revision tracking and audit trails.
+-   **Observation-Based Ledger**: Non-destructive tracking of balance snapshots in `balance_observations` without fabricating journal entries. Supports revision tracking and audit trails.
 -   **Deterministic Structured Table Parser**: Instantly parses pasted CSV, TSV, pipe-delimited, and whitespace tables offline without external LLM dependencies (`structuredBalanceParser.ts`).
 -   **Review & Confirmation Workflow**: Displays proposed balances alongside live deltas against current ledger state, allowing inline account mapping, account creation, currency toggles, and atomic commits.
 -   **Multi-Currency Sovereignty**: Tracks multi-currency assets and liabilities (AUD, USD, JPY, EUR, GBP) natively. Discloses currency subtotals and prevents misleading 1:1 synthetic conversions when FX rates are missing.
@@ -73,7 +73,7 @@
 
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
-| **Observation Ledger** | 🟢 Implemented (D1) | `m1_balance_observations` with supersession and revision tracking. |
+| **Observation Ledger** | 🟢 Implemented (D1) | `balance_observations` with supersession and revision tracking. |
 | **Fast Balance Updates** | 🟢 Implemented (D1) | `UpdateBalancesModal` with live deltas, inline creation, and atomic save. |
 | **Structured Table Parser** | 🟢 Implemented (D1) | Deterministic CSV/TSV/table paste parsing with currency & date normalization. |
 | **Multi-Currency Ledger** | 🟢 Implemented (D1) | `sharedFinancialSummaryService` with strict currency subtotals & FX disclosure. |

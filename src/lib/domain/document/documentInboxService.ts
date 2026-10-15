@@ -67,11 +67,11 @@ export function saveCsvMapping(
     const id = mapping.id || `map-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 
-    const existing = db.prepare('SELECT id, created_at FROM m1_csv_mappings WHERE id = ?').get(id) as any;
+    const existing = db.prepare('SELECT id, created_at FROM csv_mappings WHERE id = ?').get(id) as any;
     const createdAt = existing ? existing.created_at : now;
 
     db.prepare(`
-        INSERT INTO m1_csv_mappings (
+        INSERT INTO csv_mappings (
             id, name, header_signature, date_column, date_format, description_column,
             amount_mode, amount_column, debit_column, credit_column, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -121,7 +121,7 @@ export function saveCsvMapping(
  * Lists all saved reusable CSV column mapping profiles.
  */
 export function listCsvMappings(db: Database.Database): CsvMappingProfile[] {
-    const rows = db.prepare('SELECT * FROM m1_csv_mappings ORDER BY updated_at DESC').all() as any[];
+    const rows = db.prepare('SELECT * FROM csv_mappings ORDER BY updated_at DESC').all() as any[];
     return rows.map(r => ({
         id: r.id,
         name: r.name,
@@ -142,7 +142,7 @@ export function listCsvMappings(db: Database.Database): CsvMappingProfile[] {
  * Finds a saved mapping profile that matches a given header signature.
  */
 export function findMatchingMapping(db: Database.Database, headerSignature: string): CsvMappingProfile | null {
-    const row = db.prepare('SELECT * FROM m1_csv_mappings WHERE header_signature = ? LIMIT 1').get(headerSignature) as any;
+    const row = db.prepare('SELECT * FROM csv_mappings WHERE header_signature = ? LIMIT 1').get(headerSignature) as any;
     if (!row) return null;
     return {
         id: row.id,
@@ -162,10 +162,10 @@ export function findMatchingMapping(db: Database.Database, headerSignature: stri
 
 /**
  * Ingests a raw bank CSV document:
- * 1. Hashes content and stores or retrieves document record in `m1_documents`.
+ * 1. Hashes content and stores or retrieves document record in `documents`.
  * 2. Parses rows using column mapping.
  * 3. Detects internal duplicates (same file) and external duplicates (existing ledger transactions).
- * 4. Persists proposals in `m1_proposals` with `review_status = 'unreviewed'`.
+ * 4. Persists proposals in `proposals` with `review_status = 'unreviewed'`.
  * 
  * Why this exists:
  * Bridge between untrusted external files and structured reviewable proposals.
@@ -184,7 +184,7 @@ export function ingestCsvDocument(
     const now = new Date().toISOString();
 
     // Verify target account exists
-    const targetAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.target_account_id) as any;
+    const targetAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.target_account_id) as any;
     if (!targetAccount) {
         throw new Error(`Target account not found: ${input.target_account_id}`);
     }
@@ -194,13 +194,13 @@ export function ingestCsvDocument(
 
     // 1. Store or retrieve document record
     let documentId: string;
-    const existingDoc = db.prepare('SELECT * FROM m1_documents WHERE content_hash = ?').get(contentHash) as any;
+    const existingDoc = db.prepare('SELECT * FROM documents WHERE content_hash = ?').get(contentHash) as any;
     if (existingDoc) {
         documentId = existingDoc.id;
     } else {
         documentId = `doc-${crypto.randomUUID()}`;
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, raw_content, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, raw_content, created_at)
             VALUES (?, ?, ?, 'text/csv', ?, ?, ?)
         `).run(documentId, input.filename, contentHash, byteSize, input.raw_content, now);
     }
@@ -225,16 +225,16 @@ export function ingestCsvDocument(
     // Prepare external ledger check query
     const checkLedgerStmt = db.prepare(`
         SELECT tx.id, tx.date, tx.description, je.amount_cents
-        FROM m1_transactions tx
-        JOIN m1_journal_entries je ON tx.id = je.transaction_id
+        FROM transactions tx
+        JOIN journal_entries je ON tx.id = je.transaction_id
         WHERE je.account_id = ? AND tx.date = ? AND je.amount_cents = ?
         LIMIT 1
     `);
 
     // Prepare proposal queries
-    const getExistingPropStmt = db.prepare('SELECT * FROM m1_proposals WHERE id = ?');
+    const getExistingPropStmt = db.prepare('SELECT * FROM proposals WHERE id = ?');
     const insertPropStmt = db.prepare(`
-        INSERT INTO m1_proposals (
+        INSERT INTO proposals (
             id, document_id, entity_id, account_id, event_date, document_period,
             original_currency, amount_cents, counterparty, description, event_type,
             suggested_category, evidence_json, extraction_version, validation_findings,
@@ -242,7 +242,7 @@ export function ingestCsvDocument(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const updateUnapprovedPropStmt = db.prepare(`
-        UPDATE m1_proposals SET
+        UPDATE proposals SET
             entity_id = ?,
             account_id = ?,
             event_date = ?,
@@ -263,7 +263,7 @@ export function ingestCsvDocument(
     const proposals: ExtractedFinancialProposal[] = [];
 
     // Batch C3: Fetch categorization rules for target account
-    const catRules = db.prepare('SELECT id, match_string, match_type, target_category FROM m1_categorization_rules WHERE account_id = ?').all(input.target_account_id) as any[];
+    const catRules = db.prepare('SELECT id, match_string, match_type, target_category FROM categorization_rules WHERE account_id = ?').all(input.target_account_id) as any[];
 
     const saveTransaction = db.transaction(() => {
         for (const row of parseResult.rows) {
@@ -457,7 +457,7 @@ export function listDocuments(db: Database.Database): Array<
         rejected_proposals: number;
     }
 > {
-    const docs = db.prepare('SELECT * FROM m1_documents ORDER BY created_at DESC').all() as any[];
+    const docs = db.prepare('SELECT * FROM documents ORDER BY created_at DESC').all() as any[];
     const propStats = db.prepare(`
         SELECT
             document_id,
@@ -466,7 +466,7 @@ export function listDocuments(db: Database.Database): Array<
             SUM(CASE WHEN review_status = 'approved' THEN 1 ELSE 0 END) as approved,
             SUM(CASE WHEN review_status = 'linked' THEN 1 ELSE 0 END) as linked,
             SUM(CASE WHEN review_status = 'rejected' THEN 1 ELSE 0 END) as rejected
-        FROM m1_proposals
+        FROM proposals
         GROUP BY document_id
     `).all() as any[];
 
@@ -501,7 +501,7 @@ export function getDocumentProposals(
     db: Database.Database,
     documentId: string
 ): ExtractedFinancialProposal[] {
-    const rows = db.prepare('SELECT * FROM m1_proposals WHERE document_id = ? ORDER BY id ASC').all(documentId) as any[];
+    const rows = db.prepare('SELECT * FROM proposals WHERE document_id = ? ORDER BY id ASC').all(documentId) as any[];
 
     return rows.map(r => ({
         id: r.id,
@@ -533,7 +533,7 @@ export function getDocumentProposals(
  * 2. Posts balanced double-entry transactions via `postTransaction`.
  * 3. Uses deterministic idempotency keys (`csv:${content_hash}:row:${proposal.id}`)
  *    ensuring safe reimport and zero duplicate postings.
- * 4. Updates `m1_proposals.review_status = 'approved'`.
+ * 4. Updates `proposals.review_status = 'approved'`.
  * 
  * Why this exists:
  * The single, authoritative gateway converting provisional document proposals into
@@ -546,12 +546,12 @@ export function approveProposals(
     approved_count: number;
     transaction_ids: string[];
 } {
-    const doc = db.prepare('SELECT * FROM m1_documents WHERE id = ?').get(input.document_id) as any;
+    const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(input.document_id) as any;
     if (!doc) {
         throw new Error(`Document not found: ${input.document_id}`);
     }
 
-    const targetAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.target_account_id) as any;
+    const targetAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.target_account_id) as any;
     if (!targetAccount) {
         throw new Error(`Target account not found: ${input.target_account_id}`);
     }
@@ -559,9 +559,9 @@ export function approveProposals(
     const entityId = input.entity_id || targetAccount.entity_id;
     const currency = targetAccount.currency as CurrencyCode;
 
-    const getPropStmt = db.prepare('SELECT * FROM m1_proposals WHERE id = ? AND document_id = ?');
+    const getPropStmt = db.prepare('SELECT * FROM proposals WHERE id = ? AND document_id = ?');
     const updatePropStmt = db.prepare(`
-        UPDATE m1_proposals
+        UPDATE proposals
         SET review_status = 'approved',
             description = ?,
             counterparty = ?,
@@ -665,7 +665,7 @@ export function approveProposals(
                 });
             } else if (rawProp.event_type === 'transfer' && item.transfer_account_id) {
                 // Transfer between two balance sheet accounts
-                const transferAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(item.transfer_account_id) as any;
+                const transferAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(item.transfer_account_id) as any;
                 if (!transferAccount) {
                     throw new Error(`Transfer counterpart account not found: ${item.transfer_account_id}`);
                 }
@@ -736,19 +736,19 @@ export function approveProposals(
                 const matchString = (counterparty || description || '').trim().toLowerCase();
                 if (matchString) {
                     const existingRule = db.prepare(
-                        'SELECT id FROM m1_categorization_rules WHERE account_id = ? AND match_string = ?'
+                        'SELECT id FROM categorization_rules WHERE account_id = ? AND match_string = ?'
                     ).get(targetAccount.id, matchString) as any;
 
                     if (existingRule) {
                         db.prepare(`
-                            UPDATE m1_categorization_rules 
+                            UPDATE categorization_rules 
                             SET target_category = ?, updated_at = ? 
                             WHERE id = ?
                         `).run(category, now, existingRule.id);
                     } else {
                         const crypto = require('crypto');
                         db.prepare(`
-                            INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+                            INSERT INTO categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
                             VALUES (?, ?, ?, 'exact', ?, ?, ?)
                         `).run(
                             crypto.randomUUID(),
@@ -805,7 +805,7 @@ export function reprocessDocumentWithMapping(
     internal_duplicates_count: number;
     external_duplicates_count: number;
 } {
-    const doc = db.prepare('SELECT * FROM m1_documents WHERE id = ?').get(input.document_id) as any;
+    const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(input.document_id) as any;
     if (!doc) {
         throw new Error(`Document not found: ${input.document_id}`);
     }
@@ -815,7 +815,7 @@ export function reprocessDocumentWithMapping(
 
     let targetAccountId = input.target_account_id;
     if (!targetAccountId) {
-        const existingProp = db.prepare('SELECT account_id FROM m1_proposals WHERE document_id = ? AND account_id IS NOT NULL LIMIT 1').get(input.document_id) as any;
+        const existingProp = db.prepare('SELECT account_id FROM proposals WHERE document_id = ? AND account_id IS NOT NULL LIMIT 1').get(input.document_id) as any;
         if (existingProp) {
             targetAccountId = existingProp.account_id;
         }
@@ -844,7 +844,7 @@ export function getProposalById(
     db: Database.Database,
     proposalId: string
 ): ExtractedFinancialProposal | null {
-    const r = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get(proposalId) as any;
+    const r = db.prepare('SELECT * FROM proposals WHERE id = ?').get(proposalId) as any;
     if (!r) return null;
 
     return {
@@ -910,7 +910,7 @@ export function updateProposalReview(
         save_categorization_rule?: boolean;
     }
 ): ExtractedFinancialProposal {
-    const existing = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get(input.proposal_id) as any;
+    const existing = db.prepare('SELECT * FROM proposals WHERE id = ?').get(input.proposal_id) as any;
     if (!existing) {
         throw new Error(`Proposal not found: ${input.proposal_id}`);
     }
@@ -958,7 +958,7 @@ export function updateProposalReview(
 
     // 4. Payment account validation
     if (input.account_id !== undefined && input.account_id !== null && input.account_id !== '') {
-        const acc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.account_id) as any;
+        const acc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.account_id) as any;
         if (!acc) {
             throw new Error(`Target account not found: "${input.account_id}".`);
         }
@@ -984,7 +984,7 @@ export function updateProposalReview(
     // Fix A: Derive authoritative entity_id from final account
     let finalEntityId = existing.entity_id;
     if (finalAccountId) {
-        const acc = db.prepare('SELECT entity_id FROM m1_accounts WHERE id = ?').get(finalAccountId) as any;
+        const acc = db.prepare('SELECT entity_id FROM accounts WHERE id = ?').get(finalAccountId) as any;
         if (acc) {
             finalEntityId = acc.entity_id;
         }
@@ -1000,7 +1000,7 @@ export function updateProposalReview(
     }
     // Also clear CURRENCY_MISMATCH if account and currency now match
     if (finalAccountId && finalCurrency) {
-        const acc = db.prepare('SELECT currency FROM m1_accounts WHERE id = ?').get(finalAccountId) as any;
+        const acc = db.prepare('SELECT currency FROM accounts WHERE id = ?').get(finalAccountId) as any;
         if (acc && acc.currency.toUpperCase() === finalCurrency.toUpperCase()) {
             findings = findings.filter(f => f.code !== 'CURRENCY_MISMATCH');
         }
@@ -1015,7 +1015,7 @@ export function updateProposalReview(
     }
 
     db.prepare(`
-        UPDATE m1_proposals
+        UPDATE proposals
         SET event_date = ?,
             counterparty = ?,
             description = ?,
@@ -1048,19 +1048,19 @@ export function updateProposalReview(
         const matchString = (counterparty || description || '').trim().toLowerCase();
         if (matchString) {
             const existingRule = db.prepare(
-                'SELECT id FROM m1_categorization_rules WHERE account_id = ? AND match_string = ?'
+                'SELECT id FROM categorization_rules WHERE account_id = ? AND match_string = ?'
             ).get(finalAccountId, matchString) as any;
 
             if (existingRule) {
                 db.prepare(`
-                    UPDATE m1_categorization_rules 
+                    UPDATE categorization_rules 
                     SET target_category = ?, updated_at = ? 
                     WHERE id = ?
                 `).run(category, now, existingRule.id);
             } else {
                 const crypto = require('crypto');
                 db.prepare(`
-                    INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+                    INSERT INTO categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
                     VALUES (?, ?, ?, 'exact', ?, ?, ?)
                 `).run(
                     crypto.randomUUID(),
@@ -1093,7 +1093,7 @@ export function updateProposalReview(
  *   layout (or missing totals/supplier), creates an unreviewed proposal with amount_cents: 0
  *   and error finding UNSUPPORTED_LAYOUT. Never guesses amounts!
  * - Category matching: Assigns suggested_category (e.g. 'office_supplies') and links
- *   the original file bytes in `m1_documents.raw_content` as base64 for offline durability.
+ *   the original file bytes in `documents.raw_content` as base64 for offline durability.
  * 
  * TODO: Support multi-page rental statements and bank statement PDFs in Slice 1G.
  */
@@ -1120,7 +1120,7 @@ export async function ingestPdfDocument(
     const now = new Date().toISOString();
 
     // Check if document already exists
-    const existingDoc = db.prepare('SELECT * FROM m1_documents WHERE content_hash = ?').get(contentHash) as any;
+    const existingDoc = db.prepare('SELECT * FROM documents WHERE content_hash = ?').get(contentHash) as any;
     if (existingDoc) {
         const existingProposals = getDocumentProposals(db, existingDoc.id);
         const hasApprovedOrLinked = existingProposals.some(
@@ -1148,7 +1148,7 @@ export async function ingestPdfDocument(
     const docId = existingDoc ? existingDoc.id : `doc-${crypto.randomUUID()}`;
     if (!existingDoc) {
         db.prepare(`
-            INSERT INTO m1_documents (
+            INSERT INTO documents (
                 id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -1169,14 +1169,14 @@ export async function ingestPdfDocument(
     // 3. Resolve target account & currency (Slice 1F Fix 1)
     let targetAccount: any = null;
     if (input.target_account_id) {
-        targetAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.target_account_id);
+        targetAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.target_account_id);
     }
     // Fix 1: Preserve extracted currency from PDF directly, never overwrite with target account's currency
     const originalCurrency = extractionResult.currency ? (extractionResult.currency.toUpperCase() as CurrencyCode) : '';
     const entityId = input.entity_id || (targetAccount ? targetAccount.entity_id : null);
 
     // Remove any previously generated unapproved proposals for this document (Slice 1G: also preserve linked proposals!)
-    db.prepare(`DELETE FROM m1_proposals WHERE document_id = ? AND review_status != 'approved' AND review_status != 'linked' AND linked_transaction_id IS NULL`).run(docId);
+    db.prepare(`DELETE FROM proposals WHERE document_id = ? AND review_status != 'approved' AND review_status != 'linked' AND linked_transaction_id IS NULL`).run(docId);
 
     const proposals: ExtractedFinancialProposal[] = [];
     const propId = `prop-${crypto.randomUUID()}`;
@@ -1220,8 +1220,8 @@ export async function ingestPdfDocument(
         if (input.target_account_id && extractionResult.date) {
             const externalDuplicate = db.prepare(`
                 SELECT t.id, t.date, t.description
-                FROM m1_transactions t
-                JOIN m1_journal_entries j ON j.transaction_id = t.id
+                FROM transactions t
+                JOIN journal_entries j ON j.transaction_id = t.id
                 WHERE j.account_id = ?
                   AND t.date = ?
                   AND ABS(j.amount_cents) = ?
@@ -1246,7 +1246,7 @@ export async function ingestPdfDocument(
         }
 
         db.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
                 original_currency, amount_cents, counterparty, description, event_type,
                 suggested_category, evidence_json, extraction_version, validation_findings,
@@ -1333,7 +1333,7 @@ export async function ingestPdfDocument(
         });
 
         db.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
                 original_currency, amount_cents, counterparty, description, event_type,
                 suggested_category, evidence_json, extraction_version, validation_findings,
@@ -1463,9 +1463,9 @@ export function getCandidateTransactionsForProposal(
             j.amount_cents as posting_amount_cents,
             j.currency as posting_currency,
             a.name as account_name
-        FROM m1_transactions t
-        JOIN m1_journal_entries j ON j.transaction_id = t.id
-        JOIN m1_accounts a ON a.id = j.account_id
+        FROM transactions t
+        JOIN journal_entries j ON j.transaction_id = t.id
+        JOIN accounts a ON a.id = j.account_id
         WHERE t.status = 'posted'
           AND j.currency = ?
           AND j.amount_cents = ?
@@ -1560,14 +1560,14 @@ export function getCandidateTransactionsForProposal(
  * Tricky logic:
  * - Atomicity: Performed within a database transaction.
  * - Invariant assertions: Ensures:
- *   1. Zero new transactions created in `m1_transactions`.
- *   2. Zero new journal entries created in `m1_journal_entries`.
+ *   1. Zero new transactions created in `transactions`.
+ *   2. Zero new journal entries created in `journal_entries`.
  *   3. All account balances remain strictly unchanged.
  * - Idempotency: If already linked to the same transaction, returns cleanly without duplicate evidence.
  * - Rejects linking if proposal has unresolved error findings.
  * - Rejects linking if currencies mismatch or amounts mismatch.
  * - Updates proposal `review_status = 'linked'` and `linked_transaction_id = transactionId`.
- * - Appends the proposal's evidence reference canonically to `m1_transactions.evidence_refs`.
+ * - Appends the proposal's evidence reference canonically to `transactions.evidence_refs`.
  * 
  * TODO: Allow linking multiple split receipts to a single transaction in future milestones.
  */
@@ -1590,7 +1590,7 @@ export function linkProposalToTransaction(
     // Requirement 2 (Slice 1G): Enforce linked-proposal transitions:
     // - Link again to the same transaction: harmless idempotent retry
     if (proposal.linked_transaction_id === input.transaction_id) {
-        const currentTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(input.transaction_id) as any;
+        const currentTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(input.transaction_id) as any;
         return {
             proposal,
             transaction: {
@@ -1612,7 +1612,7 @@ export function linkProposalToTransaction(
         throw new Error(`Cannot link proposal "${input.proposal_id}" because it has unresolved validation errors.`);
     }
 
-    const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(input.transaction_id) as any;
+    const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(input.transaction_id) as any;
     if (!tx) {
         throw new Error(`Target transaction not found: "${input.transaction_id}"`);
     }
@@ -1626,8 +1626,8 @@ export function linkProposalToTransaction(
     // Verify transaction postings match proposal amount, currency, and direction on an asset/liability payment account
     const postings = db.prepare(`
         SELECT j.*, a.type as account_type
-        FROM m1_journal_entries j
-        JOIN m1_accounts a ON a.id = j.account_id
+        FROM journal_entries j
+        JOIN accounts a ON a.id = j.account_id
         WHERE j.transaction_id = ?
     `).all(tx.id) as any[];
 
@@ -1676,14 +1676,14 @@ export function linkProposalToTransaction(
 
         // 2. Update transaction evidence_refs
         db.prepare(`
-            UPDATE m1_transactions
+            UPDATE transactions
             SET evidence_refs = ?, updated_at = ?
             WHERE id = ?
         `).run(updatedEvidenceJson, now, tx.id);
 
         // 3. Update proposal status to 'linked' and record linked_transaction_id
         db.prepare(`
-            UPDATE m1_proposals
+            UPDATE proposals
             SET review_status = 'linked',
                 linked_transaction_id = ?,
                 account_id = ?,
@@ -1695,7 +1695,7 @@ export function linkProposalToTransaction(
     linkTx();
 
     const updatedProposal = getProposalById(db, proposal.id)!;
-    const updatedTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(tx.id) as any;
+    const updatedTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(tx.id) as any;
 
     return {
         proposal: updatedProposal,
@@ -1720,7 +1720,7 @@ export function linkProposalToTransaction(
  * - Dynamically updates validation findings: clears `CURRENCY_MISMATCH`, `MISSING_ACCOUNT`, and owner conflicts
  *   demonstrably resolved by the account assignment.
  *   CRITICAL: Does NOT clear `MISSING_CURRENCY` merely because an account has been selected.
- * - Operates entirely at proposal level (`m1_proposals`), never touching non-existent `m1_documents.entity_id`.
+ * - Operates entirely at proposal level (`proposals`), never touching non-existent `documents.entity_id`.
  * 
  * Tricky logic:
  * Wraps validation and updates in an explicit SQLite transaction `db.transaction(...)`.
@@ -1731,12 +1731,12 @@ export function bulkUpdateProposalAccount(
     documentId: string,
     accountId: string
 ): number {
-    const doc = db.prepare('SELECT id FROM m1_documents WHERE id = ?').get(documentId);
+    const doc = db.prepare('SELECT id FROM documents WHERE id = ?').get(documentId);
     if (!doc) {
         throw new Error(`Document not found: ${documentId}`);
     }
 
-    const acc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    const acc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as any;
     if (!acc) {
         throw new Error(`Account not found: ${accountId}`);
     }
@@ -1751,7 +1751,7 @@ export function bulkUpdateProposalAccount(
     const updateTx = db.transaction(() => {
         // Query eligible pending proposals only (preserve approved and linked proposals)
         const pendingProposals = db.prepare(`
-            SELECT * FROM m1_proposals
+            SELECT * FROM proposals
             WHERE document_id = ?
               AND review_status IN ('unreviewed', 'modified')
         `).all(documentId) as any[];
@@ -1771,7 +1771,7 @@ export function bulkUpdateProposalAccount(
         }
 
         const updateStmt = db.prepare(`
-            UPDATE m1_proposals
+            UPDATE proposals
             SET 
                 account_id = ?,
                 entity_id = ?,

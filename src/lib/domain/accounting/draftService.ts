@@ -5,10 +5,10 @@
  * Manages unposted financial drafts (e.g. personally paid business expenses).
  * Financial drafts must not live solely in browser localStorage, nor should they
  * pollute authoritative double-entry journal ledgers before resolution.
- * This service persists drafts into `m1_drafts` with exact facts intact.
+ * This service persists drafts into `drafts` with exact facts intact.
  * 
  * Tricky logic:
- * - Drafts do NOT generate postings in `m1_transactions` or `m1_journal_entries`.
+ * - Drafts do NOT generate postings in `transactions` or `journal_entries`.
  *   Calculated account balances strictly ignore drafts.
  * - Missing facts (e.g. unknown amount or currency) are preserved as `null` rather than
  *   inventing false zeroes or guessing arbitrary currencies.
@@ -59,7 +59,7 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
     const id = input.id || crypto.randomUUID();
 
     // Load existing draft first to properly handle partial updates (omitted = preserve, null = clear)
-    const existing = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(id) as DraftItem | undefined;
+    const existing = db.prepare('SELECT * FROM drafts WHERE id = ?').get(id) as DraftItem | undefined;
 
     const entity_id = input.entity_id !== undefined ? input.entity_id : (existing?.entity_id ?? null);
     const payer_entity_id = input.payer_entity_id !== undefined ? input.payer_entity_id : (existing?.payer_entity_id ?? null);
@@ -97,8 +97,8 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
     if (payment_account_id) {
         const account = db.prepare(`
             SELECT a.*, e.type as entity_type, e.name as entity_name
-            FROM m1_accounts a
-            JOIN m1_entities e ON a.entity_id = e.id
+            FROM accounts a
+            JOIN entities e ON a.entity_id = e.id
             WHERE a.id = ?
         `).get(payment_account_id) as any;
 
@@ -134,7 +134,7 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
 
     // 4. Target Business Entity validation
     if (entity_id) {
-        const biz = db.prepare('SELECT id, type, name FROM m1_entities WHERE id = ?').get(entity_id) as any;
+        const biz = db.prepare('SELECT id, type, name FROM entities WHERE id = ?').get(entity_id) as any;
         if (!biz) {
             throw new Error(`Target business entity not found: ${entity_id}`);
         }
@@ -142,7 +142,7 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
 
     // 5. Payer Entity validation
     if (payer_entity_id) {
-        const payer = db.prepare('SELECT id, type, name FROM m1_entities WHERE id = ?').get(payer_entity_id) as any;
+        const payer = db.prepare('SELECT id, type, name FROM entities WHERE id = ?').get(payer_entity_id) as any;
         if (!payer) {
             throw new Error(`Payer entity not found: ${payer_entity_id}`);
         }
@@ -150,14 +150,14 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
 
     // 6. Source reference preservation & foreign key validation
     if (sourceDocumentId) {
-        const doc = db.prepare('SELECT id FROM m1_documents WHERE id = ?').get(sourceDocumentId);
+        const doc = db.prepare('SELECT id FROM documents WHERE id = ?').get(sourceDocumentId);
         if (!doc) {
             throw new Error(`Referenced source document not found: ${sourceDocumentId}`);
         }
     }
 
     if (sourceTransactionId) {
-        const tx = db.prepare('SELECT id FROM m1_transactions WHERE id = ?').get(sourceTransactionId);
+        const tx = db.prepare('SELECT id FROM transactions WHERE id = ?').get(sourceTransactionId);
         if (!tx) {
             throw new Error(`Referenced source transaction not found: ${sourceTransactionId}`);
         }
@@ -170,7 +170,7 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
     const now = new Date().toISOString();
 
     const stmt = db.prepare(`
-        INSERT INTO m1_drafts (
+        INSERT INTO drafts (
             id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents,
             date, merchant, description, reimbursement_intent, source_document_id,
             source_transaction_id, status, created_at, updated_at
@@ -212,7 +212,7 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
         updated_at: now
     });
 
-    const saved = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(id) as DraftItem;
+    const saved = db.prepare('SELECT * FROM drafts WHERE id = ?').get(id) as DraftItem;
     return saved;
 }
 
@@ -221,15 +221,15 @@ export function saveDraft(db: Database.Database, input: SaveDraftInput): DraftIt
  */
 export function getDrafts(db: Database.Database, filter?: { entity_id?: string }): DraftItem[] {
     if (filter?.entity_id) {
-        return db.prepare("SELECT * FROM m1_drafts WHERE entity_id = ? AND status = 'draft' ORDER BY created_at DESC").all(filter.entity_id) as DraftItem[];
+        return db.prepare("SELECT * FROM drafts WHERE entity_id = ? AND status = 'draft' ORDER BY created_at DESC").all(filter.entity_id) as DraftItem[];
     }
-    return db.prepare("SELECT * FROM m1_drafts WHERE status = 'draft' ORDER BY created_at DESC").all() as DraftItem[];
+    return db.prepare("SELECT * FROM drafts WHERE status = 'draft' ORDER BY created_at DESC").all() as DraftItem[];
 }
 
 /**
  * Deletes a draft item by ID.
  */
 export function deleteDraft(db: Database.Database, id: string): boolean {
-    const res = db.prepare('DELETE FROM m1_drafts WHERE id = ?').run(id);
+    const res = db.prepare('DELETE FROM drafts WHERE id = ?').run(id);
     return res.changes > 0;
 }

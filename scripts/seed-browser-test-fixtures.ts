@@ -58,22 +58,22 @@ export function seedBrowserTestFixtures(targetDbPath: string = TEST_VAULT_PATH):
     // Explicitly truncating all tables guarantees a 100% pristine fixture baseline on every re-seed.
     db.exec(`
         PRAGMA foreign_keys = OFF;
-        DELETE FROM m1_proposals;
-        DELETE FROM m1_document_jobs;
-        DELETE FROM m1_documents;
-        DELETE FROM m1_csv_mappings;
-        DELETE FROM m1_transaction_corrections;
-        DELETE FROM m1_journal_entries;
-        DELETE FROM m1_transactions;
-        DELETE FROM m1_account_ownership;
-        DELETE FROM m1_accounts;
-        DELETE FROM m1_entities;
+        DELETE FROM proposals;
+        DELETE FROM document_jobs;
+        DELETE FROM documents;
+        DELETE FROM csv_mappings;
+        DELETE FROM transaction_corrections;
+        DELETE FROM journal_entries;
+        DELETE FROM transactions;
+        DELETE FROM account_ownership;
+        DELETE FROM accounts;
+        DELETE FROM entities;
         DELETE FROM assets;
         DELETE FROM liabilities;
         DELETE FROM goals;
-        DELETE FROM recurring_transactions;
-        DELETE FROM net_worth_history;
-        DELETE FROM cash_flow_history;
+        DELETE FROM recurring_schedules;
+        DELETE FROM net_worth_snapshots;
+        DELETE FROM cash_flow_summaries;
         PRAGMA foreign_keys = ON;
     `);
 
@@ -179,7 +179,7 @@ export function seedBrowserTestFixtures(targetDbPath: string = TEST_VAULT_PATH):
     }).account;
 
     db.prepare(`
-        INSERT INTO m1_drafts (
+        INSERT INTO drafts (
             id, entity_id, payer_entity_id, payment_account_id, currency,
             amount_cents, date, merchant, description, reimbursement_intent, status, created_at, updated_at
         ) VALUES (

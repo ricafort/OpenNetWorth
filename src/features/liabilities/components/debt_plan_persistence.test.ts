@@ -128,7 +128,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
     it('Scenario exploration computes payoff projections reactively in memory without writing to SQLite', () => {
         // Initial state in database: no recurring transactions and no freedom settings
         const initialSettings = testDb.prepare("SELECT * FROM settings WHERE key = 'freedomSettings'").get();
-        const initialRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const initialRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(initialSettings).toBeUndefined();
         expect(initialRecurring).toBeUndefined();
 
@@ -144,7 +144,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
 
         // Verify SQLite database has received ZERO automatic writes
         const afterExploreSettings = testDb.prepare("SELECT * FROM settings WHERE key = 'freedomSettings'").get();
-        const afterExploreRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const afterExploreRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(afterExploreSettings).toBeUndefined();
         expect(afterExploreRecurring).toBeUndefined();
     });
@@ -166,7 +166,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
         const persistedSetting = testDb.prepare("SELECT value FROM settings WHERE key = 'freedomSettings'").get() as any;
         expect(JSON.parse(persistedSetting.value)).toEqual(planToSave);
 
-        const persistedRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+        const persistedRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
         expect(persistedRecurring).toBeDefined();
         expect(persistedRecurring.amount).toBe(650);
         expect(persistedRecurring.currency).toBe('AUD');
@@ -176,14 +176,14 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
     it('Switching to minimum strategy deactivates recurring accelerator upon explicit save', async () => {
         // Seed active accelerator
         testDb.prepare(`
-            INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
+            INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
             VALUES ('debt-freedom-accelerator', 'local_user', 'Debt Freedom Accelerator', 500, 'expense', 'monthly', 'Debt Repayment', '2026-09-01', 1, 'AUD', datetime('now'))
         `).run();
 
         // User saves 'minimum' strategy: extra payment must be zeroed / deactivated
         await updateDebtRecurringTransaction(0, 'AUD');
 
-        const recurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+        const recurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
         expect(recurring.amount).toBe(0);
         expect(recurring.is_active).toBe(0);
         expect(recurring.currency).toBe('AUD');
@@ -304,8 +304,8 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
             expect(savedSettings.currency).toBe('AUD');
             expect(savedSettings.strategy).toBe('avalanche');
 
-            // Check SQLite recurring_transactions table
-            const recurringRow = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+            // Check SQLite recurring_schedules table
+            const recurringRow = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
             expect(recurringRow).toBeDefined();
             expect(recurringRow.amount).toBe(500);
             expect(recurringRow.currency).toBe('AUD');
@@ -374,12 +374,12 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
         it('Acceptance 4: Updating an existing accelerator preserves the intended currency', async () => {
             // Seed existing accelerator in USD
             testDb.prepare(`
-                INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
+                INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
                 VALUES ('debt-freedom-accelerator', 'local_user', 'Debt Freedom Accelerator', 250, 'expense', 'monthly', 'Debt Repayment', '2026-01-01', 1, 'USD', datetime('now'))
             `).run();
 
             // Verify initial state
-            const initialRow = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+            const initialRow = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
             expect(initialRow.amount).toBe(250);
             expect(initialRow.currency).toBe('USD');
 
@@ -387,14 +387,14 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
             await updateDebtRecurringTransaction(600, 'AUD');
 
             // Verify updated state in SQLite
-            const updatedRow = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+            const updatedRow = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
             expect(updatedRow.amount).toBe(600);
             expect(updatedRow.currency).toBe('AUD'); // Must be updated to AUD, NOT retaining old USD!
             expect(updatedRow.is_active).toBe(1);
 
             // Update again to EUR 400
             await updateDebtRecurringTransaction(400, 'EUR');
-            const eurRow = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+            const eurRow = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
             expect(eurRow.amount).toBe(400);
             expect(eurRow.currency).toBe('EUR');
             expect(eurRow.is_active).toBe(1);
@@ -477,7 +477,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
             expect(calculatorExtraPaymentInitial).toBe(0);
 
             // 5. Verify no silent writes occurred in SQLite
-            const recurringCheck = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+            const recurringCheck = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
             expect(recurringCheck).toBeUndefined();
 
             // 6. Explicit user review & save in AUD: commits AUD 300 to settings and recurring transactions
@@ -491,7 +491,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
                 currency: 'AUD'
             });
 
-            const updatedRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+            const updatedRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
             expect(updatedRecurring.amount).toBe(300);
             expect(updatedRecurring.currency).toBe('AUD');
             expect(updatedRecurring.is_active).toBe(1);
@@ -514,7 +514,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
         it('Acceptance 6: Previewing still performs no writes', () => {
             // Ensure pristine SQLite tables
             expect(testDb.prepare("SELECT count(*) as count FROM settings WHERE key = 'freedomSettings'").get()).toEqual({ count: 0 });
-            expect(testDb.prepare("SELECT count(*) as count FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get()).toEqual({ count: 0 });
+            expect(testDb.prepare("SELECT count(*) as count FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get()).toEqual({ count: 0 });
 
             // User previews multiple payment scenarios in memory
             const preview1 = calculatePayoff(sampleDebts, 250, 'avalanche');
@@ -528,7 +528,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
 
             // Verify SQLite has ZERO writes
             expect(testDb.prepare("SELECT count(*) as count FROM settings WHERE key = 'freedomSettings'").get()).toEqual({ count: 0 });
-            expect(testDb.prepare("SELECT count(*) as count FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get()).toEqual({ count: 0 });
+            expect(testDb.prepare("SELECT count(*) as count FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get()).toEqual({ count: 0 });
         });
     });
 });

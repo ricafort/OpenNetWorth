@@ -8,7 +8,7 @@
  * account source mappings.
  * 
  * Tricky logic:
- * - Concurrency control: Increments `m1_accounts.balance_revision` upon every accepted observation
+ * - Concurrency control: Increments `accounts.balance_revision` upon every accepted observation
  *   commit to prevent concurrent overwrite races between multi-tab reviews.
  * - Supersession chain: When a new observation is committed for the same account, effective date,
  *   and balance kind, any prior accepted observation is marked 'superseded' with `superseded_by_id`.
@@ -67,7 +67,7 @@ export interface RecordObservationInput {
     is_component_of_total?: boolean;
     parent_observation_id?: string | null;
     /**
-     * Delivery 2B: Retained document ID in m1_documents when balance is extracted from a statement PDF.
+     * Delivery 2B: Retained document ID in documents when balance is extracted from a statement PDF.
      */
     document_id?: string | null;
     /**
@@ -131,7 +131,7 @@ export function recordBalanceObservation(
 
         if (isDocumentSave) {
             existing = db.prepare(`
-                SELECT * FROM m1_balance_observations
+                SELECT * FROM balance_observations
                 WHERE account_id = ?
                   AND balance_kind = ?
                   AND effective_date = ?
@@ -152,7 +152,7 @@ export function recordBalanceObservation(
             );
         } else if (isBatchSave) {
             existing = db.prepare(`
-                SELECT * FROM m1_balance_observations
+                SELECT * FROM balance_observations
                 WHERE account_id = ?
                   AND balance_kind = ?
                   AND effective_date = ?
@@ -191,13 +191,13 @@ export function recordBalanceObservation(
 
                 // Apply deliberate classification correction
                 db.prepare(`
-                    UPDATE m1_balance_observations
+                    UPDATE balance_observations
                     SET is_component_of_total = ?, is_user_modified = 1
                     WHERE id = ?
                 `).run(input.is_component_of_total ? 1 : 0, existing.id);
 
                 db.prepare(`
-                    UPDATE m1_accounts
+                    UPDATE accounts
                     SET balance_revision = balance_revision + 1, updated_at = ?
                     WHERE id = ?
                 `).run(now, input.account_id);
@@ -268,7 +268,7 @@ export function recordBalanceObservation(
 
         // 2. Insert the new observation first (so its ID exists for foreign key constraints)
         db.prepare(`
-            INSERT INTO m1_balance_observations (
+            INSERT INTO balance_observations (
                 id, account_id, amount_cents, currency, balance_kind,
                 effective_date, effective_time, imported_at, source_type,
                 source_reference, source_batch_id, source_excerpt,
@@ -313,14 +313,14 @@ export function recordBalanceObservation(
                 : `AND (is_component_of_total = 0 OR is_component_of_total IS NULL)`;
 
             const prior = db.prepare(`
-                SELECT id FROM m1_balance_observations
+                SELECT id FROM balance_observations
                 WHERE account_id = ? AND effective_date = ? AND balance_kind = ? AND review_status = 'accepted' AND id != ?
                 ${componentClause}
             `).all(input.account_id, input.effective_date, input.balance_kind, id) as Array<{ id: string }>;
 
             for (const p of prior) {
                 db.prepare(`
-                    UPDATE m1_balance_observations
+                    UPDATE balance_observations
                     SET review_status = 'superseded', superseded_by_id = ?
                     WHERE id = ?
                 `).run(id, p.id);
@@ -328,7 +328,7 @@ export function recordBalanceObservation(
 
             // Increment account's balance revision to guard future commits
             db.prepare(`
-                UPDATE m1_accounts
+                UPDATE accounts
                 SET balance_revision = balance_revision + 1, updated_at = ?
                 WHERE id = ?
             `).run(now, input.account_id);
@@ -375,7 +375,7 @@ export function recordBalanceImportBatch(
     db: Database.Database,
     batch: BalanceImportBatch
 ): BalanceImportBatch {
-    const existing = db.prepare(`SELECT * FROM m1_balance_import_batches WHERE id = ?`).get(batch.id) as any;
+    const existing = db.prepare(`SELECT * FROM balance_import_batches WHERE id = ?`).get(batch.id) as any;
     if (existing) {
         return {
             id: existing.id,
@@ -387,7 +387,7 @@ export function recordBalanceImportBatch(
     }
     const now = batch.created_at || new Date().toISOString();
     db.prepare(`
-        INSERT INTO m1_balance_import_batches (id, raw_text, extraction_method, model_identifier, created_at)
+        INSERT INTO balance_import_batches (id, raw_text, extraction_method, model_identifier, created_at)
         VALUES (?, ?, ?, ?, ?)
     `).run(
         batch.id,
@@ -424,7 +424,7 @@ export function getLatestValuationObservation(
     const placeholders = VALUATION_BALANCE_KINDS.map(() => '?').join(', ');
 
     const row = db.prepare(`
-        SELECT * FROM m1_balance_observations
+        SELECT * FROM balance_observations
         WHERE account_id = ?
           AND review_status = 'accepted'
           AND effective_date <= ?
@@ -467,7 +467,7 @@ export function getLatestObservation(
     accountId: string
 ): BalanceObservation | null {
     const row = db.prepare(`
-        SELECT * FROM m1_balance_observations
+        SELECT * FROM balance_observations
         WHERE account_id = ? AND review_status = 'accepted'
         ORDER BY effective_date DESC, created_at DESC, id DESC
         LIMIT 1
@@ -578,7 +578,7 @@ export function getReconciliationComparison(
     if (observation.document_id) {
         documentId = observation.document_id;
         try {
-            const docRow = db.prepare('SELECT filename FROM m1_documents WHERE id = ?').get(observation.document_id) as any;
+            const docRow = db.prepare('SELECT filename FROM documents WHERE id = ?').get(observation.document_id) as any;
             if (docRow && docRow.filename) {
                 sourceDocumentName = docRow.filename;
             }
@@ -737,7 +737,7 @@ export function recordSourceMapping(
     const now = new Date().toISOString();
 
     db.prepare(`
-        INSERT INTO m1_account_source_mappings (
+        INSERT INTO account_source_mappings (
             id, account_id, provider, connection_id, source_account_id, institution, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(provider, connection_id, source_account_id) DO UPDATE SET
@@ -772,7 +772,7 @@ export function getObservationById(
     observationId: string
 ): BalanceObservation | null {
     const row = db.prepare(`
-        SELECT * FROM m1_balance_observations
+        SELECT * FROM balance_observations
         WHERE id = ?
     `).get(observationId) as any;
 
@@ -813,7 +813,7 @@ export function findAccountBySourceMapping(
     connectionId = 'default'
 ): string | null {
     const row = db.prepare(`
-        SELECT account_id FROM m1_account_source_mappings
+        SELECT account_id FROM account_source_mappings
         WHERE provider = ? AND connection_id = ? AND source_account_id = ?
     `).get(provider, connectionId, sourceAccountId) as { account_id: string } | undefined;
 

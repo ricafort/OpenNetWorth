@@ -44,7 +44,7 @@ describe('Balance Reconciliation API - Modes & Validation', () => {
         });
         
         // Manually update to 'accepted' so it can be reconciled against
-        db.prepare("UPDATE m1_balance_observations SET review_status = 'accepted' WHERE id = ?").run(obs.id);
+        db.prepare("UPDATE balance_observations SET review_status = 'accepted' WHERE id = ?").run(obs.id);
         observationId = obs.id;
     });
 

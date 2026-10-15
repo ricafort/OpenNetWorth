@@ -24,7 +24,7 @@ export const SUPPORTED_CURRENCIES: { code: CurrencyCode; symbol: string; name: s
  * Tricky logic:
  * NEVER use these mock rates for authoritative financial ledgers, net worth widgets, or accounting reports!
  * In accordance with Delivery 1 audit rules, authoritative multi-currency conversions require verified,
- * dated exchange rates from `m1_exchange_rates` via `sharedFinancialSummaryService.ts`.
+ * dated exchange rates from `exchange_rates` via `sharedFinancialSummaryService.ts`.
  * If no verified rate exists, the application must disclose the missing rate and report native-currency
  * subtotals rather than silently converting with these hardcoded numbers.
  * 

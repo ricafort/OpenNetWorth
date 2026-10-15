@@ -125,8 +125,25 @@ const METADATA_SCHEMA_DDL = `
     VALUES ('local_user', 'local@device', 'Local Vault Owner', 1, 'USD', datetime('now'));
 `;
 
+function tableExists(db: Database.Database, name: string): boolean {
+    return db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(name) !== undefined;
+}
+
 export function up(db: Database.Database): void {
+    // The metadata DDL above still carries the pre-rename names (this directory is
+    // codemod-exempt); 0008 renames those tables. The imported accounting/mentor
+    // DDL constants, however, carry the post-rename plain names. On a vault that
+    // predates the migration runner (m1_* tables, no schema_migrations) running
+    // them would create empty plain-named twins and strand the real rows in the
+    // m1_* originals — 0008's rename guard would then skip the rename. So the
+    // ledger DDL only runs when the pre-rename originals are absent.
     db.exec(METADATA_SCHEMA_DDL);
-    db.exec(ACCOUNTING_SCHEMA_DDL);
-    db.exec(MENTOR_CHAT_SCHEMA_DDL);
+    if (!tableExists(db, 'm1_accounts')) {
+        db.exec(ACCOUNTING_SCHEMA_DDL);
+    }
+    if (!tableExists(db, 'm1_mentor_sessions')) {
+        db.exec(MENTOR_CHAT_SCHEMA_DDL);
+    }
 }
