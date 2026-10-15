@@ -39,6 +39,6 @@ Webhook handlers for external services.
 
 ## Security Notes
 
-- All routes validate authentication via Supabase
-- Tokens stored server-side only (never exposed to client)
-- Use `SERVICE_ROLE` key for admin operations only
+- Routes are local-first: they serve the embedded SQLite vault and validate loopback origin (`localSecurity.ts`)
+- Bank access tokens live only in the vault's settings kv under a credential-keyed entry the settings API and backup export both reject (see `src/features/bank/bankVault.ts`)
+- Demo-mode requests (persona cookie) are read-only

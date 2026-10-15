@@ -33,7 +33,6 @@ export function useResourceQuery<T>({ queryKey, repository }: UseResourceQueryOp
     // Create
     const addMutation = useMutation({
         mutationFn: async (newItem: T) => {
-            // @ts-ignore - Supabase might return null on error, but repo handles throws
             return await repository.create(newItem);
         },
         onSuccess: () => {

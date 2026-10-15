@@ -36,7 +36,7 @@
 | **Language** | TypeScript (Strict Mode) | No `any`. Use Zod and strict domain interfaces. |
 | **Styling** | Tailwind CSS v4 | Use utility classes. Patched for Turbopack base-directory resolution. |
 | **Local AI** | LM Studio / Ollama / Strata / LocalAI | Local REST integration (`src/lib/api/localLlm.ts`). Budget 2048 tokens for reasoning models. |
-| **Data Layer** | Embedded SQLite (Local Vault) | Primary driver: `better-sqlite3` via `src/infrastructure/sqlite/`. Optional Supabase client for self-hosters. |
+| **Data Layer** | Embedded SQLite (Local Vault) | Only driver: `better-sqlite3` via `src/infrastructure/sqlite/` (migration runner in `migrations/`). |
 | **State** | TanStack Query & React Hooks | For async/domain caching and component-level reactive state. |
 | **Charts** | Recharts | Responsive SVG charts for net worth, allocation, and cash flow. |
 | **Icons** | Lucide React | Clean, modern, accessible iconography. |
@@ -72,8 +72,7 @@
 
 ### 🏗️ Local Vault & Repository Pattern
 *   Data access is abstracted behind Repository interfaces.
-*   **Default**: Embedded SQLite Local Vault (`data/opennetworth.sqlite`) with 1-click backup/restore.
-*   **Optional**: Self-hosted Supabase with Row-Level Security (RLS) policies.
+*   **Only store**: Embedded SQLite Local Vault (`data/opennetworth.sqlite`) with 1-click backup/restore. The former Supabase adapter was removed (git history preserves it).
 
 ---
 

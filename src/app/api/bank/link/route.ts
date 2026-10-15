@@ -6,17 +6,15 @@
 
 import { NextResponse } from 'next/server';
 import { getBankConnector } from '@/features/bank/factory';
-import { createClient } from '@/utils/supabase/server';
+import { demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
+import { LOCAL_USER_ID } from '@/features/bank/bankVault';
 
 export async function POST(req: Request) {
+    // Demo personas are read-only sample vaults — no bank linking.
+    const demoDenied = demoReadOnlyResponse(req);
+    if (demoDenied) return demoDenied;
+
     try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
         const { country = 'US', mobile } = await req.json().catch(() => ({}));
         const countryCode = country.toUpperCase().trim();
 
@@ -24,7 +22,7 @@ export async function POST(req: Request) {
 
         // Tricky: Basiq requires mobile for SMS OTP. Pass it from the client-side modal.
         // Plaid doesn't use mobile at all, so it's safely ignored for non-AU connectors.
-        const linkToken = await connector.createLinkToken(user.id, mobile);
+        const linkToken = await connector.createLinkToken(LOCAL_USER_ID, mobile);
 
         // Client needs to know whether to open Plaid Link modal ('plaid_link')
         // or redirect to external Basiq auth URL ('redirect').

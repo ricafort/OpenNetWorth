@@ -14,7 +14,7 @@ import { CurrencyCode } from '@/types';
  * TODO: Support automated historical revaluation against dated exchange rates in Milestone 2.
  */
 export interface NetWorthSnapshot {
-    id: string; // Added for DataService compatibility
+    id: string;
     /** ISO date string */
     date: string;
     netWorth: number;

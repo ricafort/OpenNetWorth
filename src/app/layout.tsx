@@ -45,15 +45,11 @@ export const metadata: Metadata = {
   metadataBase: new URL('http://localhost:4000'),
 };
 
-import GlobalPrivacyBanner from "@/components/layout/GlobalPrivacyBanner";
-import { getSupportStatus } from "@/features/privacy/actions";
-
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const supportStatus = await getSupportStatus();
   return (
     <html lang="en">
       <body className={`${inter.variable} antialiased`}>
@@ -63,7 +59,6 @@ export default async function RootLayout({
               <React.Suspense fallback={null}>
                 <ProfileProvider>
                   <DashboardProvider>
-                    <GlobalPrivacyBanner active={supportStatus.active} />
                     <DemoBanner />
                     <LayoutShell>
                       <OnboardingTour />

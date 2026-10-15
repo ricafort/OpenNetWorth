@@ -81,7 +81,7 @@ The application is structured by **Business Domain** first. CODE THAT CHANGES TO
 See [Project Structure](project_structure.md) for the detailed breakdown.
 
 ### Service Repository Pattern
-The default data path is the embedded **SQLite Local Vault** (`data/opennetworth.sqlite`, `better-sqlite3`). **Supabase** is an optional adapter for self-hosters; browser LocalStorage powers demo mode. The Repository Pattern lives in `src/infrastructure`.
+The only data path is the embedded **SQLite Local Vault** (`data/opennetworth.sqlite`, `better-sqlite3`). Demo mode serves read-only per-persona SQLite vaults (`data/demo_vaults/`) selected by a cookie. The former Supabase adapter was removed (git history preserves it). The Repository Pattern lives in `src/infrastructure`.
 
 - **Interface**: `src/features/[feature]/data/repository.ts` defines contracts.
 - **Implementation**: `src/infrastructure/*` implements these contracts.
@@ -115,11 +115,9 @@ We use the **Screen Pattern** to decouple the **Framework** (Next.js) from the *
      (1) Request           (2) Instantiate          (3) Fetch
 UI ─────────────▶ Hook ──────────────────▶ Repo ──────────────▶ Infrastructure
                                             │                        │
-                                            │                  ┌─────┴─────┐
-                                            │                  ▼           ▼
-                                            │            [SQLite Vault] [Supabase*]
-                                            │                  │           │
-                                            │                  └─────┬─────┘
+                                            │                        │
+                                            │                        ▼
+                                            │                 [SQLite Vault]
                                             │                        │
   (5) Update View      (4) Cache Data       │     (3) Return Data    │
 UI ◀───────────── Cache ◀───────────────── Hook ◀────────────────────┘
@@ -127,37 +125,12 @@ UI ◀───────────── Cache ◀────────�
 
 1. **Component** calls a Feature Hook (e.g., `useAssetsQuery`).
 2. **Hook** instantiates the Repository based on `ProfileContext.isDemoMode`.
-3. **Repository** fetches data (from the SQLite vault by default; `*` Supabase only when a self-hosted deployment configures it).
+3. **Repository** fetches data from the SQLite vault (the persona vault when the demo cookie is set).
 4. **Hook** returns data via TanStack Query cache.
 
-### Legacy: Local → Supabase Migration (optional self-hosted path only)
-> **Not part of the default flow.** The default vault is embedded SQLite — there is no login and no cloud.
-> This path (`src/features/migration/migrationService.ts`) only applies when a self-hosted Supabase backend is configured.
-When a user clicks "Keep Data & Exit" in Demo Mode:
-
-```text
-[ 👤 Guest User ] ───(1. Click Keep)──▶ [ 🚩 Set 'migration_requested' ] ───▶ [ 🚪 Redirect to Login ]
-                                                                                   │
-                                                                                   ▼
-[ 🟢 Auth Success ] ◀──(2. Login)─────────────────────────────────────────┘
-        │
-        ▼
-[ 🔄 ProfileContext ] ──(3. Detect Flag)──▶ [ 🛠️ MigrationService ]
-                                                    │
-                                                    ├───(a) Read LocalData
-                                                    ├───(b) Transform (Inject Auth ID)
-                                                    ├───(c) Batch Insert to Supabase
-                                                    └───(d) Wipe LocalStorage
-        ┌───────────────────────────────────────────────────┘
-        │
-        ▼
-[ ☁️ Supabase ] ◀────(4. Reload)──▶ [ 🖥️ User Dashboard (Real Data) ]
-```
-
 ### Demo Mode ("God Mode")
-- Activated via URL parameter or Admin selection.
-- A sandbox backed by browser `localStorage` — never touches the SQLite vault.
-- Isolated from the optional Supabase backend (except read-only benchmarks).
+- Activated via the `demo_persona` cookie (mirrored from `?simulatedProfileId=`).
+- Each persona is a seeded read-only SQLite vault under `data/demo_vaults/` — the live vault is never touched, and demo traffic cannot write anywhere.
 - **Time Machine**: Calculates historical states on the fly based on current snapshot and growth logic.
 
 ## 4. Delivery 1: Sovereign Balance Updates & Observation Ledger Architecture
@@ -204,7 +177,7 @@ Delivery 1 establishes a sovereign, double-entry and observation-based accountin
 
 1.  **Strict Typing**: All domain entities must have Zod schemas and TypeScript interfaces.
 2.  **Feature Isolation**: Features should communicate via defined public interfaces (e.g., Hooks, Contexts), not deep internal imports.
-3.  **Repository First**: UI components must NEVER call `supabase` directly. All data access goes through Repositories.
+3.  **Repository First**: UI components must NEVER touch the database directly. All data access goes through Repositories and `/api` routes.
 4.  **No `src/lib/data` imports**: Old data structures are deprecated. Use `src/features/[name]/types` and `src/infrastructure`.
 
 ## 6. Future Roadmap
