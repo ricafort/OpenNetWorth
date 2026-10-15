@@ -1,9 +1,14 @@
-import { Asset } from '@/features/assets/types';
+import { Asset, AssetType } from '@/features/assets/types';
 import { IRepository } from '@/types/repository';
-import { createClient } from '@/utils/supabase/client';
-import { loadAssets, saveAssets, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
-
-const supabase = createClient();
+import { CurrencyCode } from '@/types';
+import { loadAssets, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
+import {
+    LedgerAccountRow,
+    listLedgerAccounts,
+    createLedgerAccount,
+    updateLedgerAccount,
+    archiveLedgerAccount
+} from '@/lib/domain/accounting/legacyAccountBridge';
 
 /**
  * Domain-specific Asset Repository Interface.
@@ -13,110 +18,133 @@ export interface IAssetRepository extends IRepository<Asset> {
     // getByClass(assetClass: string): Promise<Asset[]>;
 }
 
-/**
- * PRODUCTION Implementation: Uses Supabase
- */
-export class SupabaseAssetRepository implements IAssetRepository {
-    constructor(private templateId?: string | null) { }
+const LIQUID_SUB_TYPES = ['cash', 'checking', 'savings'];
 
-    async getAll(): Promise<Asset[]> {
-        let query = supabase.from('assets').select('*');
+/** Maps an m1 asset sub_type onto the legacy AssetType shown by the widgets. */
+function subTypeToAssetType(subType: string): AssetType {
+    if (LIQUID_SUB_TYPES.includes(subType)) return 'cash';
+    if (subType === 'brokerage' || subType === 'investment') return 'investment';
+    if (subType === 'crypto') return 'crypto';
+    if (subType === 'property' || subType === 'real_estate' || subType === 'land') return 'real_estate';
+    if (subType === 'retirement' || subType === 'superannuation' || subType === 'pension') return 'retirement';
+    if (subType === 'vehicle') return 'vehicle';
+    return 'other';
+}
 
-        if (this.templateId) {
-            query = query.eq('user_id', this.templateId);
-        } else {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                query = query.eq('user_id', user.id);
-            } else {
-                return [];
-            }
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-        return (data || []) as Asset[];
-    }
-
-    async getById(id: string): Promise<Asset | null> {
-        const { data, error } = await supabase.from('assets').select('*').eq('id', id).single();
-        if (error) return null;
-        return data as Asset;
-    }
-
-    async create(item: Asset): Promise<Asset> {
-        // Ensure user_id is set
-        let userId = item.user_id;
-        if (!userId) {
-            if (this.templateId) {
-                userId = this.templateId;
-            } else {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) userId = user.id;
-            }
-        }
-
-        if (!userId) throw new Error("Cannot create asset: User unsupported or not logged in");
-
-        const payload = { ...item, user_id: userId };
-
-        const { data, error } = await (supabase.from('assets') as any).insert([payload]).select().single();
-        if (error) {
-            console.error("Supabase Create Error:", error);
-            throw error;
-        }
-        return data as Asset;
-    }
-
-    async update(item: Asset): Promise<Asset> {
-        const { data, error } = await (supabase.from('assets') as any)
-            .update(item)
-            .eq('id', item.id)
-            .select()
-            .single();
-        if (error) throw error;
-        return data as Asset;
-    }
-
-    async delete(id: string): Promise<void> {
-        const { error } = await supabase.from('assets').delete().eq('id', id);
-        if (error) throw error;
+/** Maps the legacy AssetType picker onto an m1 asset sub_type. */
+function assetTypeToSubType(type?: AssetType): string {
+    switch (type) {
+        case 'cash': return 'cash';
+        case 'investment': return 'investment';
+        case 'crypto': return 'crypto';
+        case 'real_estate': return 'property';
+        case 'retirement': return 'retirement';
+        case 'vehicle': return 'vehicle';
+        default: return 'other';
     }
 }
 
+/**
+ * Maps a ledger asset account onto the legacy Asset shape.
+ *
+ * - `account_id` is set to the account id itself: the pages dedupe their
+ *   "unlinked legacy" section by `account_id ∈ authoritativeAccountIds`, so
+ *   ledger-backed rows never double-display.
+ * - Unknown balances map to 0, matching the summary's "known totals"
+ *   semantics; unrecorded accounts are surfaced separately by
+ *   `useSharedFinancialSummary`.
+ * - `investment_details` has no `m1_accounts` column yet; consumers already
+ *   handle its absence (flagged as a follow-up feature gap).
+ */
+function toAsset(row: LedgerAccountRow): Asset {
+    return {
+        id: row.id,
+        user_id: 'local_user',
+        name: row.name,
+        type: subTypeToAssetType(row.sub_type),
+        value: row.is_unknown ? 0 : row.balance_cents / 100,
+        // accounting/types widens CurrencyCode with `| string`; narrow back.
+        currency: row.currency as CurrencyCode,
+        is_liquid: LIQUID_SUB_TYPES.includes(row.sub_type),
+        account_id: row.id,
+        last_updated: row.updated_at
+    };
+}
 
 /**
- * Authoritative Local SQLite-backed Asset Repository (DATA-01, DATA-04, DATA-05).
+ * Local Asset Repository (DATA-01, DATA-04, DATA-05).
+ *
+ * Why this exists:
+ * The double-entry ledger is the single source of truth for real holdings:
+ * reads list `type='asset'` accounts from `/api/accounting`, and writes
+ * create/update/archive ledger accounts through the shared bridge. The
+ * retired m0 `assets` table is no longer read or written.
+ *
+ * Tricky logic:
+ * - Demo mode (templateId set) still reads localStorage persona rows until
+ *   the demo-vault rewrite; it must never fall through to the ledger path,
+ *   which would leak real vault data into the demo view.
+ * - Non-demo reads also merge leftover localStorage `local_user` rows the
+ *   ledger does not contain, so nothing silently disappears before the
+ *   Phase 3 backfill; the pages render those as "unlinked legacy".
  */
 export class LocalAssetRepository implements IAssetRepository {
     constructor(private templateId?: string | null) { }
 
     async getAll(): Promise<Asset[]> {
-        const allAssets = loadAssets();
-        // If templateId is provided (e.g. 'fam', 'grow'), filter by it.
-        // If not provided (Guest), filter by 'local_user' OR null/undefined to capture manual guest entries
-        const targetId = this.templateId || 'local_user';
+        if (this.templateId) {
+            // Demo mode: localStorage persona data (demoMode seeds user_id 'local_user').
+            return loadAssets().filter(a =>
+                a.user_id === this.templateId || a.user_id === 'local_user' || !a.user_id);
+        }
 
-        return allAssets.filter(a => a.user_id === targetId || (!a.user_id && targetId === 'local_user'));
+        const ledgerRows = (await listLedgerAccounts('asset')).map(toAsset);
+        const ledgerIds = new Set(ledgerRows.map(r => r.id));
+        const localRows = loadAssets().filter(a =>
+            (a.user_id === 'local_user' || !a.user_id) && !ledgerIds.has(a.id));
+        return [...ledgerRows, ...localRows];
     }
 
     async getById(id: string): Promise<Asset | null> {
-        const assets = loadAssets();
-        return assets.find(a => a.id === id) || null;
+        const items = await this.getAll();
+        return items.find(i => i.id === id) || null;
     }
 
     async create(item: Asset): Promise<Asset> {
-        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
-        return await persistScopedRecord<Asset>('assets', item);
+        if (this.templateId) {
+            return await persistScopedRecord<Asset>('assets', item);
+        }
+        await createLedgerAccount({
+            id: item.id,
+            name: item.name,
+            type: 'asset',
+            sub_type: assetTypeToSubType(item.type),
+            currency: item.currency || 'AUD',
+            balance_cents: Math.round((item.value || 0) * 100)
+        });
+        return item;
     }
 
     async update(item: Asset): Promise<Asset> {
-        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
-        return await persistScopedRecord<Asset>('assets', item);
+        if (this.templateId) {
+            return await persistScopedRecord<Asset>('assets', item);
+        }
+        await updateLedgerAccount({
+            id: item.id,
+            type: 'asset',
+            name: item.name,
+            sub_type: assetTypeToSubType(item.type),
+            balance_cents: Math.round((item.value || 0) * 100)
+        });
+        return item;
     }
 
     async delete(id: string): Promise<void> {
-        // Enforce durable scoped SQLite deletion (DATA-04, DATA-05)
-        await deleteScopedRecord('assets', id);
+        if (this.templateId) {
+            await deleteScopedRecord('assets', id);
+            return;
+        }
+        // Archive instead of hard delete: the ledger must keep its history.
+        await archiveLedgerAccount(id);
     }
 }

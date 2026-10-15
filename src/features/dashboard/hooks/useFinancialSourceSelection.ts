@@ -97,7 +97,16 @@ export function useFinancialSourceSelection(baseCurrency: CurrencyCode): Financi
         const usableAccounts = summary.accounts || [];
         const unrecordedCount = summary.unrecorded_count || 0;
         const totalModernAccounts = usableAccounts.length + unrecordedCount;
-        const hasExcludedLegacy = (legacyAssets.length > 0 || legacyLiabilities.length > 0);
+        // After the ledger cutover the "legacy" queries are ledger accounts
+        // themselves; only rows the summary does not already account for
+        // (recorded or unrecorded) count as excluded legacy data.
+        const knownAccountIds = new Set<string>([
+            ...usableAccounts.map(a => a.account_id),
+            ...((summary.unrecorded_accounts || []).map(a => a.id))
+        ]);
+        const hasExcludedLegacy =
+            legacyAssets.some(a => !knownAccountIds.has(a.id)) ||
+            legacyLiabilities.some(l => !knownAccountIds.has(l.id));
 
         if (totalModernAccounts > 0) {
             if (usableAccounts.length === 0) {
