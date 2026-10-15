@@ -16,7 +16,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDb } from '@/infrastructure/sqlite/db';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
 
 class ValidationError extends Error {
     statusCode = 400;
@@ -101,7 +101,8 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const entity = searchParams.get('entity');
-        const db = getDb();
+        // Demo cookie present → read-only persona vault (Phase 2.7).
+        const db = getDbForRequest(request);
 
         if (entity) {
             const allowed = ['assets', 'liabilities', 'goals', 'recurring_transactions', 'net_worth_history', 'cash_flow_history', 'profiles', 'settings'];
@@ -306,6 +307,9 @@ export async function GET(request: Request) {
             }
         });
     } catch (error: any) {
+        // Unknown persona → 400, unseeded vault → 503 (Phase 2.7).
+        const demoRes = demoErrorResponse(error);
+        if (demoRes) return demoRes;
         console.error('Vault GET Error:', error);
         return secureJson({ error: error.message }, { status: 500 });
     }
@@ -314,9 +318,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only: any mutation carrying the demo cookie is refused (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
         const body = await request.json();
-        const db = getDb();
+        const db = getDbForRequest(request);
 
         const { action, entity, item, id } = body;
 

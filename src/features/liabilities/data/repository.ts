@@ -1,7 +1,8 @@
 import { Liability, LiabilityType } from '@/features/liabilities/types';
 import { IRepository } from '@/types/repository';
 import { CurrencyCode } from '@/types';
-import { loadLiabilities, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
+import { loadLiabilities } from '@/infrastructure/local_driver';
+import { readDemoPersona } from '@/features/demo/demoMode';
 import {
     LedgerAccountRow,
     listLedgerAccounts,
@@ -74,24 +75,19 @@ function toLiability(row: LedgerAccountRow): Liability {
  * retired m0 `liabilities` table is no longer read or written.
  *
  * Tricky logic:
- * - Demo mode (templateId set) still reads localStorage persona rows until
- *   the demo-vault rewrite; it must never fall through to the ledger path,
- *   which would leak real vault data into the demo view.
+ * - Demo mode (Phase 2.7) is served by the API routes themselves: the
+ *   `demo_persona` cookie makes `/api/accounting` return the persona vault's
+ *   ledger. The localStorage merge is skipped in demo mode so the user's
+ *   real legacy rows can never leak into a persona view.
  * - Non-demo reads also merge leftover localStorage `local_user` rows the
  *   ledger does not contain, so nothing silently disappears before the
  *   Phase 3 backfill; the pages render those as "unlinked legacy".
  */
 export class LocalLiabilityRepository implements ILiabilityRepository {
-    constructor(private templateId?: string | null) { }
-
     async getAll(): Promise<Liability[]> {
-        if (this.templateId) {
-            // Demo mode: localStorage persona data (demoMode seeds user_id 'local_user').
-            return loadLiabilities().filter(l =>
-                l.user_id === this.templateId || l.user_id === 'local_user' || !l.user_id);
-        }
-
         const ledgerRows = (await listLedgerAccounts('liability')).map(toLiability);
+        if (readDemoPersona()) return ledgerRows;
+
         const ledgerIds = new Set(ledgerRows.map(r => r.id));
         const localRows = loadLiabilities().filter(l =>
             (l.user_id === 'local_user' || !l.user_id) && !ledgerIds.has(l.id));
@@ -104,9 +100,6 @@ export class LocalLiabilityRepository implements ILiabilityRepository {
     }
 
     async create(item: Liability): Promise<Liability> {
-        if (this.templateId) {
-            return await persistScopedRecord<Liability>('liabilities', item);
-        }
         await createLedgerAccount({
             id: item.id,
             name: item.name,
@@ -119,9 +112,6 @@ export class LocalLiabilityRepository implements ILiabilityRepository {
     }
 
     async update(item: Liability): Promise<Liability> {
-        if (this.templateId) {
-            return await persistScopedRecord<Liability>('liabilities', item);
-        }
         await updateLedgerAccount({
             id: item.id,
             type: 'liability',
@@ -133,11 +123,8 @@ export class LocalLiabilityRepository implements ILiabilityRepository {
     }
 
     async delete(id: string): Promise<void> {
-        if (this.templateId) {
-            await deleteScopedRecord('liabilities', id);
-            return;
-        }
         // Archive instead of hard delete: the ledger must keep its history.
+        // In demo mode the route refuses this with 403 (read-only personas).
         await archiveLedgerAccount(id);
     }
 }

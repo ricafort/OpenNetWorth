@@ -2,17 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, Sector } from 'recharts';
-import { Asset } from '@/features/assets/types';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { CURRENCY_DECIMALS, CurrencyCode } from '@/lib/domain/accounting/types';
 import { AlertCircle, Scale } from 'lucide-react';
 import { classifyCategory } from '@/features/assets/utils/classifyCategory';
-
-interface AssetAllocationChartProps {
-    assets?: Asset[];
-}
 
 /**
  * AssetAllocationChart
@@ -31,7 +26,7 @@ interface AssetAllocationChartProps {
  * 
  * TODO: Add a toggle between donut and horizontal sorted bar view for large numbers of asset classes.
  */
-export default function AssetAllocationChart({ assets: fallbackLegacyAssets = [] }: AssetAllocationChartProps) {
+export default function AssetAllocationChart() {
     const { baseCurrency } = useNetWorth();
     const sourceState = useFinancialSourceSelection(baseCurrency);
     const [isMounted, setIsMounted] = useState(false);
@@ -47,20 +42,12 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
         return sourceState.accounts.filter(a => a.account_type === 'asset');
     }, [sourceState]);
 
-    const legacyAssetsList = useMemo(() => {
-        if (sourceState.mode !== 'legacy') return [];
-        return sourceState.assets || fallbackLegacyAssets;
-    }, [sourceState, fallbackLegacyAssets]);
-
     const availableCurrencies = useMemo(() => {
         if (sourceState.mode === 'modern_usable') {
             return Array.from(new Set(modernAssetAccounts.map(a => a.currency))) as CurrencyCode[];
         }
-        if (sourceState.mode === 'legacy') {
-            return Array.from(new Set(legacyAssetsList.map(a => (a.currency || 'USD') as CurrencyCode))) as CurrencyCode[];
-        }
         return [];
-    }, [sourceState.mode, modernAssetAccounts, legacyAssetsList]);
+    }, [sourceState.mode, modernAssetAccounts]);
 
     // Active selected currency for unconverted native multi-currency view
     const activeCurrency = useMemo((): CurrencyCode => {
@@ -123,46 +110,6 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
                     notice = `Showing native ${activeCurrency} holdings. Switch tabs to view other currencies without fabricated exchange rates.`;
                 }
             }
-        } else if (sourceState.mode === 'legacy') {
-            // Scenario C: Pure legacy mode (Resolves Issue 1: native currency grouping for legacy assets)
-            const legacyList = legacyAssetsList;
-
-            if (availableCurrencies.length === 1 && availableCurrencies[0] !== baseCurrency) {
-                // Single foreign currency (e.g. USD 25,000 with AUD display)
-                dispCurr = availableCurrencies[0];
-                converted = false;
-                notice = `Exchange rate to ${baseCurrency} unavailable — allocation displayed in native ${dispCurr}.`;
-                legacyList.forEach(asset => {
-                    const cat = classifyCategory(undefined, asset.type);
-                    const val = asset.value;
-                    categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
-                    total += val;
-                    count++;
-                });
-            } else if (availableCurrencies.length > 1) {
-                // Multi-currency legacy assets: filter by activeCurrency tab
-                dispCurr = activeCurrency;
-                converted = false;
-                notice = `Showing native ${activeCurrency} holdings. Switch tabs to view other currencies without fabricated exchange rates.`;
-                const filtered = legacyList.filter(a => ((a.currency || 'USD') as CurrencyCode) === activeCurrency);
-                filtered.forEach(asset => {
-                    const cat = classifyCategory(undefined, asset.type);
-                    const val = asset.value;
-                    categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
-                    total += val;
-                    count++;
-                });
-            } else {
-                // Standard single base currency
-                dispCurr = baseCurrency;
-                legacyList.forEach(asset => {
-                    const cat = classifyCategory(undefined, asset.type);
-                    const val = asset.value;
-                    categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
-                    total += val;
-                    count++;
-                });
-            }
         }
 
         const formattedData = Object.entries(categoryTotals)
@@ -181,7 +128,7 @@ export default function AssetAllocationChart({ assets: fallbackLegacyAssets = []
             isConverted: converted,
             unconvertedNotice: notice
         };
-    }, [sourceState, modernAssetAccounts, activeCurrency, availableCurrencies, baseCurrency, fallbackLegacyAssets]);
+    }, [sourceState, modernAssetAccounts, activeCurrency, availableCurrencies, baseCurrency]);
 
     // Vivid two-stop gradients per asset category. The donut slices and the legend chips share
     // the same gradient, so each legend row reads as a direct key for its ring segment.

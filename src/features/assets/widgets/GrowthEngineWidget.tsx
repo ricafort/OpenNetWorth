@@ -24,11 +24,7 @@ export default function GrowthEngineWidget() {
         let holdingsAssets: any[] = [];
         let modernValuations: any[] = [];
         
-        if (sourceState.mode === 'legacy') {
-            holdingsAssets = sourceState.assets.filter(a =>
-                a.type === 'investment' || a.type === 'crypto' || (a.investment_details && a.investment_details.ticker)
-            );
-        } else if (sourceState.mode === 'modern_usable' || sourceState.mode === 'modern_missing_balances') {
+        if (sourceState.mode === 'modern_usable' || sourceState.mode === 'modern_missing_balances') {
             const investmentSubTypes = ['investment', 'brokerage', 'crypto', 'retirement', 'superannuation', 'pension'];
             
             const modernAssetAccounts = (sourceState.summary?.accounts || []).filter(a => 
@@ -83,12 +79,11 @@ export default function GrowthEngineWidget() {
     // valuations; converted values display in base currency, native ones stay native
     // (never fabricate cross-currency totals).
     const topInvestmentAccounts = useMemo(() => {
-        if (sourceState.mode === 'legacy') return [];
         return accountValuations
             .filter(v => v.value !== null && v.value !== undefined)
             .sort((a, b) => ((b.convertedValue ?? b.value ?? 0) - (a.convertedValue ?? a.value ?? 0)))
             .slice(0, 3);
-    }, [accountValuations, sourceState.mode]);
+    }, [accountValuations]);
 
     const latestValuationDate = useMemo(() => {
         const dates = accountValuations
@@ -150,7 +145,7 @@ export default function GrowthEngineWidget() {
                 privacyBlur={isPrivacyBlur}
                 currencyCode={baseCurrency}
                 accountValuations={accountValuations}
-                isAuthoritativeMode={sourceState.mode !== 'legacy'}
+                isAuthoritativeMode
                 valueContextNote="Same total as the Investment slice in Asset Allocation"
             />
             {topInvestmentAccounts.length > 0 && (

@@ -15,7 +15,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDb } from '@/infrastructure/sqlite/db';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
 import {
     recordBalanceObservation,
     recordBalanceImportBatch,
@@ -38,7 +38,8 @@ export async function GET(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
     try {
-        const db = getDb();
+        // Demo cookie present → persona vault's ledger (Phase 2.7).
+        const db = getDbForRequest(request);
 
         const { searchParams } = new URL(request.url);
         const scopeEntityId = searchParams.get('scopeEntityId') || searchParams.get('entity_id') || undefined;
@@ -56,6 +57,8 @@ export async function GET(request: Request) {
             summary
         });
     } catch (error: any) {
+        const demoRes = demoErrorResponse(error);
+        if (demoRes) return demoRes;
         console.error('Balances GET Error:', error);
         return secureJson({ error: error.message }, { status: 500 });
     }
@@ -64,8 +67,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
-        const db = getDb();
+        const db = getDbForRequest(request);
 
         const body = await request.json();
         const { items, provider, connectionId, batch } = body;

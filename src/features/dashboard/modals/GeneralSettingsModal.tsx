@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Save, Bell, Globe, TrendingUp, Cpu } from 'lucide-react';
-import { loadSettings, saveSettings, loadFreedomSettings, saveFreedomSettings, loadSettingsFromVault, loadFreedomSettingsFromVault } from '@/infrastructure/local_driver'; // Updated import
+import { saveSettings, saveFreedomSettings, loadSettingsFromVault, loadFreedomSettingsFromVault } from '@/infrastructure/local_driver'; // Updated import
 import { UserSettings, CurrencyCode } from '@/types'; // Updated import
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { FreedomSettings } from '@/features/liabilities/types';
 import CurrencySelector from '@/components/ui/CurrencySelector';
 import LocalAiSettingsModal from '@/components/ui/LocalAiSettingsModal';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { useProfile } from '@/contexts/ProfileContext';
 
 interface GeneralSettingsModalProps {
     isOpen: boolean;
@@ -18,7 +17,6 @@ interface GeneralSettingsModalProps {
 }
 
 export default function GeneralSettingsModal({ isOpen, onClose, onSave }: GeneralSettingsModalProps) {
-    const { isDemoMode } = useProfile();
     const [settings, setSettings] = useState<UserSettings>({
         baseCurrency: 'USD',
         theme: 'system',
@@ -40,13 +38,9 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
     useEffect(() => {
         if (!isOpen) return;
         setSaveError(null);
-        // Demo personas keep their settings in localStorage until the demo rework
-        // (Phase 2.7); the real vault reads settings from the SQLite settings kv.
-        if (isDemoMode) {
-            setSettings(loadSettings());
-            setFreedomSettings(loadFreedomSettings());
-            return;
-        }
+        // Settings and freedom settings are read from the SQLite settings kv; in
+        // demo mode the `demo_persona` cookie makes these reads target the
+        // persona vault (Phase 2.7).
         let cancelled = false;
         loadSettingsFromVault()
             .then(s => { if (!cancelled) setSettings(s); })
@@ -55,7 +49,7 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
             .then(f => { if (!cancelled) setFreedomSettings(f); })
             .catch(() => { /* keep the visible defaults if the vault is unreachable */ });
         return () => { cancelled = true; };
-    }, [isOpen, isDemoMode]);
+    }, [isOpen]);
 
     /**
      * Handles saving general settings and freedom settings.

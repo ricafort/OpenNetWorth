@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useCashflowQuery } from '@/features/cashflow/hooks/useCashflowQuery';
 import { useProfile } from '@/contexts/ProfileContext';
-import { loadSettings, loadSettingsFromVault, toMonthlyAmount } from '@/infrastructure/local_driver';
+import { loadSettingsFromVault, toMonthlyAmount } from '@/infrastructure/local_driver';
 import { convertAmount } from '@/lib/utils/currencyService';
 import { RecurringTransaction, WealthMomentum } from '@/features/cashflow/types';
 import { CurrencyCode } from '@/types';
@@ -14,7 +14,7 @@ import { CurrencyCode } from '@/types';
  */
 export function useWealthMomentum() {
     const { recurring, isLoading } = useCashflowQuery();
-    const { profile, isDemoMode } = useProfile();
+    const { profile } = useProfile();
     const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('USD');
 
     useEffect(() => {
@@ -22,17 +22,14 @@ export function useWealthMomentum() {
             setBaseCurrency(profile.currency_code as CurrencyCode);
             return;
         }
-        // No profile currency: demo personas keep settings in localStorage until the
-        // demo rework (Phase 2.7); the real vault reads base currency from SQLite.
+        // No profile currency: read base currency from the SQLite settings kv.
+        // In demo mode the `demo_persona` cookie makes that read target the
+        // persona vault (Phase 2.7) — no localStorage involved.
         let cancelled = false;
         const apply = (code: CurrencyCode) => { if (!cancelled) setBaseCurrency(code); };
-        if (isDemoMode) {
-            apply(loadSettings().baseCurrency);
-        } else {
-            loadSettingsFromVault().then(s => apply(s.baseCurrency)).catch(() => apply('USD'));
-        }
+        loadSettingsFromVault().then(s => apply(s.baseCurrency)).catch(() => apply('USD'));
         return () => { cancelled = true; };
-    }, [profile, isDemoMode]);
+    }, [profile]);
 
     const momentum: WealthMomentum = useMemo(() => {
         const activeRecurring = recurring.filter(t => t.is_active);

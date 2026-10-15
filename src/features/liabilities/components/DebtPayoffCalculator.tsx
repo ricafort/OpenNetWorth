@@ -4,8 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Liability, LiabilityType, DebtPayoffResult, PayoffStrategy } from '@/features/liabilities/types';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
-import { loadFreedomSettings, loadFreedomSettingsFromVault, saveFreedomSettings, updateDebtRecurringTransaction } from '@/infrastructure/local_driver';
-import { useProfile } from '@/contexts/ProfileContext';
+import { loadFreedomSettingsFromVault, saveFreedomSettings, updateDebtRecurringTransaction } from '@/infrastructure/local_driver';
 import { TrendingDown, Calendar, DollarSign, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
@@ -21,7 +20,6 @@ import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinanc
 import { useAccountingCheck } from '@/features/accounting/hooks/useAccountingCheck';
 
 export default function DebtPayoffCalculator() {
-    const { isDemoMode } = useProfile();
     const { baseCurrency } = useNetWorth();
     const { liabilities, isLoading: isLiabilitiesLoading } = useLiabilitiesQuery();
     const {
@@ -124,15 +122,13 @@ export default function DebtPayoffCalculator() {
             setStrategy(s.strategy);
             setSettingsLoaded(true);
         };
-        if (isDemoMode) {
-            apply(loadFreedomSettings());
-        } else {
-            loadFreedomSettingsFromVault()
-                .then(apply)
-                .catch(() => { if (!cancelled) setSettingsLoaded(true); /* keep visible defaults */ });
-        }
+        // The payoff plan lives in the SQLite settings kv; in demo mode the
+        // `demo_persona` cookie makes the read target the persona vault (Phase 2.7).
+        loadFreedomSettingsFromVault()
+            .then(apply)
+            .catch(() => { if (!cancelled) setSettingsLoaded(true); /* keep visible defaults */ });
         return () => { cancelled = true; };
-    }, [isDemoMode]);
+    }, []);
 
     // Associated editable payment state coupled to its currency
     // Why this exists:

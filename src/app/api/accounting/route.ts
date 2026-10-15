@@ -19,7 +19,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDb } from '@/infrastructure/sqlite/db';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
 import {
     createEntity,
     listEntities,
@@ -92,7 +92,8 @@ export async function GET(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
     try {
-        const db = getDb();
+        // Demo cookie present → persona vault's ledger (Phase 2.7).
+        const db = getDbForRequest(request);
 
         const url = new URL(request.url);
         const view = url.searchParams.get('view');
@@ -418,6 +419,9 @@ export async function GET(request: Request) {
             total_count: totalCount
         });
     } catch (error: any) {
+        // Unknown persona → 400, unseeded vault → 503 (Phase 2.7).
+        const demoRes = demoErrorResponse(error);
+        if (demoRes) return demoRes;
         console.error('Accounting API GET Error:', error);
         return secureJson({ error: error.message || 'Failed to fetch accounting data' }, { status: 500 });
     }
@@ -426,8 +430,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only: any mutation carrying the demo cookie is refused (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
-        const db = getDb();
+        const db = getDbForRequest(request);
 
         const body = await request.json().catch(() => null);
         if (!body || typeof body !== 'object') {

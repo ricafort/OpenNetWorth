@@ -11,6 +11,7 @@
     "lint": "eslint",
     "test": "vitest",
     "seed": "npx tsx scripts/seed-benchmarks.ts",
+    "seed:demo": "npx tsx scripts/seed-demo-vaults.ts",
     "hydrate": "npx tsx scripts/hydrate-templates.ts",
     "postinstall": "node scripts/patch-tailwind.cjs"
   },

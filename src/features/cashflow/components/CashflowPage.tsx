@@ -48,10 +48,10 @@ import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ContentCard } from '@/components/common/ContentCard';
-import { loadCashFlow, saveCashFlow, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
+import { persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
+import { readDemoPersona } from '@/features/demo/demoMode';
 import { Entity, CashFlowStatementResult, CashFlowItem, CurrencyCode, formatMoney } from '@/lib/domain/accounting/types';
 import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
-import { useProfile } from '@/contexts/ProfileContext';
 import Link from 'next/link';
 
 /** Raw `cash_flow_history` row shape returned by the entity-scoped vault GET. */
@@ -72,7 +72,6 @@ const byMonthAsc = (a: CashFlowEntry, b: CashFlowEntry) => a.month.localeCompare
 
 export const CashflowPage = () => {
     const { baseCurrency } = useNetWorth();
-    const { isDemoMode } = useProfile();
 
     // Tab view: actual (default) | autopilot | history
     const [activeTab, setActiveTab] = useState<'actual' | 'autopilot' | 'history'>('actual');
@@ -211,22 +210,22 @@ export const CashflowPage = () => {
     // always matches what saves and deletes write — no localStorage-first reads
     // disagreeing with SQLite writes.
     // Tricky logic:
-    // - Demo mode stays on localStorage persona data; it must never read the real vault.
+    // - Demo mode (Phase 2.7) needs no branch: the `demo_persona` cookie makes
+    //   `/api/vault` serve the persona vault's logs.
     // - The oldest browser-only logs (`clearworth_cashflow`, pre-vault era) are
     //   migrated into SQLite once when the vault table is empty.
     useEffect(() => {
         let cancelled = false;
         const loadEntries = async () => {
-            if (isDemoMode) {
-                if (!cancelled) setEntries(loadCashFlow().sort(byMonthAsc));
-                return;
-            }
             try {
                 const res = await fetch('/api/vault?entity=cashFlow');
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const json = await res.json();
                 let loaded = ((json.data ?? []) as CashFlowRow[]).map(rowToEntry);
-                if (loaded.length === 0) {
+                // The one-time browser-log migration must never run against a
+                // persona vault — that would surface the user's REAL old logs
+                // in a sample-data view.
+                if (loaded.length === 0 && !readDemoPersona()) {
                     const legacy = localStorage.getItem('clearworth_cashflow');
                     if (legacy) {
                         const parsed = JSON.parse(legacy);
@@ -246,7 +245,7 @@ export const CashflowPage = () => {
         };
         loadEntries();
         return () => { cancelled = true; };
-    }, [isDemoMode]);
+    }, []);
 
     // Preset Period Handlers
     const handleSetPeriod = (preset: 'this_month' | 'last_month' | 'ytd') => {
@@ -305,17 +304,11 @@ export const CashflowPage = () => {
             // re-saving an existing month reuses that row's primary key id, so a
             // later delete on the displayed row can never target a non-existent id.
             // Tricky logic:
-            // Demo mode persona logs stay in localStorage and must never write the
-            // real vault.
+            // In demo mode the route refuses this write with 403, which lands in
+            // the catch below as the read-only error message.
             let persisted: CashFlowEntry;
-            if (isDemoMode) {
-                persisted = newEntry;
-                const cache = loadCashFlow().filter(i => i.id !== persisted.id && i.month !== persisted.month);
-                saveCashFlow([...cache, persisted]);
-            } else {
-                const saved = await persistScopedRecord('cashFlow', newEntry);
-                persisted = (saved as any)?.item || saved || newEntry;
-            }
+            const saved = await persistScopedRecord('cashFlow', newEntry);
+            persisted = (saved as any)?.item || saved || newEntry;
             const current = entries.filter(item => item.id !== persisted.id && item.month !== persisted.month);
             setEntries([...current, persisted].sort(byMonthAsc));
             setIsAddingLegacyEntry(false);
@@ -328,11 +321,8 @@ export const CashflowPage = () => {
     const handleDeleteLegacyEntry = async (id: string) => {
         if (confirm('Delete this entry?')) {
             try {
-                if (isDemoMode) {
-                    saveCashFlow(loadCashFlow().filter(e => e.id !== id));
-                } else {
-                    await deleteScopedRecord('cashFlow', id);
-                }
+                // In demo mode the route refuses this with 403 → alert below.
+                await deleteScopedRecord('cashFlow', id);
                 // Update the displayed list only after the confirmed deletion.
                 setEntries(entries.filter(e => e.id !== id));
             } catch (err: any) {
