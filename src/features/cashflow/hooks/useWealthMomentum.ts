@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useCashflowQuery } from '@/features/cashflow/hooks/useCashflowQuery';
 import { useProfile } from '@/contexts/ProfileContext';
-import { loadSettings, toMonthlyAmount } from '@/infrastructure/local_driver';
+import { loadSettings, loadSettingsFromVault, toMonthlyAmount } from '@/infrastructure/local_driver';
 import { convertAmount } from '@/lib/utils/currencyService';
 import { RecurringTransaction, WealthMomentum } from '@/features/cashflow/types';
 import { CurrencyCode } from '@/types';
@@ -14,18 +14,25 @@ import { CurrencyCode } from '@/types';
  */
 export function useWealthMomentum() {
     const { recurring, isLoading } = useCashflowQuery();
-    const { profile } = useProfile();
+    const { profile, isDemoMode } = useProfile();
+    const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('USD');
 
-    const baseCurrency = useMemo(() => {
+    useEffect(() => {
         if (profile?.currency_code) {
-            return profile.currency_code as CurrencyCode;
+            setBaseCurrency(profile.currency_code as CurrencyCode);
+            return;
         }
-        if (typeof window !== 'undefined') {
-            const settings = loadSettings();
-            return settings.baseCurrency;
+        // No profile currency: demo personas keep settings in localStorage until the
+        // demo rework (Phase 2.7); the real vault reads base currency from SQLite.
+        let cancelled = false;
+        const apply = (code: CurrencyCode) => { if (!cancelled) setBaseCurrency(code); };
+        if (isDemoMode) {
+            apply(loadSettings().baseCurrency);
+        } else {
+            loadSettingsFromVault().then(s => apply(s.baseCurrency)).catch(() => apply('USD'));
         }
-        return 'USD';
-    }, [profile]);
+        return () => { cancelled = true; };
+    }, [profile, isDemoMode]);
 
     const momentum: WealthMomentum = useMemo(() => {
         const activeRecurring = recurring.filter(t => t.is_active);

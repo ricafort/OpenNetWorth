@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useProfile } from '@/contexts/ProfileContext';
-import { loadSettings } from '@/infrastructure/local_driver';
+import { loadSettings, loadSettingsFromVault } from '@/infrastructure/local_driver';
 import { CurrencyCode } from '@/types';
 import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 import { centsToMajorUnits } from '@/lib/domain/accounting/types';
@@ -21,12 +21,19 @@ export function useNetWorth() {
     useEffect(() => {
         if (profile?.currency_code) {
             setBaseCurrency(profile.currency_code as CurrencyCode);
-        } else {
-            // Only access localStorage on the client after mount
-            const settings = loadSettings();
-            setBaseCurrency(settings.baseCurrency);
+            return;
         }
-    }, [profile]);
+        // No profile currency: demo personas keep settings in localStorage until the
+        // demo rework (Phase 2.7); the real vault reads base currency from SQLite.
+        let cancelled = false;
+        const apply = (code: CurrencyCode) => { if (!cancelled) setBaseCurrency(code); };
+        if (isDemoMode) {
+            apply(loadSettings().baseCurrency);
+        } else {
+            loadSettingsFromVault().then(s => apply(s.baseCurrency)).catch(() => apply('USD'));
+        }
+        return () => { cancelled = true; };
+    }, [profile, isDemoMode]);
 
     const sourceState = useFinancialSourceSelection(baseCurrency);
 

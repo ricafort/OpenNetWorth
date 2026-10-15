@@ -5,10 +5,12 @@ import CheckInModal from './CheckInModal';
 import GeneralSettingsModal from './GeneralSettingsModal';
 import MentorSettings from './MentorSettings';
 import { useState, useEffect } from 'react';
-import { loadSettings, saveSettings } from '@/infrastructure/local_driver';
+import { loadSettings, saveSettings, loadSettingsFromVault } from '@/infrastructure/local_driver';
+import { useProfile } from '@/contexts/ProfileContext';
 
 export default function DashboardModals() {
     const { isSettingsOpen, closeSettings } = useDashboard();
+    const { isDemoMode } = useProfile();
 
     const [isCheckInOpen, setIsCheckInOpen] = useState(false);
     const [isMentorSettingsOpen, setIsMentorSettingsOpen] = useState(false);
@@ -46,7 +48,12 @@ export default function DashboardModals() {
     */
 
     const handleCheckInUpdate = async () => {
-        const settings = loadSettings();
+        // Read from the same source the settings UI reads (SQLite kv for the real
+        // vault; localStorage only for demo personas until Phase 2.7) so stamping
+        // lastCheckIn never overwrites the vault with a stale localStorage object.
+        const settings = isDemoMode
+            ? loadSettings()
+            : await loadSettingsFromVault().catch(() => loadSettings());
         try {
             await saveSettings({ ...settings, lastCheckIn: new Date().toISOString() });
         } catch (e) {
