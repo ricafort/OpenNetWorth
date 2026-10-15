@@ -7,8 +7,8 @@
  * PDF extraction reject the upload — it becomes a disclosure instead.
  *
  * Tricky logic:
- * - The route runs initDocumentSchema itself, so the test only needs a bare
- *   :memory: DB wired through setTestDb.
+ * - The test wires a fully-migrated in-memory DB through setTestDb, mirroring
+ *   production where getDb() runs migrations at database open.
  * - raw_content must stay UTF-8 for text/* and base64 for binary so
  *   GET /api/documents/raw?id= keeps serving files correctly.
  * - The dedup-backfill case seeds a row with extracted_text NULL (as stored
@@ -21,8 +21,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createHash, randomUUID } from 'crypto';
 import Database from 'better-sqlite3';
-import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
+import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
 import { POST } from './route';
 
 function makeRequest(body: any, headers?: Record<string, string>) {
@@ -46,8 +45,7 @@ describe('/api/mentor/attachments', () => {
     let db: Database.Database;
 
     beforeEach(() => {
-        db = new Database(':memory:');
-        initDocumentSchema(db);
+        db = createTestDb();
         setTestDb(db);
     });
 

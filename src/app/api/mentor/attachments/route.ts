@@ -19,7 +19,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
 import { extractPdfText } from '@/lib/domain/document/pdfTextExtractor';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
 
@@ -54,7 +53,6 @@ export async function POST(req: NextRequest) {
         }
 
         const db = getDb();
-        initDocumentSchema(db);
 
         const attachments: { id: string; filename: string; mimeType: string; byteSize: number }[] = [];
         const disclosures: string[] = [];

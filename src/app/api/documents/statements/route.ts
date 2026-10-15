@@ -22,7 +22,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { extractStatementBalancesFromPdf } from '@/lib/domain/document/pdfStatementExtractor';
 import {
     saveStatementReview,
@@ -40,7 +39,6 @@ export async function POST(request: Request) {
 
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const formData = await request.formData();
         const file = formData.get('file') as File | null;
@@ -187,7 +185,6 @@ export async function GET(request: Request) {
 
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const url = new URL(request.url);
         const documentId = url.searchParams.get('document_id');
@@ -215,7 +212,6 @@ export async function PUT(request: Request) {
 
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { document_id, proposals, version } = body;

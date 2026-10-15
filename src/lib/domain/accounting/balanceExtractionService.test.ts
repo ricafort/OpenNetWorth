@@ -443,7 +443,7 @@ Balance: $500.00`;
             let capturedUserPrompt = '';
             vi.spyOn(localLlmModule, 'queryLocalLlm').mockImplementation(async (messages) => {
                 const userMsg = messages.find(m => m.role === 'user');
-                capturedUserPrompt = userMsg ? userMsg.content : '';
+                capturedUserPrompt = userMsg && typeof userMsg.content === 'string' ? userMsg.content : '';
                 return JSON.stringify({
                     items: [
                         {

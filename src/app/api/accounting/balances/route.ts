@@ -16,7 +16,6 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import {
     recordBalanceObservation,
     recordBalanceImportBatch,
@@ -40,7 +39,6 @@ export async function GET(request: Request) {
     if (securityCheck) return securityCheck;
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const { searchParams } = new URL(request.url);
         const scopeEntityId = searchParams.get('scopeEntityId') || searchParams.get('entity_id') || undefined;
@@ -68,7 +66,6 @@ export async function POST(request: Request) {
     if (securityCheck) return securityCheck;
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { items, provider, connectionId, batch } = body;

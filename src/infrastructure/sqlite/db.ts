@@ -9,6 +9,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { runMigrations } from './migrations';
 
 // Path to SQLite database file
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -86,7 +87,7 @@ export function setTestDb(db: Database.Database | null): void {
 export function createTestDb(): Database.Database {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
-    initSchema(db);
+    runMigrations(db);
     return db;
 }
 
@@ -174,147 +175,20 @@ export function getDb(): Database.Database {
     dbInstance.pragma('synchronous = NORMAL');
     dbInstance.pragma('foreign_keys = ON');
 
-    // Run initial schema creation
-    initSchema(dbInstance);
+    // Apply the ordered migration list exactly once per database file
+    runMigrations(dbInstance);
 
     return dbInstance;
 }
 
 /**
- * Creates core tables if they do not already exist.
- * 
- * Why this exists:
- * Exports the initial schema DDL so both the production vault and in-memory test databases
- * can initialize their table structure idempotently.
- * 
- * Tricky logic:
- * Always inserts a default 'local_user' profile if one does not exist so initial foreign key
- * checks and single-user local queries immediately succeed without manual seeding.
- * 
- * TODO: Add automated migration runner for schema versioning in Milestone 1.
+ * @deprecated Use `runMigrations(db)` from `./migrations`. Kept as a thin wrapper
+ * until the single-data-layer refactor cleanup (Phase 5) removes the remaining
+ * callers (seed scripts and a few test bootstraps). Behavior is unchanged: it
+ * applies the ordered migration list, skipping already-applied entries.
  */
-export function initSchema(db: Database.Database) {
-    const schema = `
-        -- Profiles
-        CREATE TABLE IF NOT EXISTS profiles (
-            id TEXT PRIMARY KEY,
-            email TEXT,
-            full_name TEXT,
-            avatar_url TEXT,
-            privacy_mode INTEGER DEFAULT 1,
-            currency_code TEXT DEFAULT 'USD',
-            created_at TEXT NOT NULL
-        );
-
-        -- Assets
-        CREATE TABLE IF NOT EXISTS assets (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            value REAL NOT NULL DEFAULT 0,
-            is_liquid INTEGER DEFAULT 1,
-            currency TEXT DEFAULT 'USD',
-            interest_rate REAL DEFAULT 0,
-            investment_details TEXT,
-            last_updated TEXT NOT NULL
-        );
-
-        -- Liabilities
-        CREATE TABLE IF NOT EXISTS liabilities (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            balance REAL NOT NULL DEFAULT 0,
-            interest_rate REAL DEFAULT 0,
-            minimum_payment REAL DEFAULT 0,
-            is_good_debt INTEGER DEFAULT 0,
-            currency TEXT DEFAULT 'USD',
-            last_updated TEXT NOT NULL
-        );
-
-        -- Goals
-        CREATE TABLE IF NOT EXISTS goals (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            target_amount REAL NOT NULL,
-            current_amount REAL DEFAULT 0,
-            start_amount REAL DEFAULT 0,
-            currency TEXT DEFAULT 'USD',
-            category TEXT NOT NULL,
-            deadline TEXT,
-            created_at TEXT NOT NULL
-        );
-
-        -- Recurring Transactions
-        CREATE TABLE IF NOT EXISTS recurring_transactions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            amount REAL NOT NULL,
-            type TEXT NOT NULL,
-            frequency TEXT NOT NULL,
-            category TEXT NOT NULL,
-            start_date TEXT NOT NULL,
-            end_date TEXT,
-            is_active INTEGER DEFAULT 1,
-            currency TEXT DEFAULT 'USD',
-            created_at TEXT NOT NULL
-        );
-
-        -- Net Worth History
-        CREATE TABLE IF NOT EXISTS net_worth_history (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            date TEXT NOT NULL,
-            total_assets REAL NOT NULL,
-            total_liabilities REAL NOT NULL,
-            net_worth REAL NOT NULL,
-            currency TEXT,
-            UNIQUE(user_id, date)
-        );
-
-        -- Cash Flow History
-        CREATE TABLE IF NOT EXISTS cash_flow_history (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            month TEXT NOT NULL,
-            income REAL DEFAULT 0,
-            expenses REAL DEFAULT 0,
-            currency TEXT DEFAULT 'USD',
-            UNIQUE(user_id, month)
-        );
-
-        -- Key-value settings
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        -- Insert default local user profile if not present
-        INSERT OR IGNORE INTO profiles (id, email, full_name, privacy_mode, currency_code, created_at)
-        VALUES ('local_user', 'local@device', 'Local Vault Owner', 1, 'USD', datetime('now'));
-    `;
-
-    db.exec(schema);
-
-    // Why this exists:
-    // Resolves Finding 2 & Clarification 4: Net worth history snapshots must durably retain currency
-    // so historical snapshots recorded in USD/EUR are never masqueraded as AUD.
-    // Tricky logic:
-    // Existing SQLite databases already have net_worth_history created without currency.
-    // We safely query PRAGMA table_info and execute ALTER TABLE ADD COLUMN if missing.
-    // TODO: In Milestone 2, support retroactive batch currency attribution for legacy snapshots.
-    try {
-        const tableInfo = db.prepare("PRAGMA table_info(net_worth_history)").all() as { name: string }[];
-        if (tableInfo.length > 0 && !tableInfo.some(c => c.name === 'currency')) {
-            db.prepare("ALTER TABLE net_worth_history ADD COLUMN currency TEXT").run();
-        }
-    } catch {
-        // Ignored if table doesn't exist yet or already altered
-    }
+export function initSchema(db: Database.Database): void {
+    runMigrations(db);
 }
 
 export default getDb;

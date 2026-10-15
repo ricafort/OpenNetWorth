@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { bulkUpdateProposalAccount } from '@/lib/domain/document/documentInboxService';
 
 export async function PATCH(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { document_id, account_id } = body;

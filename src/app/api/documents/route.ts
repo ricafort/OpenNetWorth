@@ -9,21 +9,19 @@
  * Tricky logic:
  * - Content hash deduplication: Ingesting an identical CSV returns the existing document record
  *   and retains existing proposal approval states without creating duplicate proposals.
- * - Always runs `initAccountingSchema(db)` to ensure document and accounting tables exist.
+ * - Tables are guaranteed by the migration runner at database open (getDb()).
  * 
  * TODO: Add support for multipart/form-data file uploads alongside raw JSON strings.
  */
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ingestCsvDocument, listDocuments } from '@/lib/domain/document/documentInboxService';
 import { IngestCsvInput } from '@/lib/domain/document/types';
 
 export async function GET() {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const documents = listDocuments(db);
         return NextResponse.json({ success: true, documents });
@@ -36,7 +34,6 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { filename, raw_content, mapping, target_account_id, default_category, entity_id } = body;

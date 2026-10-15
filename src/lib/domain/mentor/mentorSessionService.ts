@@ -20,7 +20,6 @@
  */
 
 import Database from 'better-sqlite3';
-import { initMentorChatSchema } from './schema';
 
 export const MENTOR_MESSAGE_ROLES = ['user', 'mentor', 'consensus', 'action_confirm'] as const;
 export type MentorMessageRole = (typeof MENTOR_MESSAGE_ROLES)[number];
@@ -134,7 +133,6 @@ export function toClientMessage(row: MentorMessageRow): any {
 }
 
 export function createSession(db: Database.Database, title?: string): MentorSessionRow {
-    initMentorChatSchema(db);
     const now = new Date().toISOString();
     const session = {
         id: crypto.randomUUID(),
@@ -148,7 +146,6 @@ export function createSession(db: Database.Database, title?: string): MentorSess
 }
 
 export function listSessions(db: Database.Database, limit = 50): Array<MentorSessionRow & { message_count: number }> {
-    initMentorChatSchema(db);
     return db.prepare(`
         SELECT s.*, (SELECT COUNT(*) FROM m1_mentor_messages m WHERE m.session_id = s.id) AS message_count
         FROM m1_mentor_sessions s
@@ -158,7 +155,6 @@ export function listSessions(db: Database.Database, limit = 50): Array<MentorSes
 }
 
 export function getSession(db: Database.Database, sessionId: string): { session: MentorSessionRow; messages: MentorMessageRow[] } | null {
-    initMentorChatSchema(db);
     const session = db.prepare('SELECT * FROM m1_mentor_sessions WHERE id = ?').get(sessionId) as MentorSessionRow | undefined;
     if (!session) return null;
     const messages = db.prepare('SELECT * FROM m1_mentor_messages WHERE session_id = ? ORDER BY seq ASC').all(sessionId) as MentorMessageRow[];
@@ -175,8 +171,6 @@ export function saveSession(
     db: Database.Database,
     input: { id?: string; title?: string; messages: SessionMessageInput[] }
 ): { session: MentorSessionRow; messages: MentorMessageRow[] } {
-    initMentorChatSchema(db);
-
     if (!Array.isArray(input.messages)) {
         throw new MentorSessionValidationError('messages must be an array');
     }
@@ -237,7 +231,6 @@ export function saveSession(
 }
 
 export function appendMessage(db: Database.Database, sessionId: string, msg: SessionMessageInput): MentorMessageRow | null {
-    initMentorChatSchema(db);
     const run = db.transaction(() => {
         const session = db.prepare('SELECT id FROM m1_mentor_sessions WHERE id = ?').get(sessionId) as any;
         if (!session) return null;
@@ -261,7 +254,6 @@ export function appendMessage(db: Database.Database, sessionId: string, msg: Ses
 }
 
 export function deleteMessage(db: Database.Database, sessionId: string, messageId: string): boolean {
-    initMentorChatSchema(db);
     const result = db.prepare('DELETE FROM m1_mentor_messages WHERE id = ? AND session_id = ?').run(messageId, sessionId);
     if (result.changes > 0) {
         db.prepare('UPDATE m1_mentor_sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
@@ -270,7 +262,6 @@ export function deleteMessage(db: Database.Database, sessionId: string, messageI
 }
 
 export function deleteSession(db: Database.Database, sessionId: string): boolean {
-    initMentorChatSchema(db);
     // FK cascade removes the messages; kept explicit for clarity and older FK settings.
     const run = db.transaction(() => {
         db.prepare('DELETE FROM m1_mentor_messages WHERE session_id = ?').run(sessionId);
