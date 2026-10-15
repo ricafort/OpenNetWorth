@@ -1,72 +1,28 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { createTestDb } from './db';
 
 /**
  * SQLite Database Unit Tests
- * 
+ *
  * Tests that our SQLite schema and transactions operate cleanly in memory
- * and support the OpenNetWorth data model.
+ * and support the OpenNetWorth data model. The schema comes from the real
+ * migration runner (createTestDb), not a hand-rolled copy, so these tests
+ * track the canonical DDL automatically.
  */
 describe('OpenNetWorth SQLite Engine', () => {
     let db: Database.Database;
 
     beforeEach(() => {
         // Create an isolated in-memory SQLite database for each test
-        db = new Database(':memory:');
-        db.pragma('foreign_keys = ON');
-
-        db.exec(`
-            CREATE TABLE profiles (
-                id TEXT PRIMARY KEY,
-                email TEXT,
-                full_name TEXT,
-                avatar_url TEXT,
-                privacy_mode INTEGER DEFAULT 1,
-                currency_code TEXT DEFAULT 'USD',
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE assets (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                type TEXT NOT NULL,
-                value REAL NOT NULL DEFAULT 0,
-                is_liquid INTEGER DEFAULT 1,
-                currency TEXT DEFAULT 'USD',
-                interest_rate REAL DEFAULT 0,
-                investment_details TEXT,
-                last_updated TEXT NOT NULL
-            );
-
-            CREATE TABLE liabilities (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                type TEXT NOT NULL,
-                balance REAL NOT NULL DEFAULT 0,
-                interest_rate REAL DEFAULT 0,
-                minimum_payment REAL DEFAULT 0,
-                is_good_debt INTEGER DEFAULT 0,
-                currency TEXT DEFAULT 'USD',
-                last_updated TEXT NOT NULL
-            );
-
-            CREATE TABLE net_worth_history (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                date TEXT NOT NULL,
-                total_assets REAL NOT NULL,
-                total_liabilities REAL NOT NULL,
-                net_worth REAL NOT NULL,
-                UNIQUE(user_id, date)
-            );
-        `);
+        db = createTestDb();
     });
 
     it('should insert and retrieve a local user profile', () => {
+        // createTestDb seeds a default 'local_user' profile row; replace it to
+        // exercise the insert/retrieve contract against known values.
         db.prepare(`
-            INSERT INTO profiles (id, email, full_name, privacy_mode, currency_code, created_at)
+            INSERT OR REPLACE INTO profiles (id, email, full_name, privacy_mode, currency_code, created_at)
             VALUES ('local_user', 'local@device', 'Vault Owner', 1, 'AUD', datetime('now'))
         `).run();
 

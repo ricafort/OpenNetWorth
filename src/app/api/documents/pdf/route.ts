@@ -15,13 +15,11 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ingestPdfDocument } from '@/lib/domain/document/documentInboxService';
 
 export async function POST(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const contentType = request.headers.get('content-type') || '';
 

@@ -69,7 +69,6 @@ import {
     UndoReimbursementMatchInput
 } from '@/features/reimbursement/reimbursementService';
 import { saveDraft, getDrafts, deleteDraft } from '@/lib/domain/accounting/draftService';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ScopeType, formatMoney, Account } from '@/lib/domain/accounting/types';
 import { getLatestValuationObservation } from '@/lib/domain/accounting/balanceObservationService';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
@@ -94,7 +93,6 @@ export async function GET(request: Request) {
     if (securityCheck) return securityCheck;
     try {
         const db = getDb();
-        initAccountingSchema(db); // Idempotent schema check
 
         const url = new URL(request.url);
         const view = url.searchParams.get('view');
@@ -430,7 +428,6 @@ export async function POST(request: Request) {
     if (securityCheck) return securityCheck;
     try {
         const db = getDb();
-        initAccountingSchema(db); // Idempotent schema check
 
         const body = await request.json().catch(() => null);
         if (!body || typeof body !== 'object') {

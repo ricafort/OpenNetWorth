@@ -90,7 +90,6 @@ function assertValidCalendarDateLocal(dateStr: any, context: string): void {
 
 import { CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
-import { initMentorChatSchema } from '@/lib/domain/mentor/schema';
 
 function secureJson(data: any, init?: ResponseInit): NextResponse {
     return applySensitiveHeaders(NextResponse.json(data, init));
@@ -1469,7 +1468,6 @@ export async function POST(request: Request) {
                 // from the global m1_ wipe above: existing chats survive restores of backups
                 // that carry no mentor data, and are replaced only when the backup has any.)
                 if (Array.isArray(rawVault.mentor_sessions) || Array.isArray(rawVault.mentor_messages)) {
-                    initMentorChatSchema(db);
                     db.prepare('DELETE FROM m1_mentor_messages').run();
                     db.prepare('DELETE FROM m1_mentor_sessions').run();
 

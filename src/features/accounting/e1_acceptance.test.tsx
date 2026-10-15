@@ -272,8 +272,6 @@ describe('E1 End-to-End Acceptance Journey', () => {
         undoPersonallyPaidBusinessExpense(db, {
             workflowId: undoneWf.id,
             personalExpenseAccountId: personalExpenseAcc.id,
-            expectedPersonalTxId: origPersTx.id,
-            expectedBusinessTxId: origBusTx.id,
             expectedPersonalRevision: origPersTx.revision,
             expectedBusinessRevision: origBusTx.revision,
             performedBy: 'TestUser'

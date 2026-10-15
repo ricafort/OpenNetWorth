@@ -14,7 +14,6 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { parseStructuredTable } from '@/lib/domain/accounting/structuredBalanceParser';
 import { listAccounts } from '@/lib/domain/accounting/accountService';
 import { getLatestObservation } from '@/lib/domain/accounting/balanceObservationService';
@@ -22,7 +21,6 @@ import { getLatestObservation } from '@/lib/domain/accounting/balanceObservation
 export async function POST(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { text, defaultCurrency = 'AUD', defaultDate } = body;

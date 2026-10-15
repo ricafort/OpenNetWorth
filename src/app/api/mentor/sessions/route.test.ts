@@ -6,9 +6,8 @@
  * round-trip in camelCase client shape, DELETE semantics, and 400 validation.
  *
  * Tricky logic:
- * - createTestDb()/new Database(':memory:') only carries the core schema; the
- *   route handlers initialize the mentor tables themselves (idempotent
- *   initMentorChatSchema), which this test relies on exactly like production.
+ * - createTestDb() runs the full migration list, so the mentor chat tables exist
+ *   exactly like they do in production, where getDb() migrates on database open.
  * - Restored messages must come back camelCase with parsed JSON payloads so the
  *   client can drop them straight into React state.
  *
@@ -19,7 +18,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import Database from 'better-sqlite3';
-import { setTestDb } from '@/infrastructure/sqlite/db';
+import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
 import { DELETE, GET, POST } from './route';
 
 function makeRequest(path: string, init?: { method?: string; body?: string; headers?: Record<string, string> }) {
@@ -39,7 +38,7 @@ describe('/api/mentor/sessions', () => {
     let db: Database.Database;
 
     beforeEach(() => {
-        db = new Database(':memory:');
+        db = createTestDb();
         setTestDb(db);
     });
 

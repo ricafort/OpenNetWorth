@@ -20,7 +20,6 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { extractBalancesFromText } from '@/lib/domain/accounting/balanceExtractionService';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
 
@@ -34,7 +33,6 @@ export async function POST(request: Request) {
 
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { text, defaultCurrency = 'AUD', defaultDate, strategy = 'auto', localConfig, entityId, entity_id } = body;

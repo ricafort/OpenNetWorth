@@ -15,13 +15,11 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { getCandidateTransactionsForProposal } from '@/lib/domain/document/documentInboxService';
 
 export async function GET(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const url = new URL(request.url);
         const proposalId = url.searchParams.get('proposal_id');
