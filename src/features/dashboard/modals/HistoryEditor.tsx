@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Save, Wand2 } from 'lucide-react';
-import { loadNetWorthHistory, saveNetWorthHistory, generateMockHistory, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
+import { generateMockHistory, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 import { NetWorthSnapshot } from '@/types';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { convertAmount, formatCurrency } from '@/lib/utils/currencyService';
@@ -13,9 +13,18 @@ interface HistoryEditorProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: () => void; // Trigger reload in parent
+    /**
+     * The authoritative snapshot series from the parent (useHistory → SQLite
+     * vault). The editor seeds from this instead of re-reading localStorage,
+     * so the table and the chart can never show different series.
+     */
+    history: NetWorthSnapshot[];
 }
 
-export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditorProps) {
+const byDateDesc = (a: NetWorthSnapshot, b: NetWorthSnapshot) =>
+    new Date(b.date).getTime() - new Date(a.date).getTime();
+
+export default function HistoryEditor({ isOpen, onClose, onSave, history: authoritativeHistory }: HistoryEditorProps) {
     const { baseCurrency } = useNetWorth();
     const [history, setHistory] = useState<NetWorthSnapshot[]>([]);
 
@@ -31,11 +40,10 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
     useEffect(() => {
         if (isOpen) {
             setError(null);
-            // Load and sort desc by date
-            const loaded = loadNetWorthHistory();
-            setHistory(loaded.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            // Seed from the parent's series, sorted desc by date
+            setHistory([...authoritativeHistory].sort(byDateDesc));
         }
-    }, [isOpen]);
+    }, [isOpen, authoritativeHistory]);
 
     /**
      * Handles adding a new historical snapshot.
@@ -94,7 +102,7 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
 
             // Update confirmed displayed list only after successful persistence with authoritative persisted ID
             const updated = [...history.filter(h => h.date !== persisted.date), persisted]
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                .sort(byDateDesc);
             setHistory(updated);
 
             // Reset form fields only on successful commit
@@ -148,11 +156,23 @@ export default function HistoryEditor({ isOpen, onClose, onSave }: HistoryEditor
         }
     };
 
-    const handleGenerateMock = () => {
-        if (confirm("This will overwrite your current history with 24 months of mock data. Continue?")) {
-            generateMockHistory();
-            setHistory(loadNetWorthHistory().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    const handleGenerateMock = async () => {
+        if (isSaving) return;
+        if (!confirm("This will overwrite your current history with 24 months of mock data. Continue?")) return;
+
+        setError(null);
+        setIsSaving(true);
+        try {
+            // Awaited: the durable SQLite write commits before the table and
+            // the parent chart refresh, so neither can render a stale series.
+            const mock = await generateMockHistory();
+            setHistory([...mock].sort(byDateDesc));
             onSave();
+        } catch (err: any) {
+            console.error('Failed to generate mock history:', err);
+            setError(err.message || 'Failed to generate mock history into the local database.');
+        } finally {
+            setIsSaving(false);
         }
     };
 

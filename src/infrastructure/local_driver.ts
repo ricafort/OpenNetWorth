@@ -900,8 +900,18 @@ export function generateMockData(): void {
     ]));
 }
 
-export function generateMockHistory(): void {
-    if (typeof window === 'undefined') return;
+/**
+ * Generates 24 months of mock snapshots and persists them (SQLite first, then
+ * the localStorage cache) via saveNetWorthHistory.
+ *
+ * Why this exists:
+ * Async + returning the generated series removes a race: callers previously
+ * re-read the localStorage cache before the durable POST had resolved and saw
+ * stale data. Awaiting here guarantees the vault is committed before the UI
+ * refreshes.
+ */
+export async function generateMockHistory(): Promise<NetWorthSnapshot[]> {
+    if (typeof window === 'undefined') return [];
 
     const today = new Date();
     const history: NetWorthSnapshot[] = [];
@@ -930,7 +940,8 @@ export function generateMockHistory(): void {
         });
     }
 
-    saveNetWorthHistory(history);
+    await saveNetWorthHistory(history);
+    return history;
 }
 
 // --- Dashboard Layout Persistence ---
