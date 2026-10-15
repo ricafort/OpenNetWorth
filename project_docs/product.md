@@ -55,7 +55,7 @@
 ### Privacy Suite
 -   **Stealth Mode**: A dedicated **Theme** setting. Forces dark mode + hides all sensitive values (matching background color) for public usage.
 -   **Privacy Blur**: A **Toggle** state. Temporarily blurs values (`filter: blur(4px)`) without changing the entire theme.
--   **Data Isolation**: The default vault is a single-user local SQLite file — isolation is inherent. Supabase RLS policies apply only to the optional self-hosted adapter.
+-   **Data Isolation**: The vault is a single-user local SQLite file — isolation is inherent. The former Supabase adapter and its RLS policies were removed (git history preserves them).
 
 ### Fast Balance Updates & Observation Ledger (Delivery 1)
 -   **Observation-Based Ledger**: Non-destructive tracking of balance snapshots in `m1_balance_observations` without fabricating journal entries. Supports revision tracking and audit trails.
@@ -79,7 +79,7 @@
 | **Multi-Currency Ledger** | 🟢 Implemented (D1) | `sharedFinancialSummaryService` with strict currency subtotals & FX disclosure. |
 | **Bank Integration** | 🟢 Implemented | Basiq (AU) & Plaid (US) connectors behind `src/features/bank/factory.ts`. |
 | **Debt Calculator** | 🟢 Implemented | Logic in `debtCalculator.ts`, UI in `DebtPayoffCalculator.tsx`. |
-| **Gamification** | 🟢 Implemented | Persistent badges via `user_badges`; rules evaluated by `evaluateAchievements` domain logic (1.2.0). |
+| **Gamification** | 🟢 Implemented | Badges derived in-memory by `evaluateAchievements` domain logic (1.2.0); no badge store. |
 | **Time Machine** | 🟢 Implemented | Control UI exists, Vintage Overlay active on `/timemachine`. |
 | **Mentorship** | 🟢 Implemented | `ChatInterface` active with Context, Action Parsing, and Consensus Board. |
 | **Cash Flow** | 🟢 Implemented | History tracking and Autopilot (Recurring) engine active. |
@@ -88,12 +88,11 @@
 ## 4. Core Business Rules
 
 ### Gamification & Persistence
--   **Badges**: Stored in `user_badges` (user_id, badge_id).
--   **Unlock Logic**: `evaluateAchievements` domain service (since 1.2.0); legacy DB triggers (`on_asset_change` etc.) apply only to the optional Supabase adapter.
+-   **Badges**: Derived facts, not stored state — evaluated in-memory from live ledger figures.
+-   **Unlock Logic**: `evaluateAchievements` domain service (since 1.2.0); legacy DB triggers (`on_asset_change` etc.) were removed with the Supabase adapter.
 -   **Security**:
-    -   Users view their own badges.
-    -   Admins view ALL badges (God Mode).
-    -   Public (Anon) views "Template" badges (Demo Mode).
+    -   The device owner sees their own badges.
+    -   Demo personas (read-only vaults) show their own derived badges; they can never write to the live vault.
 
 ### Financial-Math
 -   **Rounding**: All currency displays must use 2 decimal places.

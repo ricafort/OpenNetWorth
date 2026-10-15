@@ -5,9 +5,7 @@
 import { z } from 'zod';
 
 const envSchema = z.object({
-    // Optional Cloud Infra (OpenNetWorth is 100% local-first by default)
-    NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL").optional(),
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is missing").optional(),
+    // Optional Fallback Cloud AI (Google Gemini) — OpenNetWorth is 100% local-first by default
     GEMINI_API_KEY: z.string().optional(),
 
     // Local LLM Configuration (OpenNetWorth Local AI Engine)

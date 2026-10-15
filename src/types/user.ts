@@ -1,11 +1,10 @@
 import { CurrencyCode } from './currency';
 
 /**
- * User profile from Supabase auth.
- * Links to auth.users table via `id`.
+ * Local vault owner profile (profiles table).
  */
 export interface UserProfile {
-    /** UUID from Supabase auth.users */
+    /** Profile id — 'local_user' for the device owner */
     id: string;
     email: string;
     full_name?: string;

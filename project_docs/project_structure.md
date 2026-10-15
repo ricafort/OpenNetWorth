@@ -13,7 +13,6 @@ What you see when you first open the project.
  ┣━━ 📂 public                   - Static assets served directly (images, fonts).
  ┣━━ 📂 scripts                  - TypeScript maintenance scripts (migrations, seeding).
  ┣━━ 📂 src                      - Source code (Application Logic).
- ┣━━ 📂 supabase_migrations      - SQL migrations for the optional Supabase adapter (legacy).
  ┃
  ┣━━ 📄 .env.local               - Local environment variables (Secrets - DO NOT COMMIT).
  ┣━━ 📄 next.config.ts           - Next.js framework configuration.
@@ -40,17 +39,14 @@ Static files accessible via URL (e.g., `https://domain.com/file.svg`).
 
 #### 📂 `scripts`
 One-off executable scripts for maintenance. Run with `npx tsx scripts/script-name.ts`.
-- `apply-migration.ts`: Helpers to apply SQL schema changes.
-- `seed-benchmarks.ts`: Populates the DB with dummy benchmark data.
-- `hydrate-templates.ts`: Seeds initial templates.
-
-#### 📂 `supabase_migrations`
-SQL migrations for the **optional** self-hosted Supabase adapter only.
-- `00_schema_v1.sql`: Consolidated schema with RLS policies (legacy path).
-- `_archive/`: Old, squashed migrations kept for reference.
+- `inventory-vault.ts`: Read-only row counts per table for the live vault.
+- `seed-demo-vaults.ts`: Builds the read-only persona vaults under `data/demo_vaults/`.
+- `launch-browser-test.ts`: Boots the dev server against an isolated test vault.
+- `legacy_migrations/`: Archived one-time data fixes (superseded by the migration runner).
 
 > **Schema Source of Truth** is the embedded SQLite engine: migrations run in
-> `src/infrastructure/sqlite/db.ts` against `data/opennetworth.sqlite`.
+> `src/infrastructure/sqlite/migrations/` (via `runMigrations` in `db.ts`)
+> against `data/opennetworth.sqlite`.
 
 ---
 
@@ -92,11 +88,8 @@ The actual application code. Organized by **Feature (Vertical Slice)**.
  ┃    ┗━━ 🧱 common              - Shared PageHeader, ContentCard
  ┃
  ┣━━ ⚙️ infrastructure           (ADAPTERS: External Services)
- ┃    ┣━━ 🏭 dataFactory.ts      - Abstract Factory (driver selection)
- ┃    ┣━━ 💾 sqlite/             - Embedded SQLite engine (better-sqlite3): schema + migrations
- ┃    ┣━━ 💾 SqliteDataService.ts - Primary data service (Local Vault on SQLite)
- ┃    ┣━━ ☁️ SupabaseService.ts  - Optional Cloud DB Adapter (self-hosters)
- ┃    ┗━━ 💾 LocalStorageService.ts - Browser/Demo Adapter
+ ┃    ┣━━ 💾 sqlite/             - Embedded SQLite engine (better-sqlite3): schema + migration runner
+ ┃    ┗━━ 💾 local_driver.ts     - Settings-kv / boot-migration helpers
  ┃
  ┗━━ 📚 lib                      (UTILITIES: Shared Helpers)
       ┣━━ 📂 utils               - formatting, dates, currency
@@ -128,8 +121,7 @@ Dumb UI components used across multiple features.
 #### ⚙️ `src/infrastructure` (The Plumber)
 Handles "How do we get data?".
 - Implements the Repository Interfaces defined in Features.
-- **Default**: embedded SQLite Local Vault (`sqlite/` + `SqliteDataService.ts`).
-- **Optional**: self-hosted Supabase (`SupabaseService.ts`); browser LocalStorage for demo mode.
+- **Only store**: embedded SQLite Local Vault (`sqlite/` + migration runner). The Supabase adapter and browser-LocalStorage services were removed (git history preserves them).
 
 ---
 
@@ -155,8 +147,7 @@ Handles "How do we get data?".
     2. Create logic in `src/features/[route]/components/[Route]Page.tsx`.
 
 - **A database change?**
-    1. Add a migration in `src/infrastructure/sqlite/db.ts` (embedded SQLite is the source of truth).
-    2. If the change must also work for self-hosted Supabase, mirror it in `supabase_migrations/`.
+    1. Add a migration module in `src/infrastructure/sqlite/migrations/` (embedded SQLite is the source of truth).
 
 - **A local AI feature or prompt?**
     - Call `queryLocalLlm` from `src/lib/api/localLlm.ts` within an API route (`src/app/api/...`).

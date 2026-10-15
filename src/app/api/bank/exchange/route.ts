@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getBankConnector } from '@/features/bank/factory';
-import { createClient } from '@/utils/supabase/server';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
+import { getLinkedItems, upsertLinkedItem, LOCAL_USER_ID } from '@/features/bank/bankVault';
 
 // CAUTION: This endpoint handles sensitive Access Tokens.
-// It must encrypt them before storage.
+// They are stored in the vault's settings kv under a key the settings read API
+// and backup export both reject (see bankVault.ts), so tokens never leave the
+// live vault file.
 
 export async function POST(req: Request) {
+    // Demo personas are read-only sample vaults — no bank linking.
+    const demoDenied = demoReadOnlyResponse(req);
+    if (demoDenied) return demoDenied;
+
     try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
         const { public_token, country = 'US' } = await req.json();
 
         if (!public_token) {
@@ -23,27 +23,27 @@ export async function POST(req: Request) {
         const connector = getBankConnector(country);
         const result = await connector.exchangePublicToken(public_token);
 
-        // Save to DB (using Supabase Vault would be ideal, but standard encrypted column for now)
-        // Here we insert plain text access_token but in production this MUST be pg_sodium encrypted.
-        // For this implementation, we assume the table is secure or pg_sodium triggers handle it.
+        const db = getDbForRequest(req);
+        if (getLinkedItems(db).some(i => i.item_id === result.originalItemId)) {
+            return NextResponse.json({ error: 'Bank already linked' }, { status: 409 });
+        }
 
-        const { error } = await supabase.from('linked_items').insert({
-            user_id: user.id,
+        const now = new Date().toISOString();
+        upsertLinkedItem(db, {
+            id: crypto.randomUUID(),
+            user_id: LOCAL_USER_ID,
             provider: result.provider,
             item_id: result.originalItemId,
-            access_token: result.accessToken, // TODO: Ensure DB encryption!
-            status: 'active'
+            access_token: result.accessToken,
+            status: 'active',
+            created_at: now,
+            updated_at: now
         });
-
-        if (error) {
-            if (error.code === '23505') { // Unique violation
-                return NextResponse.json({ error: 'Bank already linked' }, { status: 409 });
-            }
-            throw error;
-        }
 
         return NextResponse.json({ success: true, item_id: result.originalItemId });
     } catch (error: any) {
+        const demoRes = demoErrorResponse(error);
+        if (demoRes) return demoRes;
         console.error('Error exchanging token:', error);
         return NextResponse.json(
             { error: error.message || 'Failed to link bank' },

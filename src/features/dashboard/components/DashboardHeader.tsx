@@ -11,7 +11,7 @@ import ThemeToggle from '@/components/ui/ThemeToggle';
 import CurrencySelector from '@/components/ui/CurrencySelector';
 import LocalAiSettingsModal, { getSavedLocalAiConfig } from '@/components/ui/LocalAiSettingsModal';
 import UpdateBalancesModal from '@/features/sync/components/UpdateBalancesModal';
-import { createClient } from '@/utils/supabase/client';
+import { setDemoPersonaCookie } from '@/features/demo/demoMode';
 
 export default function DashboardHeader() {
     const { isEditMode, setIsEditMode, openSettings, resetLayout } = useDashboard();
@@ -110,12 +110,13 @@ export default function DashboardHeader() {
                         </button>
 
                         <button
-                            onClick={async () => {
-                                if (window.confirm('Reset and choose a new profile? This will clear your current local data and log you out.')) {
-                                    const supabase = createClient();
-                                    await supabase.auth.signOut();
+                            onClick={() => {
+                                if (window.confirm('Reset and choose a new profile? This will clear your local UI state and exit demo mode.')) {
+                                    // Local-first: there is no cloud session to end —
+                                    // clearing the demo cookie returns to the real vault.
+                                    setDemoPersonaCookie(null);
                                     localStorage.clear();
-                                    window.location.href = '/'; 
+                                    window.location.href = '/';
                                 }
                             }}
                             className="p-2 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-full transition-colors"

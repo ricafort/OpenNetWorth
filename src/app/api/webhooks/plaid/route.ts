@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
+import getDb from '@/infrastructure/sqlite/db';
+import { getLinkedItems, upsertLinkedItem } from '@/features/bank/bankVault';
 
 export async function POST(req: Request) {
     // 1. Verify Webhook Signature (Skipped for MVP, but Critical for Prod)
@@ -21,9 +22,15 @@ export async function POST(req: Request) {
 
     if (webhook_type === 'ITEM') {
         if (webhook_code === 'ERROR') {
-            // Update DB status to 'error_relogin_required'
-            const adminSupabase = createClient(); // Needs Admin/Service Role!
-            // Ignoring for now since we don't have Admin Client easily accessible here without fix.
+            // Mark the linked item so the UI can prompt a re-login.
+            const db = getDb();
+            const items = getLinkedItems(db);
+            const item = items.find(i => i.item_id === item_id);
+            if (item) {
+                item.status = 'error_relogin_required';
+                item.updated_at = new Date().toISOString();
+                upsertLinkedItem(db, item);
+            }
             console.error('Plaid Item Error reported via Webhook');
         }
     }
