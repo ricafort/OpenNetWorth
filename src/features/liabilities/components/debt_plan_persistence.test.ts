@@ -31,12 +31,13 @@ import { calculatePayoff } from '@/lib/domain/debtCalculator';
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { Liability, PayoffStrategy } from '@/features/liabilities/types';
 import { CurrencyCode } from '@/types';
-import { POST as vaultPost } from '@/app/api/vault/route';
+import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
+import { GET as settingsGet, POST as settingsPost, DELETE as settingsDelete } from '@/app/api/settings/route';
 import {
-    loadFreedomSettings,
+    loadFreedomSettingsFromVault,
     saveFreedomSettings,
     updateDebtRecurringTransaction,
-    loadRecurringTransactions
+    resetUiStateMigrationForTests
 } from '@/infrastructure/local_driver';
 
 describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () => {
@@ -96,10 +97,19 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
             }
         };
 
-        // Bridge client driver fetch to the authoritative vault route handler
+        // The UI-state boot migration is a module singleton; re-arm it per test.
+        resetUiStateMigrationForTests();
+
+        // Bridge client driver fetch to the authoritative vault + settings route handlers.
         (global as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
-            if (url === '/api/vault') {
-                const req = new Request('http://localhost:4000/api/vault', init);
+            const req = new Request(`http://localhost:4000${url}`, init);
+            if (url.startsWith('/api/settings')) {
+                if (req.method === 'GET') return settingsGet(req);
+                if (req.method === 'DELETE') return settingsDelete(req);
+                return settingsPost(req);
+            }
+            if (url.startsWith('/api/vault')) {
+                if (req.method === 'GET') return vaultGet(req);
                 return vaultPost(req);
             }
             return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
@@ -169,18 +179,6 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
             INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
             VALUES ('debt-freedom-accelerator', 'local_user', 'Debt Freedom Accelerator', 500, 'expense', 'monthly', 'Debt Repayment', '2026-09-01', 1, 'AUD', datetime('now'))
         `).run();
-        mockLocalStorage['opennetworth_recurring'] = JSON.stringify([{
-            id: 'debt-freedom-accelerator',
-            user_id: 'local_user',
-            name: 'Debt Freedom Accelerator',
-            amount: 500,
-            type: 'expense',
-            frequency: 'monthly',
-            category: 'Debt Repayment',
-            start_date: '2026-09-01',
-            is_active: true,
-            currency: 'AUD'
-        }]);
 
         // User saves 'minimum' strategy: extra payment must be zeroed / deactivated
         await updateDebtRecurringTransaction(0, 'AUD');
@@ -338,19 +336,21 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
                 currency: 'AUD'
             });
 
-            const reloadedAud = loadFreedomSettings();
+            const reloadedAud = await loadFreedomSettingsFromVault();
             expect(reloadedAud.extraMonthlyPayment).toBe(750);
             expect(reloadedAud.currency).toBe('AUD');
             expect(reloadedAud.strategy).toBe('snowball');
 
             // Case 3b: Legacy settings row without currency field defaults safely to 'USD'
-            mockLocalStorage['opennetworth_freedom_settings'] = JSON.stringify({
-                strategy: 'avalanche',
-                extraMonthlyPayment: 400
-                // Notice: currency is deliberately undefined / absent in legacy data
-            });
+            testDb.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('freedomSettings', ?)").run(
+                JSON.stringify({
+                    strategy: 'avalanche',
+                    extraMonthlyPayment: 400
+                    // Notice: currency is deliberately undefined / absent in legacy data
+                })
+            );
 
-            const reloadedLegacy = loadFreedomSettings();
+            const reloadedLegacy = await loadFreedomSettingsFromVault();
             expect(reloadedLegacy.extraMonthlyPayment).toBe(400);
             expect(reloadedLegacy.strategy).toBe('avalanche');
             expect(reloadedLegacy.currency).toBe('USD'); // Historical USD meaning preserved
@@ -377,18 +377,6 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
                 INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, is_active, currency, created_at)
                 VALUES ('debt-freedom-accelerator', 'local_user', 'Debt Freedom Accelerator', 250, 'expense', 'monthly', 'Debt Repayment', '2026-01-01', 1, 'USD', datetime('now'))
             `).run();
-            mockLocalStorage['opennetworth_recurring'] = JSON.stringify([{
-                id: 'debt-freedom-accelerator',
-                user_id: 'local_user',
-                name: 'Debt Freedom Accelerator',
-                amount: 250,
-                type: 'expense',
-                frequency: 'monthly',
-                category: 'Debt Repayment',
-                start_date: '2026-01-01',
-                is_active: true,
-                currency: 'USD'
-            }]);
 
             // Verify initial state
             const initialRow = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
@@ -433,12 +421,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
          * TODO: Support automated dated FX conversion previews in Milestone 2.
          */
         it('Acceptance 5: A saved-plan/debt currency mismatch cannot silently change units', async () => {
-            // Seed saved plan in USD
-            mockLocalStorage['opennetworth_freedom_settings'] = JSON.stringify({
-                strategy: 'avalanche',
-                extraMonthlyPayment: 500,
-                currency: 'USD'
-            });
+            // Seed saved plan in USD (settings kv is the single source of truth)
             testDb.prepare("INSERT INTO settings (key, value) VALUES ('freedomSettings', ?)").run(
                 JSON.stringify({ strategy: 'avalanche', extraMonthlyPayment: 500, currency: 'USD' })
             );
@@ -459,7 +442,7 @@ describe('Slice B1: Debt Payoff Plan Persistence & Explicit Save Semantics', () 
                 }
             ];
 
-            const savedSettings = loadFreedomSettings();
+            const savedSettings = await loadFreedomSettingsFromVault();
             const debtCurrency: CurrencyCode = audDebts[0].currency as CurrencyCode;
 
             // 1. Verify mismatch detection

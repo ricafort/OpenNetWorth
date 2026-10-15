@@ -2,9 +2,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Liability, LiabilityType, DebtPayoffResult } from '@/features/liabilities/types';
+import { Liability, LiabilityType, DebtPayoffResult, PayoffStrategy } from '@/features/liabilities/types';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
-import { loadFreedomSettings } from '@/infrastructure/local_driver';
+import { loadFreedomSettingsFromVault } from '@/infrastructure/local_driver';
 import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useLiabilitiesQuery } from '@/features/liabilities/hooks/useLiabilitiesQuery';
@@ -45,6 +45,9 @@ export default function FreedomDateCard() {
 
 
     useEffect(() => {
+        // Freedom settings now live in the SQLite settings kv, so the projection
+        // runs async to read them from the vault first.
+        void (async () => {
         const modernDebts: Liability[] = summary?.accounts
             ? summary.accounts
                 .filter(a => a.account_type === 'liability')
@@ -117,7 +120,8 @@ export default function FreedomDateCard() {
             }
 
             const debtCurrency = (rawCurrencies[0] || baseCurrency || 'USD') as CurrencyCode;
-            const settings = loadFreedomSettings();
+            const settings = await loadFreedomSettingsFromVault()
+                .catch(() => ({ strategy: 'avalanche' as PayoffStrategy, extraMonthlyPayment: 500, currency: 'USD' as CurrencyCode }));
             const savedCurrency = settings.currency || 'USD';
             setPlanCurrency(savedCurrency);
 
@@ -205,6 +209,7 @@ export default function FreedomDateCard() {
             setMonthsRemaining(null);
             setHasDebtsLackingInputs(false);
         }
+        })();
     }, [liabilities, baseCurrency, momentum, summary]);
 
     if (isAccountingError || summaryError) {

@@ -64,9 +64,9 @@ function rowToSchedule(row: RecurringRow): RecurringTransaction {
  * - Demo mode (Phase 2.7) is served by the vault API itself: the
  *   `demo_persona` cookie makes `/api/vault?entity=recurring` return the
  *   persona vault's schedules, and writes are refused with 403.
- * - Writes already go to SQLite via `persistScopedRecord` (which dual-writes the
- *   localStorage cache); `initVaultSync` pushes any browser-only schedules into
- *   SQLite at boot, so the read cutover loses nothing.
+ * - Writes go to SQLite via `persistScopedRecord` — there is no browser cache
+ *   behind it (the localStorage layer and `initVaultSync` were removed with the
+ *   single-data-layer collapse).
  */
 export class LocalCashflowRepository implements ICashflowRepository {
     async getAll(): Promise<RecurringTransaction[]> {

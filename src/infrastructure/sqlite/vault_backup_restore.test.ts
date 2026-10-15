@@ -73,18 +73,18 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
     it('Test 1: Ordinary saves/synchronizations must never clear or wipe modern accounting tables', async () => {
         seedModernAccountingData(testDb);
 
-        // Perform an ordinary scoped save of an asset
+        // Perform an ordinary scoped save of a goal (the retired m0 asset entity
+        // is no longer a scoped-save target — assets and liabilities live in the ledger)
         const scopedReq = new Request('http://localhost:4000/api/vault', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'scoped_save',
-                entity: 'assets',
+                entity: 'goals',
                 item: {
-                    id: 'asset-1',
-                    name: 'Test Vehicle',
-                    type: 'vehicle',
-                    value: 25000,
+                    id: 'goal-1',
+                    name: 'Emergency Fund',
+                    target_amount: 10000,
                     currency: 'AUD'
                 }
             })
@@ -92,7 +92,8 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         const scopedRes = await vaultPost(scopedReq);
         expect(scopedRes.status).toBe(200);
 
-        // Perform an ordinary bulk synchronization of legacy assets
+        // Perform an ordinary synchronization still carrying a legacy assets array:
+        // it is ignored now and must not touch the ledger.
         const syncReq = new Request('http://localhost:4000/api/vault', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -123,12 +124,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
     it('Test 2: Legacy Version 1 archive restore preserves existing modern accounting records', async () => {
         seedModernAccountingData(testDb);
 
-        // Seed a legacy asset to verify it gets replaced by the legacy restore
-        testDb.prepare(`
-            INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, last_updated)
-            VALUES ('old-asset', 'local_user', 'Old Asset', 'other', 1000, 1, 'USD', 0, datetime('now'))
-        `).run();
-
         // Perform a legacy restore (Version 1 archive without m1_ collections)
         const legacyReq = new Request('http://localhost:4000/api/vault', {
             method: 'POST',
@@ -153,22 +148,40 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(legacyRes.status).toBe(200);
         expect(resJson.message).toContain('Legacy vault data restored. Existing modern accounting records preserved.');
 
-        // Verify legacy tables were updated
-        const legacyAssets = testDb.prepare("SELECT * FROM assets WHERE user_id = 'local_user'").all();
-        expect(legacyAssets.length).toBe(1);
-        expect((legacyAssets[0] as any).id).toBe('new-legacy-asset');
+        // The retired m0 tables are gone: the restore backfills the legacy asset
+        // into the ledger with deterministic ids and a balanced opening entry.
+        const backfilledAccount = testDb.prepare("SELECT * FROM m1_accounts WHERE id = 'account-asset-new-legacy-asset'").get() as any;
+        expect(backfilledAccount).toBeDefined();
+        expect(backfilledAccount.entity_id).toBe('entity-default-vault-owner');
+        expect(backfilledAccount.type).toBe('asset');
+        expect(backfilledAccount.sub_type).toBe('other');
+        expect(backfilledAccount.opening_balance_cents).toBe(500000);
 
-        // CRITICAL: Verify modern accounting records were NOT wiped!
+        const openingTx = testDb.prepare("SELECT * FROM m1_transactions WHERE id = 'tx-opening-asset-new-legacy-asset'").get() as any;
+        expect(openingTx).toBeDefined();
+        expect(openingTx.origin).toBe('opening_balance');
+
+        const openingPostings = testDb.prepare("SELECT account_id, amount_cents FROM m1_journal_entries WHERE transaction_id = 'tx-opening-asset-new-legacy-asset'").all() as any[];
+        expect(openingPostings.map(p => `${p.account_id}:${p.amount_cents}`).sort()).toEqual([
+            'account-asset-new-legacy-asset:500000',
+            'account-opening-balance-equity:-500000'
+        ]);
+
+        const backfillMarker = testDb.prepare("SELECT value FROM settings WHERE key = 'legacy_ledger_backfill_v1'").get() as any;
+        expect(backfillMarker.value).toBe('"1"');
+
+        // CRITICAL: Verify modern accounting records were NOT wiped — the restore
+        // only ADDS the backfilled ledger rows on top of the seeded fixtures.
         const entitiesCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_entities").get() as any).cnt;
         const accountsCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_accounts").get() as any).cnt;
         const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_transactions").get() as any).cnt;
         const jeCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_journal_entries").get() as any).cnt;
         const draftCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_drafts").get() as any).cnt;
 
-        expect(entitiesCnt).toBe(2);
-        expect(accountsCnt).toBe(2);
-        expect(txCnt).toBe(1);
-        expect(jeCnt).toBe(2);
+        expect(entitiesCnt).toBe(3); // seeded two + backfilled vault-owner entity
+        expect(accountsCnt).toBe(4); // seeded two + backfilled asset + opening-balance equity account
+        expect(txCnt).toBe(2);       // seeded one + backfilled opening transaction
+        expect(jeCnt).toBe(4);       // seeded two + balanced opening postings
         expect(draftCnt).toBe(1);
     });
 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { X, Clock, CheckCircle2 } from 'lucide-react';
-import { loadSettings, saveSettings } from '@/infrastructure/local_driver';
 import { UserSettings } from '@/types';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 

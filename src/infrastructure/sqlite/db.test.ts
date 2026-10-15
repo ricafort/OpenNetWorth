@@ -33,26 +33,28 @@ describe('OpenNetWorth SQLite Engine', () => {
         expect(profile.privacy_mode).toBe(1);
     });
 
-    it('should correctly calculate net worth from assets and liabilities', () => {
-        // Insert assets
+    it('should correctly calculate net worth from ledger asset and liability accounts', () => {
+        // The m0 `assets`/`liabilities` tables are retired by migration 0007:
+        // holdings and debts live as ledger accounts with balances in cents.
         db.prepare(`
-            INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, last_updated)
-            VALUES ('a1', 'local_user', 'Cash Savings', 'cash', 50000, 1, 'USD', datetime('now')),
-                   ('a2', 'local_user', 'Index Fund', 'investment', 150000, 0, 'USD', datetime('now'))
+            INSERT INTO m1_entities (id, name, type, currency, created_at, updated_at)
+            VALUES ('ent-owner', 'Vault Owner', 'person', 'USD', datetime('now'), datetime('now'))
         `).run();
 
-        // Insert liabilities
         db.prepare(`
-            INSERT INTO liabilities (id, user_id, name, type, balance, last_updated)
-            VALUES ('l1', 'local_user', 'Car Loan', 'auto_loan', 20000, datetime('now'))
+            INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, opening_date, opening_balance_cents, created_at, updated_at)
+            VALUES
+                ('acc-cash', 'ent-owner', 'Cash Savings', 'asset', 'checking', 'USD', '2026-01-01', 5000000, datetime('now'), datetime('now')),
+                ('acc-fund', 'ent-owner', 'Index Fund', 'asset', 'brokerage', 'USD', '2026-01-01', 15000000, datetime('now'), datetime('now')),
+                ('acc-car', 'ent-owner', 'Car Loan', 'liability', 'auto_loan', 'USD', '2026-01-01', 2000000, datetime('now'), datetime('now'))
         `).run();
 
-        const assetSum = (db.prepare("SELECT SUM(value) as total FROM assets WHERE user_id = 'local_user'").get() as any).total;
-        const liabSum = (db.prepare("SELECT SUM(balance) as total FROM liabilities WHERE user_id = 'local_user'").get() as any).total;
+        const assetSumCents = (db.prepare("SELECT SUM(opening_balance_cents) as total FROM m1_accounts WHERE entity_id = 'ent-owner' AND type = 'asset'").get() as any).total;
+        const liabSumCents = (db.prepare("SELECT SUM(opening_balance_cents) as total FROM m1_accounts WHERE entity_id = 'ent-owner' AND type = 'liability'").get() as any).total;
 
-        expect(assetSum).toBe(200000);
-        expect(liabSum).toBe(20000);
-        expect(assetSum - liabSum).toBe(180000);
+        expect(assetSumCents).toBe(20000000);
+        expect(liabSumCents).toBe(2000000);
+        expect((assetSumCents - liabSumCents) / 100).toBe(180000);
     });
 
     it('should upsert net worth snapshots idempotently by date', () => {

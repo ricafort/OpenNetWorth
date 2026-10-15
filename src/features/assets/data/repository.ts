@@ -1,8 +1,6 @@
 import { Asset, AssetType } from '@/features/assets/types';
 import { IRepository } from '@/types/repository';
 import { CurrencyCode } from '@/types';
-import { loadAssets } from '@/infrastructure/local_driver';
-import { readDemoPersona } from '@/features/demo/demoMode';
 import {
     LedgerAccountRow,
     listLedgerAccounts,
@@ -84,21 +82,13 @@ function toAsset(row: LedgerAccountRow): Asset {
  * Tricky logic:
  * - Demo mode (Phase 2.7) is served by the API routes themselves: the
  *   `demo_persona` cookie makes `/api/accounting` return the persona vault's
- *   ledger. The localStorage merge is skipped in demo mode so the user's
- *   real legacy rows can never leak into a persona view.
- * - Non-demo reads also merge leftover localStorage `local_user` rows the
- *   ledger does not contain, so nothing silently disappears before the
- *   Phase 3 backfill; the pages render those as "unlinked legacy".
+ *   ledger.
+ * - The old localStorage merge is gone: migration 0006 copied every legacy
+ *   row into the ledger, so the ledger list is complete on its own.
  */
 export class LocalAssetRepository implements IAssetRepository {
     async getAll(): Promise<Asset[]> {
-        const ledgerRows = (await listLedgerAccounts('asset')).map(toAsset);
-        if (readDemoPersona()) return ledgerRows;
-
-        const ledgerIds = new Set(ledgerRows.map(r => r.id));
-        const localRows = loadAssets().filter(a =>
-            (a.user_id === 'local_user' || !a.user_id) && !ledgerIds.has(a.id));
-        return [...ledgerRows, ...localRows];
+        return (await listLedgerAccounts('asset')).map(toAsset);
     }
 
     async getById(id: string): Promise<Asset | null> {

@@ -30,6 +30,8 @@ import { up as migration0002AccountingShapeRepairs } from './migrations/0002_acc
 import { up as migration0003DocumentSchema } from './migrations/0003_document_schema';
 import { up as migration0004NetWorthHistoryCurrency } from './migrations/0004_net_worth_history_currency';
 import { up as migration0005EvidenceLinks } from './migrations/0005_evidence_links';
+import { up as migration0006BackfillLegacyLedger } from './migrations/0006_backfill_legacy_ledger';
+import { up as migration0007DropRetiredM0 } from './migrations/0007_drop_retired_m0';
 
 export interface SqliteMigration {
     /** Stable, ordered identifier, e.g. '0001_baseline'. Never reused. */
@@ -72,6 +74,17 @@ export const MIGRATIONS: SqliteMigration[] = [
         id: '0005_evidence_links',
         description: 'Promote m1_evidence_links from test-only DDL into the canonical vault schema',
         up: migration0005EvidenceLinks,
+    },
+    {
+        id: '0006_backfill_legacy_ledger',
+        description: 'Copy m0 assets/liabilities rows into the ledger as accounts + balanced opening-balance postings',
+        up: migration0006BackfillLegacyLedger,
+    },
+    {
+        id: '0007_drop_retired_m0',
+        description: 'Drop the retired m0 assets/liabilities tables (money rows now live in the ledger)',
+        backupBefore: true,
+        up: migration0007DropRetiredM0,
     },
 ];
 
