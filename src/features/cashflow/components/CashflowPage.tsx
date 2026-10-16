@@ -2107,6 +2107,91 @@ export const CashflowPage = () => {
                         ))
                     )}
 
+                    {/* Debt payoff projection — mirrors forecastService's debt_projections.
+                        Projection-only: the interest shown here is never posted to the
+                        ledger. Same gates and month skips as the debt payment events,
+                        so this table and the movements list can never disagree. */}
+                    {forecastReport && forecastReport.debt_projections.length > 0 && (
+                        <ContentCard className="overflow-hidden p-0 border border-border shadow-sm">
+                            <div className="px-6 py-4 bg-muted/40 border-b border-border">
+                                <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">
+                                    Debt payoff projection
+                                </h4>
+                                <p className="text-[11px] text-muted-foreground">
+                                    Projection only &mdash; the ledger never accrues this interest. Each projected
+                                    month: interest at the stored APR &divide; 12, then the minimum payment. Months
+                                    already paid are skipped.
+                                </p>
+                            </div>
+
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-muted/60 text-muted-foreground uppercase font-black tracking-wider border-b border-border text-[10px]">
+                                    <tr>
+                                        <th className="px-6 py-2.5">Debt</th>
+                                        <th className="px-6 py-2.5 text-right">Balance owed</th>
+                                        <th className="px-6 py-2.5 text-right">APR</th>
+                                        <th className="px-6 py-2.5 text-right">Monthly payment</th>
+                                        <th className="px-6 py-2.5 text-right">Balance at horizon end</th>
+                                        <th className="px-6 py-2.5">Payoff</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border font-medium">
+                                    {forecastReport.debt_projections.map(d => (
+                                        <tr key={d.account_id} className="hover:bg-muted/30">
+                                            <td className="px-6 py-2.5">
+                                                <span className="font-bold text-foreground">{d.name}</span>
+                                                <span className="font-mono text-muted-foreground ml-1.5">({d.currency})</span>
+                                                <span className="block text-[10px] text-muted-foreground capitalize">
+                                                    {d.sub_type.replaceAll('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-2.5 text-right font-mono font-bold">
+                                                {d.is_unknown
+                                                    ? <span className="italic text-muted-foreground">Unknown</span>
+                                                    : d.formatted_starting_balance}
+                                            </td>
+                                            <td className="px-6 py-2.5 text-right font-mono text-muted-foreground">
+                                                {d.interest_rate !== null && d.interest_rate > 0 ? `${d.interest_rate}%` : '—'}
+                                            </td>
+                                            <td className="px-6 py-2.5 text-right font-mono font-bold">
+                                                {d.formatted_monthly_payment}
+                                                {d.estimated_payment && (
+                                                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 font-bold text-[10px] uppercase tracking-wide">
+                                                        est.
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-2.5 text-right font-mono font-bold">
+                                                {d.is_unknown
+                                                    ? <span className="italic text-muted-foreground">&mdash;</span>
+                                                    : d.formatted_balance_at_horizon_end}
+                                            </td>
+                                            <td className="px-6 py-2.5 text-[11px]">
+                                                {d.payoff_date ? (
+                                                    <span className="font-bold text-emerald-600">{formatForecastDate(d.payoff_date)}</span>
+                                                ) : d.non_amortising ? (
+                                                    <span className="font-semibold text-amber-600">
+                                                        never &mdash; payment &le; monthly interest
+                                                    </span>
+                                                ) : d.is_unknown ? (
+                                                    <span className="text-muted-foreground">balance unknown</span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">not paid off within horizon</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+
+                            {forecastReport.debt_projections.some(d => d.paid_off_within_horizon) && (
+                                <div className="px-6 py-3 border-t border-border text-[11px] text-muted-foreground">
+                                    Payments continue in the cash-flow list after payoff; the balance line stops at zero.
+                                </div>
+                            )}
+                        </ContentCard>
+                    )}
+
                     {forecastReport && (forecastReport.excluded_schedules.length > 0 || forecastReport.excluded_budget_categories.length > 0 || forecastReport.excluded_debt_accounts.length > 0) && (
                         <div className="p-4 bg-muted/40 border border-border rounded-2xl text-xs space-y-2">
                             <p className="font-bold text-foreground flex items-center gap-2">
