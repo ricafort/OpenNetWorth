@@ -34,3 +34,13 @@ export function toMonthlyAmount(amount: number, frequency: string): number {
         default: return amount;
     }
 }
+
+/**
+ * Autopilot snake_cases schedule categories; budgets are free text — compare normalized.
+ * Shared by the cash-flow forecast (debt-vs-schedule coverage check) and the debt
+ * autopilot client generator; both must normalize identically or 'Debt Repayment'
+ * schedules would fail to match the 'debt_repayment' convention.
+ */
+export function normalizeCategory(value: string | null | undefined): string {
+    return (value || '').trim().toLowerCase().replace(/\s+/g, '_');
+}
