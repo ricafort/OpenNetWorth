@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plane, Compass, Globe } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { UserSettings } from '@/types';
-import { loadSettings } from '@/infrastructure/local_driver';
+import { loadSettingsFromVault } from '@/infrastructure/local_driver';
 
 interface CityCost {
     city: string;
@@ -43,7 +43,13 @@ export default function TravelPowerCard({ netWorthUSD }: Props) {
     const [settings, setSettings] = useState<UserSettings | null>(null);
 
     useEffect(() => {
-        setSettings(loadSettings());
+        // Settings come from the SQLite settings kv; in demo mode the
+        // `demo_persona` cookie makes the read target the persona vault (Phase 2.7).
+        let cancelled = false;
+        loadSettingsFromVault()
+            .then(s => { if (!cancelled) setSettings(s); })
+            .catch(() => { /* baseCurrency falls back to 'USD' below if the vault is unreachable */ });
+        return () => { cancelled = true; };
     }, []);
 
     const baseCurrency = settings?.baseCurrency || 'USD';

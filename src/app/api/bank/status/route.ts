@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
+import { getDbForRequest, demoErrorResponse } from '@/infrastructure/sqlite/db';
+import { getLinkedItems } from '@/features/bank/bankVault';
 
-export async function GET() {
+export async function GET(req: Request) {
     try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-        const { data: items } = await supabase
-            .from('linked_items')
-            .select('id, provider, status, last_synced_at')
-            .eq('user_id', user.id);
-
-        return NextResponse.json({ items: items || [] });
-    } catch (e) {
+        // Demo cookie present → the persona vault's linked items (usually none).
+        const db = getDbForRequest(req);
+        const items = getLinkedItems(db).map(i => ({
+            id: i.id,
+            provider: i.provider,
+            status: i.status,
+            last_synced_at: i.updated_at
+        }));
+        return NextResponse.json({ items });
+    } catch (e: any) {
+        const demoRes = demoErrorResponse(e);
+        if (demoRes) return demoRes;
         return NextResponse.json({ error: 'Failed' }, { status: 500 });
     }
 }

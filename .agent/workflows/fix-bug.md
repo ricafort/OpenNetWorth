@@ -17,7 +17,7 @@ description: Debug and fix a bug in the application
 3. **Check common gotchas**:
    - Is it a Demo Mode issue? Check `ProfileContext.isDemoMode`
    - Is it a currency issue? Check `currencyService.ts`
-   - Is it a localStorage vs Supabase issue? Check `storage.ts`
+   - Is it a data-layer issue? Check `src/infrastructure/sqlite/` (vault + migration runner)
 
 4. **Make the fix**:
    - Keep changes minimal and focused
@@ -44,4 +44,4 @@ description: Debug and fix a bug in the application
 | Data not loading | Demo Mode mismatch | `ProfileContext.tsx` |
 | Values showing $0 | Currency conversion | `currencyService.ts` |
 | Widget not rendering | Registry issue | `widgetRegistry.ts` |
-| API 401/403 errors | RLS policy | Supabase dashboard |
+| API 500 errors | Vault/migration state | `src/infrastructure/sqlite/migrations.ts` |

@@ -18,10 +18,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
-import { initMentorChatSchema } from '@/lib/domain/mentor/schema';
 import { appendMessage, createSession } from '@/lib/domain/mentor/mentorSessionService';
 import Database from 'better-sqlite3';
 
@@ -30,7 +30,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
 
     beforeEach(() => {
         testDb = createTestDb();
-        initAccountingSchema(testDb);
         setTestDb(testDb);
     });
 
@@ -42,30 +41,30 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
     // Helper to populate modern accounting test fixtures
     function seedModernAccountingData(db: Database.Database) {
         db.prepare(`
-            INSERT INTO m1_entities (id, name, type, currency, created_at, updated_at)
+            INSERT INTO entities (id, name, type, currency, created_at, updated_at)
             VALUES ('ent-person', 'Personal Owner', 'person', 'AUD', datetime('now'), datetime('now')),
                    ('ent-biz', 'Consulting Co', 'business', 'AUD', datetime('now'), datetime('now'))
         `).run();
 
         db.prepare(`
-            INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, created_at, updated_at)
+            INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, created_at, updated_at)
             VALUES ('acc-chk', 'ent-person', 'Personal Checking', 'asset', 'checking', 'AUD', datetime('now'), datetime('now')),
                    ('acc-exp', 'ent-biz', 'Business Expenses', 'expense', 'other', 'AUD', datetime('now'), datetime('now'))
         `).run();
 
         db.prepare(`
-            INSERT INTO m1_transactions (id, date, description, status, origin, revision, created_at, updated_at)
+            INSERT INTO transactions (id, date, description, status, origin, revision, created_at, updated_at)
             VALUES ('tx-100', '2026-09-17', 'Client lunch', 'posted', 'manual', 1, datetime('now'), datetime('now'))
         `).run();
 
         db.prepare(`
-            INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+            INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency)
             VALUES ('je-1', 'tx-100', 'acc-exp', 5000, 'AUD'),
                    ('je-2', 'tx-100', 'acc-chk', -5000, 'AUD')
         `).run();
 
         db.prepare(`
-            INSERT INTO m1_drafts (id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents, date, description, status, created_at, updated_at)
+            INSERT INTO drafts (id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents, date, description, status, created_at, updated_at)
             VALUES ('draft-1', 'ent-biz', 'ent-person', 'acc-chk', 'AUD', 3500, '2026-09-17', 'Unresolved coffee', 'draft', datetime('now'), datetime('now'))
         `).run();
     }
@@ -73,18 +72,18 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
     it('Test 1: Ordinary saves/synchronizations must never clear or wipe modern accounting tables', async () => {
         seedModernAccountingData(testDb);
 
-        // Perform an ordinary scoped save of an asset
+        // Perform an ordinary scoped save of a goal (the retired m0 asset entity
+        // is no longer a scoped-save target — assets and liabilities live in the ledger)
         const scopedReq = new Request('http://localhost:4000/api/vault', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'scoped_save',
-                entity: 'assets',
+                entity: 'goals',
                 item: {
-                    id: 'asset-1',
-                    name: 'Test Vehicle',
-                    type: 'vehicle',
-                    value: 25000,
+                    id: 'goal-1',
+                    name: 'Emergency Fund',
+                    target_amount: 10000,
                     currency: 'AUD'
                 }
             })
@@ -92,7 +91,8 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         const scopedRes = await vaultPost(scopedReq);
         expect(scopedRes.status).toBe(200);
 
-        // Perform an ordinary bulk synchronization of legacy assets
+        // Perform an ordinary synchronization still carrying a legacy assets array:
+        // it is ignored now and must not touch the ledger.
         const syncReq = new Request('http://localhost:4000/api/vault', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -107,11 +107,11 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(syncRes.status).toBe(200);
 
         // Verify modern accounting tables are untouched
-        const entitiesCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_entities").get() as any).cnt;
-        const accountsCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_accounts").get() as any).cnt;
-        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_transactions").get() as any).cnt;
-        const jeCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_journal_entries").get() as any).cnt;
-        const draftCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_drafts").get() as any).cnt;
+        const entitiesCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM entities").get() as any).cnt;
+        const accountsCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM accounts").get() as any).cnt;
+        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM transactions").get() as any).cnt;
+        const jeCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM journal_entries").get() as any).cnt;
+        const draftCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM drafts").get() as any).cnt;
 
         expect(entitiesCnt).toBe(2);
         expect(accountsCnt).toBe(2);
@@ -122,12 +122,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
 
     it('Test 2: Legacy Version 1 archive restore preserves existing modern accounting records', async () => {
         seedModernAccountingData(testDb);
-
-        // Seed a legacy asset to verify it gets replaced by the legacy restore
-        testDb.prepare(`
-            INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, last_updated)
-            VALUES ('old-asset', 'local_user', 'Old Asset', 'other', 1000, 1, 'USD', 0, datetime('now'))
-        `).run();
 
         // Perform a legacy restore (Version 1 archive without m1_ collections)
         const legacyReq = new Request('http://localhost:4000/api/vault', {
@@ -153,22 +147,40 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(legacyRes.status).toBe(200);
         expect(resJson.message).toContain('Legacy vault data restored. Existing modern accounting records preserved.');
 
-        // Verify legacy tables were updated
-        const legacyAssets = testDb.prepare("SELECT * FROM assets WHERE user_id = 'local_user'").all();
-        expect(legacyAssets.length).toBe(1);
-        expect((legacyAssets[0] as any).id).toBe('new-legacy-asset');
+        // The retired m0 tables are gone: the restore backfills the legacy asset
+        // into the ledger with deterministic ids and a balanced opening entry.
+        const backfilledAccount = testDb.prepare("SELECT * FROM accounts WHERE id = 'account-asset-new-legacy-asset'").get() as any;
+        expect(backfilledAccount).toBeDefined();
+        expect(backfilledAccount.entity_id).toBe('entity-default-vault-owner');
+        expect(backfilledAccount.type).toBe('asset');
+        expect(backfilledAccount.sub_type).toBe('other');
+        expect(backfilledAccount.opening_balance_cents).toBe(500000);
 
-        // CRITICAL: Verify modern accounting records were NOT wiped!
-        const entitiesCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_entities").get() as any).cnt;
-        const accountsCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_accounts").get() as any).cnt;
-        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_transactions").get() as any).cnt;
-        const jeCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_journal_entries").get() as any).cnt;
-        const draftCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_drafts").get() as any).cnt;
+        const openingTx = testDb.prepare("SELECT * FROM transactions WHERE id = 'tx-opening-asset-new-legacy-asset'").get() as any;
+        expect(openingTx).toBeDefined();
+        expect(openingTx.origin).toBe('opening_balance');
 
-        expect(entitiesCnt).toBe(2);
-        expect(accountsCnt).toBe(2);
-        expect(txCnt).toBe(1);
-        expect(jeCnt).toBe(2);
+        const openingPostings = testDb.prepare("SELECT account_id, amount_cents FROM journal_entries WHERE transaction_id = 'tx-opening-asset-new-legacy-asset'").all() as any[];
+        expect(openingPostings.map(p => `${p.account_id}:${p.amount_cents}`).sort()).toEqual([
+            'account-asset-new-legacy-asset:500000',
+            'account-opening-balance-equity:-500000'
+        ]);
+
+        const backfillMarker = testDb.prepare("SELECT value FROM settings WHERE key = 'legacy_ledger_backfill_v1'").get() as any;
+        expect(backfillMarker.value).toBe('"1"');
+
+        // CRITICAL: Verify modern accounting records were NOT wiped — the restore
+        // only ADDS the backfilled ledger rows on top of the seeded fixtures.
+        const entitiesCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM entities").get() as any).cnt;
+        const accountsCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM accounts").get() as any).cnt;
+        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM transactions").get() as any).cnt;
+        const jeCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM journal_entries").get() as any).cnt;
+        const draftCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM drafts").get() as any).cnt;
+
+        expect(entitiesCnt).toBe(3); // seeded two + backfilled vault-owner entity
+        expect(accountsCnt).toBe(4); // seeded two + backfilled asset + opening-balance equity account
+        expect(txCnt).toBe(2);       // seeded one + backfilled opening transaction
+        expect(jeCnt).toBe(4);       // seeded two + balanced opening postings
         expect(draftCnt).toBe(1);
     });
 
@@ -211,7 +223,7 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(data.error).toContain('required modern accounting collection "journal_entries" is missing');
 
         // Verify modern tables were NOT modified or wiped
-        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_transactions").get() as any).cnt;
+        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM transactions").get() as any).cnt;
         expect(txCnt).toBe(1);
     });
 
@@ -252,8 +264,8 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(res.status).toBe(200);
 
         // Tables are now cleanly empty
-        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_transactions").get() as any).cnt;
-        const draftCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM m1_drafts").get() as any).cnt;
+        const txCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM transactions").get() as any).cnt;
+        const draftCnt = (testDb.prepare("SELECT COUNT(*) as cnt FROM drafts").get() as any).cnt;
         expect(txCnt).toBe(0);
         expect(draftCnt).toBe(0);
     });
@@ -403,8 +415,8 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         const snapshot = await getRes.json();
 
         expect(snapshot.success).toBe(true);
-        expect(snapshot.manifest.schemaVersion).toBe(2);
-        expect(snapshot.vault.schemaVersion).toBe(2);
+        expect(snapshot.manifest.schemaVersion).toBe(3);
+        expect(snapshot.vault.schemaVersion).toBe(3);
         expect(snapshot.vault.entities.length).toBe(2);
         expect(snapshot.vault.accounts.length).toBe(2);
         expect(snapshot.vault.transactions.length).toBe(1);
@@ -417,7 +429,7 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'bulk_restore',
-                schemaVersion: 2,
+                schemaVersion: 3,
                 manifest: snapshot.manifest,
                 vault: snapshot.vault
             })
@@ -426,9 +438,9 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(restoreRes.status).toBe(200);
 
         // Verify records restored accurately
-        const entities = testDb.prepare("SELECT * FROM m1_entities ORDER BY id").all();
-        const drafts = testDb.prepare("SELECT * FROM m1_drafts").all();
-        const journal = testDb.prepare("SELECT * FROM m1_journal_entries ORDER BY id").all();
+        const entities = testDb.prepare("SELECT * FROM entities ORDER BY id").all();
+        const drafts = testDb.prepare("SELECT * FROM drafts").all();
+        const journal = testDb.prepare("SELECT * FROM journal_entries ORDER BY id").all();
 
         expect(entities.length).toBe(2);
         expect((entities[0] as any).name).toBe('Consulting Co');
@@ -470,7 +482,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
 
     it('Test 9: Version 2 restore without mentor collections succeeds and preserves existing mentor chats', async () => {
         // Seed a live conversation before the restore
-        initMentorChatSchema(testDb);
         const session = createSession(testDb, 'Moats and margins');
         appendMessage(testDb, session.id, { id: 'msg-u1', role: 'user', content: 'How is my posture?' });
         appendMessage(testDb, session.id, { id: 'msg-m1', role: 'mentor', mentorName: 'Warren Buffett', content: 'Moats matter.' });
@@ -484,8 +495,8 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         expect(res.status).toBe(200);
 
         // CRITICAL: mentor conversations survived the restore untouched
-        const sessions = testDb.prepare('SELECT * FROM m1_mentor_sessions').all();
-        const messages = testDb.prepare('SELECT * FROM m1_mentor_messages ORDER BY seq ASC').all();
+        const sessions = testDb.prepare('SELECT * FROM mentor_sessions').all();
+        const messages = testDb.prepare('SELECT * FROM mentor_messages ORDER BY seq ASC').all();
         expect(sessions.length).toBe(1);
         expect((sessions[0] as any).title).toBe('Moats and margins');
         expect(messages.length).toBe(2);
@@ -493,7 +504,6 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
     });
 
     it('Test 10: Mentor chats round-trip through snapshot export and V2 restore', async () => {
-        initMentorChatSchema(testDb);
         const session = createSession(testDb, 'Liquidity ratios');
         appendMessage(testDb, session.id, { id: 'msg-u1', role: 'user', content: 'Explain liquidity ratios.' });
         appendMessage(testDb, session.id, {
@@ -512,28 +522,82 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
 
         // Wipe and restore from the snapshot — chats come back exactly, including
         // the resolved action_confirm payload.
-        testDb.prepare('DELETE FROM m1_mentor_messages').run();
-        testDb.prepare('DELETE FROM m1_mentor_sessions').run();
+        testDb.prepare('DELETE FROM mentor_messages').run();
+        testDb.prepare('DELETE FROM mentor_sessions').run();
 
         const restoreRes = await vaultPost(new Request('http://localhost:4000/api/vault', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'bulk_restore',
-                schemaVersion: 2,
+                schemaVersion: 3,
                 manifest: snapshot.manifest,
                 vault: snapshot.vault
             })
         }));
         expect(restoreRes.status).toBe(200);
 
-        const sessions = testDb.prepare('SELECT * FROM m1_mentor_sessions').all();
-        const messages = testDb.prepare('SELECT * FROM m1_mentor_messages ORDER BY seq ASC').all();
+        const sessions = testDb.prepare('SELECT * FROM mentor_sessions').all();
+        const messages = testDb.prepare('SELECT * FROM mentor_messages ORDER BY seq ASC').all();
         expect(sessions.length).toBe(1);
         expect((sessions[0] as any).title).toBe('Liquidity ratios');
         expect(messages.length).toBe(2);
         expect((messages[1] as any).role).toBe('action_confirm');
         expect((messages[1] as any).action_intent_resolved).toBe('confirmed');
         expect(JSON.parse((messages[1] as any).action_intent_json).name).toBe('Savings');
+    });
+
+    // Regression (Phase 4 rename): archives exported in the m1_-prefixed era
+    // (schemaVersion 2) must restore cleanly into the plain-named (v3) schema.
+    // Archive JSON keys were always unprefixed, so the table rename never
+    // touched backup compatibility — this fixture proves it end-to-end.
+    it('Test 9: checked-in v2 archive (m1_-era) restores into the plain-named schema', async () => {
+        const fixturePath = path.join(
+            process.cwd(), 'src', 'infrastructure', 'sqlite', 'fixtures', 'v2_archive_sample.json'
+        );
+        const archive = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+        expect(archive.manifest.schemaVersion).toBe(2);
+
+        const restoreRes = await vaultPost(new Request('http://localhost:4000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'bulk_restore',
+                schemaVersion: archive.manifest.schemaVersion,
+                manifest: archive.manifest,
+                vault: archive.vault
+            })
+        }));
+        const body = await restoreRes.json();
+        expect(restoreRes.status).toBe(200);
+
+        // Ledger rows landed in the renamed tables.
+        const entities = testDb.prepare('SELECT id FROM entities').all() as any[];
+        expect(entities.map(e => e.id)).toContain('ent-fixture-owner');
+        expect(entities.map(e => e.id)).toContain('ent-fixture-biz');
+
+        const fixturePostings = testDb
+            .prepare("SELECT account_id, amount_cents FROM journal_entries WHERE transaction_id = 'tx-fixture-1'")
+            .all() as any[];
+        expect(fixturePostings.map(p => `${p.account_id}:${p.amount_cents}`).sort())
+            .toEqual(['acc-fixture-chk:-450', 'acc-fixture-exp:450']);
+
+        // The legacy `assets` collection is backfilled into the ledger (same
+        // semantics as migration 0006) — never written to a retired table.
+        const backfilled = testDb
+            .prepare("SELECT * FROM accounts WHERE id = 'account-asset-fixture-legacy-car'")
+            .get() as any;
+        expect(backfilled).toBeDefined();
+        expect(backfilled.type).toBe('asset');
+        expect(backfilled.opening_balance_cents).toBe(1200000);
+
+        // Kept metadata tables carry their renamed names.
+        expect((testDb.prepare('SELECT COUNT(*) AS cnt FROM goals').get() as any).cnt).toBe(1);
+        expect((testDb.prepare('SELECT COUNT(*) AS cnt FROM recurring_schedules').get() as any).cnt).toBe(1);
+        expect((testDb.prepare('SELECT COUNT(*) AS cnt FROM net_worth_snapshots').get() as any).cnt).toBe(1);
+        expect((testDb.prepare('SELECT COUNT(*) AS cnt FROM cash_flow_summaries').get() as any).cnt).toBe(1);
+        // Restore stores string settings verbatim (only non-strings get JSON-wrapped).
+        expect((testDb.prepare("SELECT value FROM settings WHERE key = 'baseCurrency'").get() as any).value)
+            .toBe('AUD');
     });
 });

@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import { initAccountingSchema } from '../src/lib/domain/accounting/schema';
+import { runMigrations } from '../src/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '../src/lib/domain/accounting/accountService';
 import { postTransaction } from '../src/lib/domain/accounting/transactionService';
 import { saveDraft } from '../src/lib/domain/accounting/draftService';
@@ -15,7 +15,7 @@ if (fs.existsSync(demoDbPath)) {
 
 const db = new Database(demoDbPath);
 db.pragma('foreign_keys = ON');
-initAccountingSchema(db);
+runMigrations(db);
 
 const personal = createEntity(db, { name: 'Household', type: 'household', currency: 'AUD' });
 const business = createEntity(db, { name: 'Acme Pty Ltd', type: 'business', currency: 'AUD' });

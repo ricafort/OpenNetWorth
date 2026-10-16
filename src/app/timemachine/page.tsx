@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, AlertTriangle } from 'lucide-react';
-import { loadNetWorthHistory } from '@/infrastructure/local_driver';
+import { useHistory } from '@/hooks/useHistory';
 import { Asset } from '@/features/assets/types';
 import { Liability } from '@/features/liabilities/types';
 import { NetWorthSnapshot } from '@/types';
@@ -15,15 +15,11 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 export default function TimeMachinePage() {
     const { baseCurrency } = useNetWorth();
-    const [history, setHistory] = useState<NetWorthSnapshot[]>([]);
+    const { history } = useHistory();
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [snapshot, setSnapshot] = useState<NetWorthSnapshot | null>(null);
     const { isPrivacyBlur } = useTheme();
     const blurClass = isPrivacyBlur ? 'privacy-value' : '';
-
-    useEffect(() => {
-        setHistory(loadNetWorthHistory());
-    }, []);
 
     useEffect(() => {
         if (selectedDate) {

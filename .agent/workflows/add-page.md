@@ -20,8 +20,8 @@ description: Add a new page/route to the application
    - Add icon from `lucide-react`
 
 4. **Handle authentication** (if protected):
-   - Check auth state using `@/utils/supabase/server`
-   - Redirect unauthenticated users
+   - Local vault needs no auth — the device owner is `local_user`
+   - For demo-mode awareness, check the demo persona cookie
 
 // turbo
 5. **Verify build**:

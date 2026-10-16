@@ -5,7 +5,7 @@
  * Regression this fixes:
  * The previous inline logic checked the LEGACY localStorage/`assets` table for "First Steps"
  * and a USD-only net worth for "Wealth Tracker"/"Millionaire", so a user whose entire balance
- * sheet lives in the modern accounting DB (m1_accounts) in AUD saw a seven-figure net worth
+ * sheet lives in the modern accounting DB (accounts) in AUD saw a seven-figure net worth
  * with those badges locked. "Debt Slayer" and "Consistent" were never evaluated at all in
  * local mode. These rules evaluate against authoritative facts supplied by the caller instead.
  *

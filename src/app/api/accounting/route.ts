@@ -19,7 +19,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDb } from '@/infrastructure/sqlite/db';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
 import {
     createEntity,
     listEntities,
@@ -69,7 +69,6 @@ import {
     UndoReimbursementMatchInput
 } from '@/features/reimbursement/reimbursementService';
 import { saveDraft, getDrafts, deleteDraft } from '@/lib/domain/accounting/draftService';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ScopeType, formatMoney, Account } from '@/lib/domain/accounting/types';
 import { getLatestValuationObservation } from '@/lib/domain/accounting/balanceObservationService';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
@@ -93,8 +92,8 @@ export async function GET(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
     try {
-        const db = getDb();
-        initAccountingSchema(db); // Idempotent schema check
+        // Demo cookie present → persona vault's ledger (Phase 2.7).
+        const db = getDbForRequest(request);
 
         const url = new URL(request.url);
         const view = url.searchParams.get('view');
@@ -129,9 +128,9 @@ export async function GET(request: Request) {
         if (view === 'reimbursements') {
             let workflows;
             if (entityId && entityId !== 'all') {
-                workflows = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE personal_entity_id = ? OR business_entity_id = ? ORDER BY created_at DESC').all(entityId, entityId) as any[];
+                workflows = db.prepare('SELECT * FROM reimbursement_workflows WHERE personal_entity_id = ? OR business_entity_id = ? ORDER BY created_at DESC').all(entityId, entityId) as any[];
             } else {
-                workflows = db.prepare('SELECT * FROM m1_reimbursement_workflows ORDER BY created_at DESC').all() as any[];
+                workflows = db.prepare('SELECT * FROM reimbursement_workflows ORDER BY created_at DESC').all() as any[];
             }
             return secureJson({ success: true, workflows });
         }
@@ -157,11 +156,11 @@ export async function GET(request: Request) {
             const workflowId = url.searchParams.get('workflow_id');
             if (!workflowId) return secureJson({ error: 'Missing workflow_id' }, { status: 400 });
             
-            const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(workflowId) as any;
+            const wf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(workflowId) as any;
             if (!wf) return secureJson({ error: 'Workflow not found' }, { status: 404 });
             
             // "Find the correction associated with this workflow's business reclassification and use its immediately preceding expense category."
-            const corrections = db.prepare('SELECT * FROM m1_transaction_corrections WHERE transaction_id = ? ORDER BY timestamp DESC').all(wf.personal_transaction_id) as any[];
+            const corrections = db.prepare('SELECT * FROM transaction_corrections WHERE transaction_id = ? ORDER BY timestamp DESC').all(wf.personal_transaction_id) as any[];
             const reclassCorrection = corrections.find(c => c.reason === 'Reclassified as personally paid business expense');
             
             let originalCategoryAccountId = null;
@@ -171,7 +170,7 @@ export async function GET(request: Request) {
                 // It was an expense, so we look for the debit leg that is an expense account
                 const debitPosting = postings.find((p: any) => p.amount_cents > 0);
                 if (debitPosting) {
-                    const acc = db.prepare('SELECT type, entity_id, currency FROM m1_accounts WHERE id = ?').get(debitPosting.account_id) as any;
+                    const acc = db.prepare('SELECT type, entity_id, currency FROM accounts WHERE id = ?').get(debitPosting.account_id) as any;
                     // Validate it's still a valid personal expense account with matching currency
                     if (acc && acc.type === 'expense' && acc.entity_id === wf.personal_entity_id && acc.currency === wf.currency) {
                         originalCategoryAccountId = debitPosting.account_id;
@@ -179,8 +178,8 @@ export async function GET(request: Request) {
                 }
             }
             
-            const persTx = db.prepare('SELECT date, description, revision FROM m1_transactions WHERE id = ?').get(wf.personal_transaction_id) as any;
-            const busTx = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(wf.business_transaction_id) as any;
+            const persTx = db.prepare('SELECT date, description, revision FROM transactions WHERE id = ?').get(wf.personal_transaction_id) as any;
+            const busTx = db.prepare('SELECT revision FROM transactions WHERE id = ?').get(wf.business_transaction_id) as any;
             
             return secureJson({ 
                 success: true, 
@@ -196,18 +195,18 @@ export async function GET(request: Request) {
             const workflowId = url.searchParams.get('workflow_id');
             if (!workflowId) return secureJson({ error: 'Missing workflow_id' }, { status: 400 });
             
-            const wf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(workflowId) as any;
+            const wf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(workflowId) as any;
             if (!wf) return secureJson({ error: 'Workflow not found' }, { status: 404 });
             
-            const persTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(wf.personal_reimbursement_tx_id) as any;
-            const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(wf.business_reimbursement_tx_id) as any;
+            const persTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(wf.personal_reimbursement_tx_id) as any;
+            const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(wf.business_reimbursement_tx_id) as any;
             
             const isPersonalManual = persTx?.idempotency_key === `reimb-match-pers-${wf.id}`;
             const isBusinessManual = busTx?.idempotency_key === `reimb-match-bus-${wf.id}`;
 
             const getOriginalTreatment = (tx: any) => {
                 if (!tx) return null;
-                const correction = db.prepare('SELECT previous_state FROM m1_transaction_corrections WHERE transaction_id = ? AND reason = ? ORDER BY timestamp DESC LIMIT 1').get(tx.id, 'Matched to reimbursement workflow') as any;
+                const correction = db.prepare('SELECT previous_state FROM transaction_corrections WHERE transaction_id = ? AND reason = ? ORDER BY timestamp DESC LIMIT 1').get(tx.id, 'Matched to reimbursement workflow') as any;
                 if (correction) {
                     const snapshot = JSON.parse(correction.previous_state);
                     return snapshot.postings || [];
@@ -217,7 +216,7 @@ export async function GET(request: Request) {
 
             const getBankLegAccount = (tx: any, clearingAccId: string) => {
                 if (!tx) return null;
-                const postings = db.prepare('SELECT account_id FROM m1_journal_entries WHERE transaction_id = ?').all(tx.id) as any[];
+                const postings = db.prepare('SELECT account_id FROM journal_entries WHERE transaction_id = ?').all(tx.id) as any[];
                 const bankLeg = postings.find(p => p.account_id !== clearingAccId);
                 return bankLeg ? bankLeg.account_id : null;
             };
@@ -420,6 +419,9 @@ export async function GET(request: Request) {
             total_count: totalCount
         });
     } catch (error: any) {
+        // Unknown persona → 400, unseeded vault → 503 (Phase 2.7).
+        const demoRes = demoErrorResponse(error);
+        if (demoRes) return demoRes;
         console.error('Accounting API GET Error:', error);
         return secureJson({ error: error.message || 'Failed to fetch accounting data' }, { status: 500 });
     }
@@ -428,9 +430,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only: any mutation carrying the demo cookie is refused (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
-        const db = getDb();
-        initAccountingSchema(db); // Idempotent schema check
+        const db = getDbForRequest(request);
 
         const body = await request.json().catch(() => null);
         if (!body || typeof body !== 'object') {

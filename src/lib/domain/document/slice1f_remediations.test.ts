@@ -25,7 +25,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount, createEntity } from '../accounting/accountService';
 import {
     approveProposals,
@@ -46,7 +45,6 @@ describe('Slice 1F Focused Remediation Tests', () => {
     beforeEach(() => {
         // Complete isolation from production vault (M1-SAFE-01)
         db = createTestDb();
-        initAccountingSchema(db);
 
         // Setup test entity
         const entity = createEntity(db, { name: 'Remediation Test Entity', type: 'person', currency: 'AUD' });
@@ -178,7 +176,7 @@ describe('Slice 1F Focused Remediation Tests', () => {
             }).toThrow(/does not match approval target account currency/i);
 
             // Verify zero transactions posted
-            const txCount = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+            const txCount = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any).c;
             expect(txCount).toBe(0);
 
             // Proposal status remains unreviewed
@@ -238,9 +236,9 @@ describe('Slice 1F Focused Remediation Tests', () => {
             }).toThrow(/unresolved error findings|missing currency/i);
 
             // Zero transactions posted
-            const txCount = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions").get() as any).c;
+            const txCount = (db.prepare("SELECT COUNT(*) as c FROM transactions").get() as any).c;
             // Only opening balances exist
-            const docTxCount = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+            const docTxCount = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any).c;
             expect(docTxCount).toBe(0);
         });
     });
@@ -578,7 +576,7 @@ describe('Slice 1F Focused Remediation Tests', () => {
             expect(body.error).toMatch(/Proposals cannot be marked approved via review updates/);
 
             // Ensure no ledger posting occurred
-            const txCount = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+            const txCount = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any).c;
             expect(txCount).toBe(0);
         });
 
@@ -693,7 +691,7 @@ describe('Slice 1F Focused Remediation Tests', () => {
 
             // Verify journal entries: Credit must be on Account B, NOT Account A
             const txId = approval.transaction_ids[0];
-            const entries = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(txId) as any[];
+            const entries = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(txId) as any[];
             const accountBEntry = entries.find(e => e.account_id === audAccountBId);
             const accountAEntry = entries.find(e => e.account_id === audAccountId);
 
@@ -770,8 +768,8 @@ describe('Slice 1F Focused Remediation Tests', () => {
             const txId = approval.transaction_ids[0];
             const entries = db.prepare(`
                 SELECT je.amount_cents, a.name, a.sub_type
-                FROM m1_journal_entries je
-                JOIN m1_accounts a ON je.account_id = a.id
+                FROM journal_entries je
+                JOIN accounts a ON je.account_id = a.id
                 WHERE je.transaction_id = ?
             `).all(txId) as any[];
 
@@ -839,7 +837,7 @@ describe('Slice 1F Focused Remediation Tests', () => {
             }).toThrow(/payment must be explicitly confirmed/i);
 
             // Verify zero transactions posted
-            const txCountBefore = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+            const txCountBefore = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any).c;
             expect(txCountBefore).toBe(0);
 
             // User now checks "Paid" checkbox without reloading
@@ -879,7 +877,7 @@ describe('Slice 1F Focused Remediation Tests', () => {
             expect(propAfter?.review_status).toBe('approved');
 
             // Exactly 1 ledger transaction posted
-            const txCountAfter = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+            const txCountAfter = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any).c;
             expect(txCountAfter).toBe(1);
         });
     });

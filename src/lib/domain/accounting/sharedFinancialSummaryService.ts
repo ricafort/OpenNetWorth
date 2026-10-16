@@ -19,7 +19,7 @@
  * - Strict multi-currency: Totals are grouped strictly by currency. Converted totals are only computed
  *   if exact dated exchange rates exist; missing rates are explicitly reported with `is_complete: false`
  *   and missing currencies disclosed, never using 1:1 guesses or mock exchange rates.
- * - Joint ownership weighting: Applies `m1_account_ownership` percentages when scoped to an entity
+ * - Joint ownership weighting: Applies `account_ownership` percentages when scoped to an entity
  *   to ensure a 50% co-owned asset only contributes 50% to that entity's net worth.
  * 
  * TODO: Integrate automated historical FX rate fetcher in Milestone 2.
@@ -96,7 +96,7 @@ export function getSharedFinancialSummary(
     const ownershipMap = new Map<string, number>();
     if (scopeEntityId) {
         const ownerships = db.prepare(`
-            SELECT account_id, share_percentage FROM m1_account_ownership
+            SELECT account_id, share_percentage FROM account_ownership
             WHERE entity_id = ?
         `).all(scopeEntityId) as Array<{ account_id: string; share_percentage: number }>;
 
@@ -108,7 +108,7 @@ export function getSharedFinancialSummary(
     // Collect clearing account IDs (inter-entity receivables/payables) which start at zero
     const clearingAccountIds = new Set<string>();
     try {
-        const clearingRows = db.prepare(`SELECT due_from_account_id, due_to_account_id FROM m1_reimbursement_workflows`).all() as any[];
+        const clearingRows = db.prepare(`SELECT due_from_account_id, due_to_account_id FROM reimbursement_workflows`).all() as any[];
         for (const r of clearingRows) {
             if (r.due_from_account_id) clearingAccountIds.add(r.due_from_account_id);
             if (r.due_to_account_id) clearingAccountIds.add(r.due_to_account_id);
@@ -212,12 +212,12 @@ export function getSharedFinancialSummary(
                 const txRows = db.prepare(`
                     SELECT t.origin,
                            EXISTS (
-                               SELECT 1 FROM m1_journal_entries je2
-                               JOIN m1_accounts a2 ON je2.account_id = a2.id
+                               SELECT 1 FROM journal_entries je2
+                               JOIN accounts a2 ON je2.account_id = a2.id
                                WHERE je2.transaction_id = t.id AND a2.type = 'equity'
                            ) as has_equity
-                    FROM m1_journal_entries je
-                    JOIN m1_transactions t ON je.transaction_id = t.id
+                    FROM journal_entries je
+                    JOIN transactions t ON je.transaction_id = t.id
                     WHERE je.account_id = ? AND t.status = 'posted'
                 `).all(account.id) as Array<{ origin: string; has_equity: number }>;
 
@@ -285,8 +285,8 @@ export function getSharedFinancialSummary(
 
                 const subsequentRows = db.prepare(`
                     SELECT j.amount_cents
-                    FROM m1_journal_entries j
-                    JOIN m1_transactions t ON j.transaction_id = t.id
+                    FROM journal_entries j
+                    JOIN transactions t ON j.transaction_id = t.id
                     WHERE j.account_id = ? AND t.date > ? AND t.date <= ? AND t.status = 'posted'
                     ORDER BY t.date ASC
                 `).all(account.id, obsDate, asOfDate) as Array<{ amount_cents: number }>;
@@ -349,10 +349,10 @@ export function getSharedFinancialSummary(
                 pt.date as purchase_date,
                 prt.date as personal_reimb_date,
                 brt.date as business_reimb_date
-            FROM m1_reimbursement_workflows w
-            JOIN m1_transactions pt ON w.personal_transaction_id = pt.id
-            LEFT JOIN m1_transactions prt ON w.personal_reimbursement_tx_id = prt.id
-            LEFT JOIN m1_transactions brt ON w.business_reimbursement_tx_id = brt.id
+            FROM reimbursement_workflows w
+            JOIN transactions pt ON w.personal_transaction_id = pt.id
+            LEFT JOIN transactions prt ON w.personal_reimbursement_tx_id = prt.id
+            LEFT JOIN transactions brt ON w.business_reimbursement_tx_id = brt.id
             WHERE w.status != 'cancelled'
         `).all() as any[];
 
@@ -413,7 +413,7 @@ export function getSharedFinancialSummary(
             acc.converted_amount_cents = acc.amount_cents;
         } else {
             const rateRow = db.prepare(`
-                SELECT rate FROM m1_exchange_rates
+                SELECT rate FROM exchange_rates
                 WHERE from_currency = ? AND to_currency = ? AND effective_date <= ?
                 ORDER BY effective_date DESC
                 LIMIT 1

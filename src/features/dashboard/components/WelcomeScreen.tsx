@@ -1,12 +1,16 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { enableDemoModeFromData } from '@/features/demo/demoMode';
-import { getPublishedTemplates, getTemplateFullData } from '@/lib/domain/templateService';
-import { UserProfile } from '@/types';
-import { PlayCircle, PenLine, ChevronLeft, Loader2, Globe, X, Upload } from 'lucide-react';
-import { SUPPORTED_CURRENCIES } from '@/lib/utils/currencyService';
+import { useState } from 'react';
+import { enableDemoMode, type DemoPersonaKey } from '@/features/demo/demoMode';
+import {
+    GETTING_STARTED_CONFIG,
+    STABILIZING_CONFIG,
+    BUILDING_FOUNDATIONS_CONFIG,
+    FAMILY_CONFIG,
+    GROWING_WEALTH_CONFIG,
+} from '@/features/demo/demoConfigs';
+import { PlayCircle, PenLine, ChevronLeft, X, Upload, Loader2, Sparkles } from 'lucide-react';
 import { importData } from '@/infrastructure/local_driver';
 
 interface WelcomeScreenProps {
@@ -14,63 +18,19 @@ interface WelcomeScreenProps {
     onClose: () => void;
 }
 
+/** Built-in personas (Phase 2.7): each maps to a seeded read-only demo vault. */
+const PERSONAS = [
+    GETTING_STARTED_CONFIG,
+    STABILIZING_CONFIG,
+    BUILDING_FOUNDATIONS_CONFIG,
+    FAMILY_CONFIG,
+    GROWING_WEALTH_CONFIG,
+];
+
 export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenProps) {
     const [step, setStep] = useState<'intro' | 'demo-select'>('intro');
-    const [templates, setTemplates] = useState<(UserProfile & { assets: { value: number }[], liabilities: { balance: number }[] })[]>([]);
-    const [loadingTemplates, setLoadingTemplates] = useState(false);
-    const [loadingSelection, setLoadingSelection] = useState<string | null>(null);
-    const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
     const [restoreError, setRestoreError] = useState<string | null>(null);
     const [isRestoring, setIsRestoring] = useState(false);
-
-    // Fetch templates on mount
-    useEffect(() => {
-        const fetchTemplates = async () => {
-            setLoadingTemplates(true);
-            const data = await getPublishedTemplates();
-            setTemplates(data);
-            setLoadingTemplates(false);
-        };
-
-        fetchTemplates();
-    }, []);
-
-    const handleTemplateSelect = async (templateId: string) => {
-        setLoadingSelection(templateId);
-        try {
-            const data = await getTemplateFullData(templateId);
-            if (data) {
-                enableDemoModeFromData(data);
-            } else {
-                alert("Failed to load template data. Please try again.");
-            }
-        } catch (error) {
-            console.error("Error loading template:", error);
-            alert("An unexpected error occurred.");
-        } finally {
-            setLoadingSelection(null);
-        }
-    };
-
-    const uniqueCurrencies = Array.from(new Set(templates.map(t => t.currency_code))).sort();
-
-    // Default to USD if available, or first available
-    useEffect(() => {
-        if (uniqueCurrencies.length > 0 && !uniqueCurrencies.includes(selectedCurrency as any)) {
-            setSelectedCurrency(uniqueCurrencies.includes('USD' as any) ? 'USD' : uniqueCurrencies[0]);
-        }
-    }, [uniqueCurrencies, selectedCurrency]);
-
-    const getBenchmarkScore = (bracket?: string) => {
-        if (!bracket) return 0;
-        if (bracket === 'top_1_percent') return 100;
-        const match = bracket.match(/p(\d+)/);
-        return match ? parseInt(match[1]) : 50;
-    };
-
-    const filteredTemplates = templates
-        .filter(t => t.currency_code === selectedCurrency)
-        .sort((a, b) => getBenchmarkScore(a.benchmark_bracket) - getBenchmarkScore(b.benchmark_bracket));
 
     if (step === 'demo-select') {
         return (
@@ -99,105 +59,54 @@ export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenP
                         </div>
 
                         <h2 className="text-3xl font-bold text-slate-900 mt-2">Choose Your Starting Profile</h2>
-                        <p className="text-slate-500 mt-2">Select a persona that matches your life stage. You can reset anytime.</p>
+                        <p className="text-slate-500 mt-2">
+                            Explore a persona that matches your life stage. Sample vaults are read-only and separate
+                            from your real data — exit anytime.
+                        </p>
                     </div>
 
-                    {/* Currency Tabs */}
-                    <div className="flex-none flex overflow-x-auto gap-2 border-b border-slate-100 pb-1 mt-4 px-4 scrollbar-thin scrollbar-thumb-slate-200">
-                        {loadingTemplates ? (
-                            <div className="h-10 w-full animate-pulse bg-slate-100 rounded-lg"></div>
-                        ) : uniqueCurrencies.map(c => (
-                            <button
-                                key={c}
-                                onClick={() => setSelectedCurrency(c)}
-                                className={`px-6 py-3 text-sm font-bold rounded-t-xl transition-all border-b-2 ${selectedCurrency === c
-                                    ? 'text-blue-600 border-blue-600 bg-blue-50/50'
-                                    : 'text-slate-400 border-transparent hover:text-slate-600 hover:bg-slate-50'
-                                    }`}
-                            >
-                                <span className="flex items-center gap-2">
-                                    {c}
-                                    {SUPPORTED_CURRENCIES.find(sc => sc.code === c)?.symbol &&
-                                        <span className="opacity-50 font-normal">({SUPPORTED_CURRENCIES.find(sc => sc.code === c)?.symbol})</span>
-                                    }
-                                </span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Template Grid - Scrollable */}
+                    {/* Persona Grid */}
                     <div className="flex-1 overflow-y-auto min-h-[400px] p-2">
-                        {loadingTemplates ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {[1, 2, 3].map(i => (
-                                    <div key={i} className="h-40 bg-slate-100 rounded-xl animate-pulse" />
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-left pb-10">
-                                {filteredTemplates.map(t => (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-left pb-10">
+                            {PERSONAS.map(p => {
+                                const netWorth =
+                                    p.assets.reduce((sum, a) => sum + (a.value || 0), 0) -
+                                    p.liabilities.reduce((sum, l) => sum + (l.balance || 0), 0);
+                                return (
                                     <button
-                                        key={t.id}
-                                        onClick={() => handleTemplateSelect(t.id)}
-                                        disabled={!!loadingSelection}
-                                        className={`group relative p-6 rounded-2xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 transition-all text-left flex flex-col gap-3 ${loadingSelection === t.id ? 'opacity-75 cursor-wait' : ''}`}
+                                        key={p.id}
+                                        onClick={() => enableDemoMode(p.id as DemoPersonaKey)}
+                                        className="group relative p-6 rounded-2xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 transition-all text-left flex flex-col gap-3"
                                     >
                                         <div className="flex justify-between items-start w-full">
                                             <div className="bg-blue-100 text-blue-600 p-3 rounded-xl group-hover:scale-110 transition-transform">
-                                                {/* Use Avatar if available, else generic icon */}
-                                                {t.avatar_url ? (
-                                                    <img src={t.avatar_url} alt="avatar" className="w-6 h-6 rounded-full" />
-                                                ) : (
-                                                    <Globe size={24} />
-                                                )}
+                                                <Sparkles size={24} />
                                             </div>
-                                            {t.country_code && (
-                                                <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded-md">
-                                                    {t.country_code}
-                                                </span>
-                                            )}
+                                            <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded-md">
+                                                Read-only
+                                            </span>
                                         </div>
 
                                         <div>
                                             <h3 className="font-bold text-slate-900 text-lg leading-tight group-hover:text-blue-700 transition-colors">
-                                                {t.full_name || t.template_name}
+                                                {p.label}
                                             </h3>
                                             <p className="text-xs text-slate-500 mt-2 font-medium">
-                                                {t.income_range_display || "Estimated Income Available"}
+                                                {p.description}
                                             </p>
                                         </div>
 
                                         {/* Net Worth Display */}
                                         <div className="pt-2 mt-auto border-t border-gray-50 flex justify-between items-center w-full">
                                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Net Worth</span>
-                                            <span className={`text-sm font-bold ${(t.assets.reduce((sum, a) => sum + (a.value || 0), 0) -
-                                                t.liabilities.reduce((sum, l) => sum + (l.balance || 0), 0)) >= 0
-                                                ? 'text-emerald-600'
-                                                : 'text-rose-600'
-                                                }`}>
-                                                {formatCurrency(
-                                                    t.assets.reduce((sum, a) => sum + (a.value || 0), 0) -
-                                                    t.liabilities.reduce((sum, l) => sum + (l.balance || 0), 0),
-                                                    t.currency_code
-                                                )}
+                                            <span className={`text-sm font-bold ${netWorth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {formatCurrency(netWorth, 'USD')}
                                             </span>
                                         </div>
-
-                                        {loadingSelection === t.id && (
-                                            <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center rounded-2xl">
-                                                <Loader2 className="animate-spin text-blue-600" size={32} />
-                                            </div>
-                                        )}
                                     </button>
-                                ))}
-                            </div>
-                        )}
-
-                        {!loadingTemplates && filteredTemplates.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                                <p>No templates found for {selectedCurrency}.</p>
-                            </div>
-                        )}
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -244,7 +153,7 @@ export default function WelcomeScreen({ onStartManual, onClose }: WelcomeScreenP
 
                     <button
                         onClick={onStartManual}
-                        className="group flex flex-col items-center gap-4 p-6 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left md:text-center"
+                        className="group flex flex-col items-center gap-4 p-6 rounded-2xl border-2 border-indigo-500 hover:bg-indigo-50 transition-all text-left md:text-center"
                     >
                         <div className="p-4 bg-indigo-100 text-indigo-600 rounded-full group-hover:scale-110 transition-transform">
                             <PenLine size={32} />
@@ -311,4 +220,3 @@ function formatCurrency(amount: number, currency: string = 'USD') {
         maximumFractionDigits: 0,
     }).format(amount);
 }
-

@@ -15,7 +15,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, closeDb, setTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount } from '../accounting/accountService';
 import { getAccountBalance } from '../accounting/balanceService';
 import { postTransaction, ensureExpenseAccount } from '../accounting/transactionService';
@@ -54,11 +53,10 @@ describe('Slice 1E: Document Inbox and Basic Bank CSV Import Review', () => {
         // Isolated in-memory database setup (M1-SAFE-01)
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Seed person entity
         db.prepare(`
-            INSERT INTO m1_entities (id, name, type, created_at, updated_at)
+            INSERT INTO entities (id, name, type, created_at, updated_at)
             VALUES (?, 'Alice Smith', 'person', datetime('now'), datetime('now'))
         `).run(ENTITY_ID);
 
@@ -95,8 +93,8 @@ describe('Slice 1E: Document Inbox and Basic Bank CSV Import Review', () => {
         expect(result.document.byte_size).toBe(Buffer.byteLength(rawCsv, 'utf8'));
         expect(result.document.content_hash).toMatch(/^[a-f0-9]{64}$/);
 
-        // Verify stored in m1_documents with raw content retained
-        const stored = db.prepare('SELECT * FROM m1_documents WHERE id = ?').get(result.document.id) as any;
+        // Verify stored in documents with raw content retained
+        const stored = db.prepare('SELECT * FROM documents WHERE id = ?').get(result.document.id) as any;
         expect(stored.raw_content).toBe(rawCsv);
         expect(stored.content_hash).toBe(result.document.content_hash);
     });
@@ -271,7 +269,7 @@ describe('Slice 1E: Document Inbox and Basic Bank CSV Import Review', () => {
         });
 
         const txId = approveResult.transaction_ids[0];
-        const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(txId) as any;
+        const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(txId) as any;
         expect(tx).toBeDefined();
 
         const evidence = JSON.parse(tx.evidence_refs);
@@ -328,7 +326,7 @@ describe('Slice 1E: Document Inbox and Basic Bank CSV Import Review', () => {
         expect(secondImport.proposals[0].review_status).toBe('approved');
         expect(secondImport.proposals[1].review_status).toBe('approved');
 
-        const txCountAfterFirst = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const txCountAfterFirst = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
         expect(txCountAfterFirst).toBe(3); // 1 opening balance tx + 2 imported txs
 
         // 3. Attempting to approve the same proposals again must be completely idempotent
@@ -347,7 +345,7 @@ describe('Slice 1E: Document Inbox and Basic Bank CSV Import Review', () => {
         expect(balanceAfterSecond).toBe(145000);
 
         // Confirm total transactions in the ledger has not increased
-        const txCountAfterSecond = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const txCountAfterSecond = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
         expect(txCountAfterSecond).toBe(txCountAfterFirst);
     });
 

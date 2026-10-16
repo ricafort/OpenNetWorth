@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useCashflowQuery } from '@/features/cashflow/hooks/useCashflowQuery';
 import { useProfile } from '@/contexts/ProfileContext';
-import { loadSettings, toMonthlyAmount } from '@/infrastructure/local_driver';
+import { loadSettingsFromVault, toMonthlyAmount } from '@/infrastructure/local_driver';
 import { convertAmount } from '@/lib/utils/currencyService';
 import { RecurringTransaction, WealthMomentum } from '@/features/cashflow/types';
 import { CurrencyCode } from '@/types';
@@ -15,16 +15,20 @@ import { CurrencyCode } from '@/types';
 export function useWealthMomentum() {
     const { recurring, isLoading } = useCashflowQuery();
     const { profile } = useProfile();
+    const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('USD');
 
-    const baseCurrency = useMemo(() => {
+    useEffect(() => {
         if (profile?.currency_code) {
-            return profile.currency_code as CurrencyCode;
+            setBaseCurrency(profile.currency_code as CurrencyCode);
+            return;
         }
-        if (typeof window !== 'undefined') {
-            const settings = loadSettings();
-            return settings.baseCurrency;
-        }
-        return 'USD';
+        // No profile currency: read base currency from the SQLite settings kv.
+        // In demo mode the `demo_persona` cookie makes that read target the
+        // persona vault (Phase 2.7) — no localStorage involved.
+        let cancelled = false;
+        const apply = (code: CurrencyCode) => { if (!cancelled) setBaseCurrency(code); };
+        loadSettingsFromVault().then(s => apply(s.baseCurrency)).catch(() => apply('USD'));
+        return () => { cancelled = true; };
     }, [profile]);
 
     const momentum: WealthMomentum = useMemo(() => {

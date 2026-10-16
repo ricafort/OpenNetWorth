@@ -98,7 +98,7 @@ interface ProposalItem {
      */
     explicit_classification_correction?: boolean;
     /**
-     * Delivery 2B: Retained statement document link in m1_documents.
+     * Delivery 2B: Retained statement document link in documents.
      */
     document_id?: string | null;
     /**
@@ -383,7 +383,7 @@ export default function UpdateBalancesModal({
         }
     }, [isOpen, initialMode, initialAccountId]);
 
-    // Delivery 2B: Autosync in-flight proposal edits to m1_statement_reviews
+    // Delivery 2B: Autosync in-flight proposal edits to statement_reviews
     // Why this exists:
     // Automatically persists user adjustments to statement reviews so browser refresh does not discard work.
     //

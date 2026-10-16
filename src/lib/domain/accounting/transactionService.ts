@@ -25,7 +25,7 @@
  *   Submitting the same idempotency key with DIFFERENT financial details throws ConflictError (HTTP 409).
  * - Auditable corrections (M1-DOM-05, T13):
  *   Transactions are never destructively wiped. Voiding or editing stores an immutable
- *   snapshot of previous_state in m1_transaction_corrections and enforces optimistic revision checks.
+ *   snapshot of previous_state in transaction_corrections and enforces optimistic revision checks.
  *   Edits enforce shared validation (dates, descriptions, replacement posting count).
  * 
  * TODO: Add multi-currency transfer FX hedging journals in Milestone 2.
@@ -87,6 +87,8 @@ export interface RecordIncomeInput {
     description: string;
     idempotency_key?: string | null;
     evidence_refs?: any[] | null;
+    /** Defaults to 'manual'; the recurring autopilot generator passes 'recurring'. */
+    origin?: TransactionOrigin;
 }
 
 export interface RecordExpenseInput {
@@ -100,6 +102,8 @@ export interface RecordExpenseInput {
     description: string;
     idempotency_key?: string | null;
     evidence_refs?: any[] | null;
+    /** Defaults to 'manual'; the recurring autopilot generator passes 'recurring'. */
+    origin?: TransactionOrigin;
 }
 
 export interface RecordTransferInput {
@@ -217,7 +221,7 @@ export function ensureExpenseAccount(
 ): Account {
     const curr = currency.toUpperCase();
     const existing = db.prepare(`
-        SELECT * FROM m1_accounts
+        SELECT * FROM accounts
         WHERE entity_id = ? AND type = 'expense' AND sub_type = ? AND currency = ?
     `).get(entityId, category, curr) as any;
 
@@ -245,7 +249,7 @@ export function ensureExpenseAccount(
     const now = new Date().toISOString();
 
     db.prepare(`
-        INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
+        INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
         VALUES (?, ?, ?, 'expense', ?, ?, 1, 1, ?, ?)
     `).run(id, entityId, name, category, curr, now, now);
 
@@ -275,7 +279,7 @@ export function ensureIncomeAccount(
 ): Account {
     const curr = currency.toUpperCase();
     const existing = db.prepare(`
-        SELECT * FROM m1_accounts
+        SELECT * FROM accounts
         WHERE entity_id = ? AND type = 'income' AND sub_type = ? AND currency = ?
     `).get(entityId, category, curr) as any;
 
@@ -303,7 +307,7 @@ export function ensureIncomeAccount(
     const now = new Date().toISOString();
 
     db.prepare(`
-        INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
+        INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
         VALUES (?, ?, ?, 'income', ?, ?, 1, 1, ?, ?)
     `).run(id, entityId, name, category, curr, now, now);
 
@@ -336,7 +340,7 @@ export function ensureValuationEquityAccount(
 ): Account {
     const curr = currency.toUpperCase();
     const existing = db.prepare(`
-        SELECT * FROM m1_accounts
+        SELECT * FROM accounts
         WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve' AND currency = ?
     `).get(entityId, curr) as any;
 
@@ -364,7 +368,7 @@ export function ensureValuationEquityAccount(
     const now = new Date().toISOString();
 
     db.prepare(`
-        INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
+        INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
         VALUES (?, ?, ?, 'equity', 'valuation_reserve', ?, 1, 1, ?, ?)
     `).run(id, entityId, name, curr, now, now);
 
@@ -492,7 +496,7 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
     }
 
     // Verify all referenced accounts exist, currencies match, and all accounts belong to the same sovereign entity
-    const accountLookup = db.prepare('SELECT id, name, currency, type, entity_id FROM m1_accounts WHERE id = ?');
+    const accountLookup = db.prepare('SELECT id, name, currency, type, entity_id FROM accounts WHERE id = ?');
     let transactionEntityId: string | null = null;
     for (const p of preparedPostings) {
         const account = accountLookup.get(p.account_id) as any;
@@ -515,9 +519,9 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
 
     // Idempotency check with material & financial conflict detection (M1-SAFE-05, T11)
     if (input.idempotency_key) {
-        const existingTx = db.prepare('SELECT * FROM m1_transactions WHERE idempotency_key = ?').get(input.idempotency_key) as any;
+        const existingTx = db.prepare('SELECT * FROM transactions WHERE idempotency_key = ?').get(input.idempotency_key) as any;
         if (existingTx) {
-            const existingPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingTx.id) as any[];
+            const existingPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(existingTx.id) as any[];
 
             // Compare material metadata: date, description, payee/payer, and evidence references
             const isDateMatch = existingTx.date === input.date;
@@ -583,7 +587,7 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
 
     const executeTx = db.transaction(() => {
         db.prepare(`
-            INSERT INTO m1_transactions (
+            INSERT INTO transactions (
                 id, date, description, payee_or_payer, status, origin,
                 idempotency_key, evidence_refs, revision, created_at, updated_at
             ) VALUES (?, ?, ?, ?, 'posted', ?, ?, ?, 1, ?, ?)
@@ -600,7 +604,7 @@ export function postTransaction(db: Database.Database, input: PostTransactionInp
         );
 
         const insertPosting = db.prepare(`
-            INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
+            INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
             VALUES (?, ?, ?, ?, ?, ?)
         `);
 
@@ -648,7 +652,7 @@ export function recordIncome(db: Database.Database, input: RecordIncomeInput): T
     }
 
     const runAtomic = db.transaction(() => {
-        const bankAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.bank_account_id) as any;
+        const bankAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.bank_account_id) as any;
         if (!bankAccount) {
             throw new ValidationError(`Bank account not found: ${input.bank_account_id}`);
         }
@@ -662,7 +666,7 @@ export function recordIncome(db: Database.Database, input: RecordIncomeInput): T
         // Find or auto-provision income account
         let incomeAccId = input.income_account_id;
         if (incomeAccId) {
-            const incomeAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(incomeAccId) as any;
+            const incomeAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(incomeAccId) as any;
             if (!incomeAcc) {
                 throw new ValidationError(`Income account not found: ${incomeAccId}`);
             }
@@ -686,7 +690,7 @@ export function recordIncome(db: Database.Database, input: RecordIncomeInput): T
             date: input.date,
             description: input.description,
             payee_or_payer: input.payer,
-            origin: 'manual',
+            origin: input.origin || 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,
             postings: [
@@ -729,7 +733,7 @@ export function recordExpense(db: Database.Database, input: RecordExpenseInput):
     }
 
     const runAtomic = db.transaction(() => {
-        const paymentAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.payment_account_id) as any;
+        const paymentAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.payment_account_id) as any;
         if (!paymentAccount) {
             throw new ValidationError(`Payment account not found: ${input.payment_account_id}`);
         }
@@ -741,7 +745,7 @@ export function recordExpense(db: Database.Database, input: RecordExpenseInput):
         // Find or auto-provision expense account
         let expenseAccId = input.expense_account_id;
         if (expenseAccId) {
-            const expenseAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(expenseAccId) as any;
+            const expenseAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(expenseAccId) as any;
             if (!expenseAcc) {
                 throw new ValidationError(`Expense account not found: ${expenseAccId}`);
             }
@@ -765,7 +769,7 @@ export function recordExpense(db: Database.Database, input: RecordExpenseInput):
             date: input.date,
             description: input.description,
             payee_or_payer: input.payee,
-            origin: 'manual',
+            origin: input.origin || 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,
             postings: [
@@ -811,8 +815,8 @@ export function recordTransfer(db: Database.Database, input: RecordTransferInput
     }
 
     const runAtomic = db.transaction(() => {
-        const fromAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.from_account_id) as any;
-        const toAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.to_account_id) as any;
+        const fromAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.from_account_id) as any;
+        const toAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.to_account_id) as any;
 
         if (!fromAccount) throw new ValidationError(`Source account not found: ${input.from_account_id}`);
         if (!toAccount) throw new ValidationError(`Destination account not found: ${input.to_account_id}`);
@@ -883,8 +887,8 @@ export function recordCreditCardRepayment(db: Database.Database, input: RecordCr
     }
 
     const runAtomic = db.transaction(() => {
-        const bankAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.bank_account_id) as any;
-        const cardAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.card_account_id) as any;
+        const bankAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.bank_account_id) as any;
+        const cardAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.card_account_id) as any;
 
         if (!bankAccount) throw new ValidationError(`Bank account not found: ${input.bank_account_id}`);
         if (!cardAccount) throw new ValidationError(`Credit card account not found: ${input.card_account_id}`);
@@ -968,8 +972,8 @@ export function recordLoanRepayment(db: Database.Database, input: RecordLoanRepa
     }
 
     const runAtomic = db.transaction(() => {
-        const bankAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.bank_account_id) as any;
-        const loanAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.loan_account_id) as any;
+        const bankAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.bank_account_id) as any;
+        const loanAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.loan_account_id) as any;
 
         if (!bankAccount) throw new ValidationError(`Bank account not found: ${input.bank_account_id}`);
         if (!loanAccount) throw new ValidationError(`Loan account not found: ${input.loan_account_id}`);
@@ -998,7 +1002,7 @@ export function recordLoanRepayment(db: Database.Database, input: RecordLoanRepa
         // Ensure or validate interest expense account
         let interestAccId = input.interest_account_id;
         if (interestAccId) {
-            const intAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(interestAccId) as any;
+            const intAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(interestAccId) as any;
             if (!intAcc) throw new ValidationError(`Interest account not found: ${interestAccId}`);
             if (intAcc.type !== 'expense') throw new ValidationError(`Interest account must be an expense account, received type: "${intAcc.type}".`);
             if (intAcc.entity_id !== bankAccount.entity_id) throw new ValidationError(`Interest account does not belong to entity "${bankAccount.entity_id}".`);
@@ -1011,7 +1015,7 @@ export function recordLoanRepayment(db: Database.Database, input: RecordLoanRepa
         // Ensure or validate fee expense account
         let feeAccId = input.fee_account_id;
         if (feeAccId) {
-            const feeAcc = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(feeAccId) as any;
+            const feeAcc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(feeAccId) as any;
             if (!feeAcc) throw new ValidationError(`Fee account not found: ${feeAccId}`);
             if (feeAcc.type !== 'expense') throw new ValidationError(`Fee account must be an expense account, received type: "${feeAcc.type}".`);
             if (feeAcc.entity_id !== bankAccount.entity_id) throw new ValidationError(`Fee account does not belong to entity "${bankAccount.entity_id}".`);
@@ -1130,8 +1134,8 @@ export function cascadeAssetValuations(
         SELECT v.id, v.transaction_id, v.valuation_date, v.target_valuation_cents,
                t.date, t.created_at, t.revision, t.description, t.payee_or_payer,
                t.status, t.origin, t.idempotency_key, t.evidence_refs
-        FROM m1_asset_valuations v
-        JOIN m1_transactions t ON v.transaction_id = t.id
+        FROM asset_valuations v
+        JOIN transactions t ON v.transaction_id = t.id
         WHERE v.account_id = ? AND v.valuation_date >= ? AND t.status = 'posted'
           AND (? IS NULL OR v.transaction_id != ?)
         ORDER BY v.valuation_date ASC, v.created_at ASC
@@ -1143,8 +1147,8 @@ export function cascadeAssetValuations(
         // Calculate cumulative balance of accountId immediately prior to lv.transaction_id
         const priorRows = db.prepare(`
             SELECT j.amount_cents
-            FROM m1_journal_entries j
-            JOIN m1_transactions t ON j.transaction_id = t.id
+            FROM journal_entries j
+            JOIN transactions t ON j.transaction_id = t.id
             WHERE j.account_id = ?
               AND t.status = 'posted'
               AND j.transaction_id != ?
@@ -1157,8 +1161,8 @@ export function cascadeAssetValuations(
         // Fetch current postings of lv.transaction_id
         const currentPostings = db.prepare(`
             SELECT j.id, j.transaction_id, j.account_id, j.amount_cents, j.currency, j.memo, a.type
-            FROM m1_journal_entries j
-            JOIN m1_accounts a ON j.account_id = a.id
+            FROM journal_entries j
+            JOIN accounts a ON j.account_id = a.id
             WHERE j.transaction_id = ?
         `).all(lv.transaction_id) as any[];
 
@@ -1195,13 +1199,13 @@ export function cascadeAssetValuations(
         });
 
         // Update postings to new required delta
-        db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(newDelta, assetPosting.id);
-        db.prepare('UPDATE m1_journal_entries SET amount_cents = ? WHERE id = ?').run(-newDelta, equityPosting.id);
+        db.prepare('UPDATE journal_entries SET amount_cents = ? WHERE id = ?').run(newDelta, assetPosting.id);
+        db.prepare('UPDATE journal_entries SET amount_cents = ? WHERE id = ?').run(-newDelta, equityPosting.id);
 
         // Atomically bump transaction revision and updated_at
         const newRevision = lv.revision + 1;
         const res = db.prepare(`
-            UPDATE m1_transactions
+            UPDATE transactions
             SET revision = revision + 1, updated_at = ?
             WHERE id = ? AND revision = ?
         `).run(now, lv.transaction_id, lv.revision);
@@ -1241,14 +1245,14 @@ export function cascadeAssetValuations(
             }))
         });
 
-        // Record audit trail in m1_transaction_corrections with causal linkage
+        // Record audit trail in transaction_corrections with causal linkage
         const correctionId = crypto.randomUUID();
         const reason = causalTxId
             ? `Cascaded valuation adjustment preserving target ${lv.target_valuation_cents} cents following transaction ${causalTxId}`
             : `Cascaded valuation adjustment preserving target ${lv.target_valuation_cents} cents`;
 
         db.prepare(`
-            INSERT INTO m1_transaction_corrections (
+            INSERT INTO transaction_corrections (
                 id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -1284,8 +1288,8 @@ export function cascadeAssetValuations(
  *   Calculates the asset's cumulative balance before `valDate` (excluding valuations on or after `valDate`).
  *   Delta = new_valuation_cents - priorBalance.
  * - Revision-Safe Valuation Cascading (Resubmission Item 3):
- *   Records target in m1_asset_valuations. Cascades through subsequent valuations to preserve targets
- *   with auditable snapshots in m1_transaction_corrections and bumped revisions.
+ *   Records target in asset_valuations. Cascades through subsequent valuations to preserve targets
+ *   with auditable snapshots in transaction_corrections and bumped revisions.
  * 
  * TODO: Support automated depreciation schedules in Milestone 2.
  */
@@ -1301,7 +1305,7 @@ export function recordAssetValuation(
     }
 
     const runAtomic = db.transaction(() => {
-        const assetAccount = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(input.asset_account_id) as any;
+        const assetAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(input.asset_account_id) as any;
         if (!assetAccount) {
             throw new ValidationError(`Asset account not found: ${input.asset_account_id}`);
         }
@@ -1319,10 +1323,10 @@ export function recordAssetValuation(
 
         // 1. Idempotency Pre-Check before calculating delta (Assessor Findings 6 & 8)
         if (input.idempotency_key) {
-            const existingTx = db.prepare('SELECT * FROM m1_transactions WHERE idempotency_key = ?').get(input.idempotency_key) as any;
+            const existingTx = db.prepare('SELECT * FROM transactions WHERE idempotency_key = ?').get(input.idempotency_key) as any;
             if (existingTx) {
-                const existingVal = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(existingTx.id) as any;
-                const existingPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(existingTx.id) as any[];
+                const existingVal = db.prepare('SELECT * FROM asset_valuations WHERE transaction_id = ?').get(existingTx.id) as any;
+                const existingPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(existingTx.id) as any[];
 
                 const isDateMatch = existingTx.date === valDate;
                 const isAccountMatch = existingVal ? existingVal.account_id === assetAccount.id : existingPostings.some(p => p.account_id === assetAccount.id);
@@ -1376,8 +1380,8 @@ export function recordAssetValuation(
         // Explicitly reject multiple same-day valuation targets for the same account.
         const existingSameDayVal = db.prepare(`
             SELECT v.id, v.transaction_id, v.target_valuation_cents
-            FROM m1_asset_valuations v
-            JOIN m1_transactions t ON v.transaction_id = t.id
+            FROM asset_valuations v
+            JOIN transactions t ON v.transaction_id = t.id
             WHERE v.account_id = ? AND v.valuation_date = ? AND t.status = 'posted'
         `).get(assetAccount.id, valDate) as any;
 
@@ -1389,7 +1393,7 @@ export function recordAssetValuation(
 
         // 3. Ensure an Unrealized Valuation Reserve account exists for this entity in the same currency
         let equityAccount = db.prepare(`
-            SELECT id, name FROM m1_accounts
+            SELECT id, name FROM accounts
             WHERE entity_id = ? AND type = 'equity' AND sub_type = 'valuation_reserve' AND currency = ?
         `).get(entityId, assetAccount.currency) as any;
 
@@ -1407,11 +1411,11 @@ export function recordAssetValuation(
         // 4. Calculate cumulative balance prior to valDate (excluding valuations on or after valDate)
         const priorRows = db.prepare(`
             SELECT j.amount_cents
-            FROM m1_journal_entries j
-            JOIN m1_transactions t ON j.transaction_id = t.id
+            FROM journal_entries j
+            JOIN transactions t ON j.transaction_id = t.id
             WHERE j.account_id = ?
               AND t.status = 'posted'
-              AND (t.date < ? OR (t.date = ? AND t.id NOT IN (SELECT transaction_id FROM m1_asset_valuations WHERE account_id = ?)))
+              AND (t.date < ? OR (t.date = ? AND t.id NOT IN (SELECT transaction_id FROM asset_valuations WHERE account_id = ?)))
         `).all(assetAccount.id, valDate, valDate, assetAccount.id) as Array<{ amount_cents: number }>;
 
         const priorBalanceCents = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
@@ -1479,11 +1483,11 @@ export function recordAssetValuation(
             postings
         });
 
-        // 5. Record Target Valuation Anchor in m1_asset_valuations
+        // 5. Record Target Valuation Anchor in asset_valuations
         const valId = `val-${postedTx.id}`;
         const now = new Date().toISOString();
         db.prepare(`
-            INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
+            INSERT INTO asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(valId, postedTx.id, assetAccount.id, valDate, input.new_valuation_cents, input.source ? input.source.trim() : null, now);
 
@@ -1512,7 +1516,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
         throw new ValidationError('Performing actor/user must be identified for auditable corrections.');
     }
 
-    const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(input.transaction_id) as any;
+    const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(input.transaction_id) as any;
     if (!tx) {
         throw new ValidationError(`Transaction not found: ${input.transaction_id}`);
     }
@@ -1526,7 +1530,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
 
     if (!input.is_internal_reimbursement_operation) {
         const activeWorkflow = db.prepare(`
-            SELECT id FROM m1_reimbursement_workflows 
+            SELECT id FROM reimbursement_workflows 
             WHERE (personal_transaction_id = ? OR business_transaction_id = ? OR personal_reimbursement_tx_id = ? OR business_reimbursement_tx_id = ?)
             AND status != 'void'
         `).get(input.transaction_id, input.transaction_id, input.transaction_id, input.transaction_id);
@@ -1536,7 +1540,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
         }
     }
 
-    const previousPostings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(input.transaction_id) as any[];
+    const previousPostings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(input.transaction_id) as any[];
     const previousSnapshot = JSON.stringify({
         transaction: tx,
         postings: previousPostings
@@ -1550,7 +1554,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
         if (input.operation === 'void') {
             // Mark void
             const res = db.prepare(`
-                UPDATE m1_transactions
+                UPDATE transactions
                 SET status = 'void', revision = revision + 1, updated_at = ?
                 WHERE id = ? AND revision = ?
             `).run(now, input.transaction_id, input.expected_revision);
@@ -1560,14 +1564,14 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
             }
 
             // Valuation target preservation on void (Resubmission Item 2)
-            const valRow = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
+            const valRow = db.prepare('SELECT * FROM asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
             if (valRow) {
-                db.prepare('DELETE FROM m1_asset_valuations WHERE transaction_id = ?').run(input.transaction_id);
+                db.prepare('DELETE FROM asset_valuations WHERE transaction_id = ?').run(input.transaction_id);
                 cascadeAssetValuations(db, valRow.account_id, valRow.valuation_date, input.transaction_id);
             } else {
                 // If any non-valuation posting was on an asset account with subsequent valuations, cascade them
                 for (const p of previousPostings) {
-                    const hasLater = (db.prepare('SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date >= ?').get(p.account_id, tx.date) as any).cnt;
+                    const hasLater = (db.prepare('SELECT COUNT(*) as cnt FROM asset_valuations WHERE account_id = ? AND valuation_date >= ?').get(p.account_id, tx.date) as any).cnt;
                     if (hasLater > 0) {
                         cascadeAssetValuations(db, p.account_id, tx.date, input.transaction_id);
                     }
@@ -1621,7 +1625,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                 }
 
                 // Verify accounts exist, currencies match, and all replacement accounts belong to the same sovereign entity
-                const accountLookup = db.prepare('SELECT id, name, currency, entity_id, type, sub_type FROM m1_accounts WHERE id = ?');
+                const accountLookup = db.prepare('SELECT id, name, currency, entity_id, type, sub_type FROM accounts WHERE id = ?');
                 let correctionEntityId: string | null = null;
                 for (const p of preparedNew) {
                     const acc = accountLookup.get(p.account_id) as any;
@@ -1653,7 +1657,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
 
                 // Valuation safety check (Assessor Finding 2):
                 // If editing a valuation transaction, verify replacement postings can be interpreted safely as an authoritative valuation
-                const valRowPre = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
+                const valRowPre = db.prepare('SELECT * FROM asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
                 let computedTargetCents: number | null = null;
                 if (valRowPre) {
                     const assetPostings = preparedNew.filter(p => p.account_id === valRowPre.account_id);
@@ -1674,12 +1678,12 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                     // Calculate new authoritative target valuation
                     const priorRows = db.prepare(`
                         SELECT j.amount_cents
-                        FROM m1_journal_entries j
-                        JOIN m1_transactions t ON j.transaction_id = t.id
+                        FROM journal_entries j
+                        JOIN transactions t ON j.transaction_id = t.id
                         WHERE j.account_id = ?
                           AND t.status = 'posted'
                           AND t.id != ?
-                          AND (t.date < ? OR (t.date = ? AND t.id NOT IN (SELECT transaction_id FROM m1_asset_valuations WHERE account_id = ?)))
+                          AND (t.date < ? OR (t.date = ? AND t.id NOT IN (SELECT transaction_id FROM asset_valuations WHERE account_id = ?)))
                     `).all(valRowPre.account_id, input.transaction_id, newDate, newDate, valRowPre.account_id) as Array<{ amount_cents: number }>;
                     const priorBalance = priorRows.reduce((sum, r) => sum + r.amount_cents, 0);
                     computedTargetCents = priorBalance + assetPostings[0].amount_cents;
@@ -1689,9 +1693,9 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                 }
 
                 // Delete old postings and insert new
-                db.prepare('DELETE FROM m1_journal_entries WHERE transaction_id = ?').run(input.transaction_id);
+                db.prepare('DELETE FROM journal_entries WHERE transaction_id = ?').run(input.transaction_id);
                 const insertPosting = db.prepare(`
-                    INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
+                    INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
                     VALUES (?, ?, ?, ?, ?, ?)
                 `);
                 for (const p of preparedNew) {
@@ -1699,9 +1703,9 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
                 }
                 updatedPostings = preparedNew;
 
-                // Update authoritative target in m1_asset_valuations if computed
+                // Update authoritative target in asset_valuations if computed
                 if (valRowPre && computedTargetCents !== null) {
-                    db.prepare('UPDATE m1_asset_valuations SET target_valuation_cents = ?, valuation_date = ? WHERE id = ?').run(
+                    db.prepare('UPDATE asset_valuations SET target_valuation_cents = ?, valuation_date = ? WHERE id = ?').run(
                         computedTargetCents,
                         newDate,
                         valRowPre.id
@@ -1710,7 +1714,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
             }
 
             const res = db.prepare(`
-                UPDATE m1_transactions
+                UPDATE transactions
                 SET description = ?, date = ?, payee_or_payer = ?, revision = revision + 1, updated_at = ?
                 WHERE id = ? AND revision = ?
             `).run(newDesc, newDate, newPayee, now, input.transaction_id, input.expected_revision);
@@ -1720,17 +1724,17 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
             }
 
             // Valuation target preservation on edit (Resubmission Item 2)
-            const valRow = db.prepare('SELECT * FROM m1_asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
+            const valRow = db.prepare('SELECT * FROM asset_valuations WHERE transaction_id = ?').get(input.transaction_id) as any;
             if (valRow) {
                 if (newDate !== valRow.valuation_date) {
-                    db.prepare('UPDATE m1_asset_valuations SET valuation_date = ? WHERE id = ?').run(newDate, valRow.id);
+                    db.prepare('UPDATE asset_valuations SET valuation_date = ? WHERE id = ?').run(newDate, valRow.id);
                 }
                 const minDate = newDate < valRow.valuation_date ? newDate : valRow.valuation_date;
                 cascadeAssetValuations(db, valRow.account_id, minDate, input.transaction_id);
             } else {
                 for (const p of updatedPostings) {
                     const minDate = newDate < tx.date ? newDate : tx.date;
-                    const hasLater = (db.prepare('SELECT COUNT(*) as cnt FROM m1_asset_valuations WHERE account_id = ? AND valuation_date >= ?').get(p.account_id, minDate) as any).cnt;
+                    const hasLater = (db.prepare('SELECT COUNT(*) as cnt FROM asset_valuations WHERE account_id = ? AND valuation_date >= ?').get(p.account_id, minDate) as any).cnt;
                     if (hasLater > 0) {
                         cascadeAssetValuations(db, p.account_id, minDate, input.transaction_id);
                     }
@@ -1745,7 +1749,7 @@ export function correctTransaction(db: Database.Database, input: CorrectTransact
 
         // Insert auditable record
         db.prepare(`
-            INSERT INTO m1_transaction_corrections (
+            INSERT INTO transaction_corrections (
                 id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -1802,9 +1806,9 @@ export function listTransactions(
 ): TransactionWithPostings[] {
     let sql = `
         SELECT DISTINCT t.*
-        FROM m1_transactions t
-        JOIN m1_journal_entries j ON t.id = j.transaction_id
-        JOIN m1_accounts a ON j.account_id = a.id
+        FROM transactions t
+        JOIN journal_entries j ON t.id = j.transaction_id
+        JOIN accounts a ON j.account_id = a.id
         WHERE 1=1
     `;
     const params: any[] = [];
@@ -1848,7 +1852,7 @@ export function listTransactions(
     const txIds = txRows.map(t => t.id);
     const placeholders = txIds.map(() => '?').join(',');
     const postingRows = db.prepare(`
-        SELECT * FROM m1_journal_entries
+        SELECT * FROM journal_entries
         WHERE transaction_id IN (${placeholders})
     `).all(...txIds) as any[];
 
@@ -1898,9 +1902,9 @@ export function countTransactions(
 ): number {
     let sql = `
         SELECT COUNT(DISTINCT t.id) as cnt
-        FROM m1_transactions t
-        JOIN m1_journal_entries j ON t.id = j.transaction_id
-        JOIN m1_accounts a ON j.account_id = a.id
+        FROM transactions t
+        JOIN journal_entries j ON t.id = j.transaction_id
+        JOIN accounts a ON j.account_id = a.id
         WHERE 1=1
     `;
     const params: any[] = [];

@@ -10,7 +10,7 @@
 export type MentorChatRole = 'user' | 'mentor' | 'consensus' | 'action_confirm';
 
 export interface MentorChatAttachment {
-    /** m1_documents row id — raw bytes are served by GET /api/documents/raw?id= */
+    /** documents row id — raw bytes are served by GET /api/documents/raw?id= */
     id: string;
     filename: string;
     mimeType: string;

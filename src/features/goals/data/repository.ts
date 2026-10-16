@@ -1,9 +1,6 @@
 import { Goal } from '@/features/goals/types';
 import { IRepository } from '@/types/repository';
-import { createClient } from '@/utils/supabase/client';
-import { loadGoals, saveGoals, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
-
-const supabase = createClient();
+import { persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 
 /**
  * Domain-specific Goal Repository Interface.
@@ -13,83 +10,25 @@ export interface IGoalRepository extends IRepository<Goal> {
 }
 
 /**
- * PRODUCTION Implementation: Uses Supabase
- */
-export class SupabaseGoalRepository implements IGoalRepository {
-    constructor(private templateId?: string | null) { }
-
-    async getAll(): Promise<Goal[]> {
-        let query = supabase.from('goals').select('*');
-        if (this.templateId) {
-            query = query.eq('user_id', this.templateId);
-        } else {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                query = query.eq('user_id', user.id);
-            } else {
-                return [];
-            }
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-        return (data || []) as Goal[];
-    }
-
-    async getById(id: string): Promise<Goal | null> {
-        const { data, error } = await supabase.from('goals').select('*').eq('id', id).single();
-        if (error) return null;
-        return data as Goal;
-    }
-
-    async create(item: Goal): Promise<Goal> {
-        let userId = item.user_id;
-        if (!userId) {
-            if (this.templateId) {
-                userId = this.templateId;
-            } else {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) userId = user.id;
-            }
-        }
-
-        if (!userId) throw new Error("Cannot create goal: User unsupported or not logged in");
-
-        const payload = { ...item, user_id: userId };
-
-        const { data, error } = await (supabase.from('goals') as any).insert([payload]).select().single();
-        if (error) throw error;
-        return data as Goal;
-    }
-
-    async update(item: Goal): Promise<Goal> {
-        const { data, error } = await (supabase.from('goals') as any)
-            .update(item)
-            .eq('id', item.id)
-            .select()
-            .single();
-        if (error) throw error;
-        return data as Goal;
-    }
-
-    async delete(id: string): Promise<void> {
-        const { error } = await supabase.from('goals').delete().eq('id', id);
-        if (error) throw error;
-    }
-}
-
-/**
  * Authoritative Local SQLite-backed Goal Repository (DATA-01, DATA-04, DATA-05).
+ *
+ * Reads go through the vault API (`GET /api/vault?entity=goals`), which serves
+ * the SQLite `goals` table directly — the Goal type is already snake_case, so
+ * rows need no mapping. Writes go through `scoped_save`/`scoped_delete`, which
+ * treat SQLite as authoritative. In demo mode (Phase 2.7) the `demo_persona`
+ * cookie makes the vault API serve the persona vault's goals, and the write
+ * actions are refused with 403.
  */
 export class LocalGoalRepository implements IGoalRepository {
-    constructor(private templateId?: string | null) { }
-
     async getAll(): Promise<Goal[]> {
-        return loadGoals();
+        const res = await fetch('/api/vault?entity=goals');
+        if (!res.ok) throw new Error(`Failed to load goals: HTTP ${res.status}`);
+        const json = await res.json();
+        return (json.data ?? []) as Goal[];
     }
 
     async getById(id: string): Promise<Goal | null> {
-        const items = loadGoals();
+        const items = await this.getAll();
         return items.find(i => i.id === id) || null;
     }
 

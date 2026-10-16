@@ -233,7 +233,7 @@ export default function ChatInterface({
                                 )}
 
                                 {/* Attached files: images render inline from /api/documents/raw,
-                                    everything else as a chip. Rows are shared m1_documents —
+                                    everything else as a chip. Rows are shared documents —
                                     deleting this message never deletes the underlying file. */}
                                 {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
                                     <div className="mt-3 flex flex-wrap gap-2">

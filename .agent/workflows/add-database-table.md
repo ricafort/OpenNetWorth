@@ -1,66 +1,68 @@
 ---
-description: Add a new database table to Supabase
+description: Add a new database table to the embedded SQLite vault
 ---
 
 ## Steps
 
-1. **Create migration file** in `supabase_migrations/`:
+1. **Create a migration module** in `src/infrastructure/sqlite/migrations/`:
    ```
-   [next-number]_[feature-name].sql
+   [next-number]_[feature-name].ts
    ```
-   - Follow existing naming: `15_fix_public_access.sql` → `16_[name].sql`
+   - Find the next number from the existing list; ids are ordered and never reused.
+   - Export `up(db: Database.Database): void`. Never edit an applied migration — add a new one.
 
-2. **Define the table**:
-   ```sql
-   CREATE TABLE IF NOT EXISTS public.[table_name] (
-     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-     user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-     -- your columns here
-     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-   );
+2. **Register it** in `MIGRATIONS[]` in `src/infrastructure/sqlite/migrations.ts`:
+   ```ts
+   {
+       id: '[next-number]_[feature-name]',
+       description: 'One line: what this migration does',
+       up: migrationFn,
+   },
    ```
+   - Set `backupBefore: true` for destructive changes (drops, table rebuilds) — the
+     runner writes a `VACUUM INTO` snapshot to `data/backups/` first.
 
-3. **Enable RLS**:
-   ```sql
-   ALTER TABLE public.[table_name] ENABLE ROW LEVEL SECURITY;
+3. **Define the table** (snake_case columns — they must match API payload keys):
+   ```ts
+   db.exec(`
+       CREATE TABLE IF NOT EXISTS [table_name] (
+           id TEXT PRIMARY KEY,
+           -- your columns here
+           created_at TEXT NOT NULL
+       );
+   `);
    ```
+   - Plain intuitive names — no milestone prefixes (`m0_`, `m1_`).
+   - The runner wraps `up()` in a transaction; add `PRAGMA foreign_key_check`
+     assertions for anything touching the FK graph.
 
-4. **Create RLS policies**:
-   ```sql
-   -- Users can only access their own data
-   CREATE POLICY "Users can view own [table]" ON public.[table_name] 
-     FOR SELECT USING (auth.uid() = user_id);
-   CREATE POLICY "Users can manage own [table]" ON public.[table_name] 
-     FOR ALL USING (auth.uid() = user_id);
-   ```
+4. **Add the canonical DDL** to the owning domain schema file
+   (`src/lib/domain/<domain>/schema.ts`) if fresh vaults should get the table via
+   the baseline path, or rely on the migration alone for additive changes.
 
-5. **Update consolidated schema**:
-   - Add table definition to `supabase_schema.sql`
-   - Add RLS statements
-
-6. **Add TypeScript type** in `src/types/index.ts`:
+5. **Add TypeScript types** in `src/types/index.ts` or the feature's types file:
    ```typescript
    export interface [TypeName] {
      id: string;
-     user_id: string;
-     // your fields
+     // your fields — snake_case, matching columns exactly
      created_at: string;
    }
    ```
 
-7. **Run migration**:
-   - Copy SQL to Supabase SQL Editor
-   - Execute
+6. **Apply it**:
+   - App boot (`getDb()`) runs pending migrations automatically.
+   - Fixture/scratch vaults: `npx tsx scripts/migrate-vault.ts <path>`.
 
 // turbo
-8. **Verify build**:
+7. **Verify build + tests**:
    ```bash
-   npm run build
+   npm test -- --run
    ```
 
 ## Checklist
-- [ ] Table has `user_id` for RLS
-- [ ] RLS is enabled
-- [ ] Policies defined
+- [ ] Migration id is next in sequence and registered in `MIGRATIONS[]`
+- [ ] `up()` is idempotent-safe (guards / `IF NOT EXISTS`)
+- [ ] Columns are snake_case and match API payload keys
+- [ ] `backupBefore: true` if destructive
 - [ ] TypeScript types added
-- [ ] Consolidated schema updated
+- [ ] Tests green (fresh-DB path exercises the full migration list)

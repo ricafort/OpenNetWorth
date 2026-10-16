@@ -1,7 +1,7 @@
 # OpenNetWorth Running & Deployment Guide
 
 ## 1. Overview
-OpenNetWorth is designed primarily as a **sovereign, local-first application**. It can be run 100% locally on your personal machine with zero cloud configuration, or deployed to a private self-hosted server / Vercel instance with an optional Supabase database.
+OpenNetWorth is a **sovereign, local-first application**. It runs 100% locally on your personal machine with zero cloud configuration. The former optional Supabase cloud adapter was removed (git history preserves it).
 
 ---
 
@@ -24,42 +24,20 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:4000](http://localhost:4000). Your data is preserved entirely on your disk in `data/opennetworth.sqlite` and cached in the browser's Local Vault, with 1-click JSON backup export/restore and direct SQLite file portability.
+Open [http://localhost:4000](http://localhost:4000). Your data is preserved entirely on your disk in `data/opennetworth.sqlite`, with 1-click JSON backup export/restore and direct SQLite file portability.
 
 ---
 
-## 3. Appendix (Optional): Self-Hosted Cloud Deployment (Vercel + Supabase)
+## 3. Optional Environment Variables
 
-> **Not the default path.** The app is local-first with an embedded SQLite vault; this appendix only applies if you deliberately opt into a self-hosted Supabase backend for multi-device sync. The OAuth redirect setup below is legacy — it only exists for that optional adapter.
+All optional — the app runs with none of them:
 
-For users who want multi-device synchronization across home and mobile via their own private Supabase instance.
-
-### Pipeline
-
-```text
-  [ 💻 Developer ] ──▶ (git push) ──▶ [ 🐙 GitHub (ricafort/OpenNetWorth) ]
-                                                   │
-                                                   ▼
-  [ ▲ Vercel Build (Next.js 16) ] ◀────────── [ 🔒 Env Vars ]
-              │
-              ▼
-  [ 🌍 Production Instance ] ───────────────▶ [ ☁️ Private Supabase (PostgreSQL) ]
-```
-
-### Environment Variables
-
-| Variable | Required | Description |
-| :--- | :--- | :--- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Optional | Your self-hosted Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional | Supabase public anonymous key |
-| `LOCAL_LLM_URL` | Optional | Default Local LLM endpoint (default: `http://localhost:1234/v1`) |
-| `LOCAL_LLM_MODEL` | Optional | Default model name (default: `qwen3.8-27b-gsq-rco`) |
-| `LOCAL_LLM_PROVIDER` | Optional | Preferred provider (`lmstudio`, `ollama`, or `auto`) |
-| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Optional | Banking integration credentials (sandbox by default) |
-
-### Supabase Database Setup
-1. Execute `supabase_migrations/00_schema_v1.sql` in your Supabase SQL Editor.
-2. If using OAuth, configure your authorized redirect URIs in Supabase Auth settings:
-   - `https://your-domain.com/auth/callback`
-   - `http://localhost:4000/auth/callback`
+| Variable | Description |
+| :--- | :--- |
+| `LOCAL_LLM_URL` | Default Local LLM endpoint (default: `http://localhost:1234/v1`) |
+| `LOCAL_LLM_MODEL` | Default model name |
+| `LOCAL_LLM_PROVIDER` | Preferred provider (`lmstudio`, `ollama`, `strata`, or `auto`) |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Banking integration credentials (sandbox by default) |
+| `BASIQ_API_KEY` | Australian Open Banking (Basiq) credentials (sandbox by default) |
+| `FINNHUB_API_KEY` | Stock price lookups (mock data provided if missing) |
 

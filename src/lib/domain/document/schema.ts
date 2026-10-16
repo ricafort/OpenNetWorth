@@ -6,10 +6,10 @@
  * and extracted financial proposals.
  * 
  * Tricky logic:
- * - Content hash uniqueness on `m1_documents` detects identical files uploaded under different names.
- * - `m1_document_jobs` tracks lease timeouts (`lease_until`) allowing abandoned or interrupted
+ * - Content hash uniqueness on `documents` detects identical files uploaded under different names.
+ * - `document_jobs` tracks lease timeouts (`lease_until`) allowing abandoned or interrupted
  *   worker jobs to be safely resumed upon application restart without duplication.
- * - `m1_proposals` remain isolated from accepted financial accounts until explicit user approval.
+ * - `proposals` remain isolated from accepted financial accounts until explicit user approval.
  * 
  * TODO: Add blob chunking table if files larger than 50MB are supported locally.
  */
@@ -18,7 +18,7 @@ import Database from 'better-sqlite3';
 
 export const DOCUMENT_SCHEMA_DDL = `
     -- Retained Documents & Original Files
-    CREATE TABLE IF NOT EXISTS m1_documents (
+    CREATE TABLE IF NOT EXISTS documents (
         id TEXT PRIMARY KEY,
         filename TEXT NOT NULL,
         content_hash TEXT NOT NULL UNIQUE, -- SHA-256
@@ -31,7 +31,7 @@ export const DOCUMENT_SCHEMA_DDL = `
     );
 
     -- Reusable Bank CSV Column Mappings (Slice 1E)
-    CREATE TABLE IF NOT EXISTS m1_csv_mappings (
+    CREATE TABLE IF NOT EXISTS csv_mappings (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         header_signature TEXT NOT NULL, -- Canonical pipe-separated header list for auto-matching
@@ -47,7 +47,7 @@ export const DOCUMENT_SCHEMA_DDL = `
     );
 
     -- Durable Preparation & Background Jobs
-    CREATE TABLE IF NOT EXISTS m1_document_jobs (
+    CREATE TABLE IF NOT EXISTS document_jobs (
         id TEXT PRIMARY KEY,
         document_id TEXT NOT NULL,
         state TEXT NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'processing', 'ready_for_review', 'partially_extracted', 'failed')),
@@ -57,11 +57,11 @@ export const DOCUMENT_SCHEMA_DDL = `
         options TEXT, -- JSON options (e.g. model, service)
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
+        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
 
     -- Extracted Financial Proposals (Provisional Records)
-    CREATE TABLE IF NOT EXISTS m1_proposals (
+    CREATE TABLE IF NOT EXISTS proposals (
         id TEXT PRIMARY KEY,
         document_id TEXT NOT NULL,
         entity_id TEXT,
@@ -82,29 +82,29 @@ export const DOCUMENT_SCHEMA_DDL = `
         linked_transaction_id TEXT, -- Target transaction when linked as supporting evidence (Slice 1G)
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
+        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
 
     -- Indices
-    CREATE INDEX IF NOT EXISTS idx_m1_documents_hash ON m1_documents(content_hash);
-    CREATE INDEX IF NOT EXISTS idx_m1_csv_mappings_sig ON m1_csv_mappings(header_signature);
-    CREATE INDEX IF NOT EXISTS idx_m1_proposals_doc ON m1_proposals(document_id);
-    CREATE INDEX IF NOT EXISTS idx_m1_proposals_status ON m1_proposals(review_status);
-    CREATE INDEX IF NOT EXISTS idx_m1_proposals_linked_tx ON m1_proposals(linked_transaction_id);
-    CREATE INDEX IF NOT EXISTS idx_m1_document_jobs_state ON m1_document_jobs(state);
+    CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
+    CREATE INDEX IF NOT EXISTS idx_csv_mappings_sig ON csv_mappings(header_signature);
+    CREATE INDEX IF NOT EXISTS idx_proposals_doc ON proposals(document_id);
+    CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(review_status);
+    CREATE INDEX IF NOT EXISTS idx_proposals_linked_tx ON proposals(linked_transaction_id);
+    CREATE INDEX IF NOT EXISTS idx_document_jobs_state ON document_jobs(state);
 `;
 
 /**
  * Applies transactional migrations to the document schema for existing databases.
  * 
  * Why this exists:
- * When upgrading existing databases that already have `m1_documents` or `m1_proposals`,
+ * When upgrading existing databases that already have `documents` or `proposals`,
  * this ensures safe, non-destructive migration to support raw content, CSV mappings,
  * and receipt-to-transaction linking (`linked_transaction_id` and `'linked'` status).
  * 
  * Tricky logic:
  * - Checks table column definitions using `PRAGMA table_info` before attempting `ALTER TABLE`.
- * - If `m1_proposals` table CHECK constraint does not include `'linked'`, migrates the table
+ * - If `proposals` table CHECK constraint does not include `'linked'`, migrates the table
  *   atomically via a temporary table so SQLite CHECK constraints allow `'linked'`.
  * - Runs inside a transaction to guarantee atomicity.
  * 
@@ -112,39 +112,39 @@ export const DOCUMENT_SCHEMA_DDL = `
  */
 export function migrateDocumentSchema(db: Database.Database): void {
     const runMigration = db.transaction(() => {
-        // 1. Check if m1_documents table exists and needs raw_content column
+        // 1. Check if documents table exists and needs raw_content column
         const docTableExists = (db.prepare(
-            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_documents'"
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'documents'"
         ).get() as any).cnt > 0;
 
         if (docTableExists) {
-            const columns = db.prepare("PRAGMA table_info(m1_documents)").all() as Array<{ name: string }>;
+            const columns = db.prepare("PRAGMA table_info(documents)").all() as Array<{ name: string }>;
             const hasRawContent = columns.some(c => c.name === 'raw_content');
             if (!hasRawContent) {
-                db.prepare("ALTER TABLE m1_documents ADD COLUMN raw_content TEXT").run();
+                db.prepare("ALTER TABLE documents ADD COLUMN raw_content TEXT").run();
             }
             // Mentor chat attachments store a plain-text extraction alongside the raw
             // bytes so /api/mentor can ground answers in file content without re-parsing.
             const hasExtractedText = columns.some(c => c.name === 'extracted_text');
             if (!hasExtractedText) {
-                db.prepare("ALTER TABLE m1_documents ADD COLUMN extracted_text TEXT").run();
+                db.prepare("ALTER TABLE documents ADD COLUMN extracted_text TEXT").run();
             }
         }
 
-        // 2. Check if m1_proposals needs linked_transaction_id column or 'linked' CHECK constraint upgrade
+        // 2. Check if proposals needs linked_transaction_id column or 'linked' CHECK constraint upgrade
         const propTableExists = (db.prepare(
-            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_proposals'"
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'proposals'"
         ).get() as any).cnt > 0;
 
         if (propTableExists) {
-            const propColumns = db.prepare("PRAGMA table_info(m1_proposals)").all() as Array<{ name: string }>;
-            const masterRow = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'm1_proposals'").get() as any;
+            const propColumns = db.prepare("PRAGMA table_info(proposals)").all() as Array<{ name: string }>;
+            const masterRow = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'proposals'").get() as any;
             const needsCheckUpgrade = masterRow && masterRow.sql && !masterRow.sql.includes("'linked'");
 
             if (needsCheckUpgrade) {
                 // Table recreation migration to upgrade CHECK constraint safely
                 db.prepare(`
-                    CREATE TABLE IF NOT EXISTS m1_proposals_upgrade_tmp (
+                    CREATE TABLE IF NOT EXISTS proposals_upgrade_tmp (
                         id TEXT PRIMARY KEY,
                         document_id TEXT NOT NULL,
                         entity_id TEXT,
@@ -165,7 +165,7 @@ export function migrateDocumentSchema(db: Database.Database): void {
                         linked_transaction_id TEXT,
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL,
-                        FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
+                        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
                     )
                 `).run();
 
@@ -180,17 +180,17 @@ export function migrateDocumentSchema(db: Database.Database): void {
                     'created_at', 'updated_at'
                 ].join(', ');
 
-                db.prepare(`INSERT INTO m1_proposals_upgrade_tmp SELECT ${selectCols} FROM m1_proposals`).run();
-                db.prepare(`DROP TABLE m1_proposals`).run();
-                db.prepare(`ALTER TABLE m1_proposals_upgrade_tmp RENAME TO m1_proposals`).run();
-                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_doc ON m1_proposals(document_id)`).run();
-                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_status ON m1_proposals(review_status)`).run();
-                db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_linked_tx ON m1_proposals(linked_transaction_id)`).run();
+                db.prepare(`INSERT INTO proposals_upgrade_tmp SELECT ${selectCols} FROM proposals`).run();
+                db.prepare(`DROP TABLE proposals`).run();
+                db.prepare(`ALTER TABLE proposals_upgrade_tmp RENAME TO proposals`).run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_proposals_doc ON proposals(document_id)`).run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(review_status)`).run();
+                db.prepare(`CREATE INDEX IF NOT EXISTS idx_proposals_linked_tx ON proposals(linked_transaction_id)`).run();
             } else {
                 const hasLinkedTxId = propColumns.some(c => c.name === 'linked_transaction_id');
                 if (!hasLinkedTxId) {
-                    db.prepare("ALTER TABLE m1_proposals ADD COLUMN linked_transaction_id TEXT").run();
-                    db.prepare(`CREATE INDEX IF NOT EXISTS idx_m1_proposals_linked_tx ON m1_proposals(linked_transaction_id)`).run();
+                    db.prepare("ALTER TABLE proposals ADD COLUMN linked_transaction_id TEXT").run();
+                    db.prepare(`CREATE INDEX IF NOT EXISTS idx_proposals_linked_tx ON proposals(linked_transaction_id)`).run();
                 }
             }
         }
@@ -207,17 +207,3 @@ export function migrateDocumentSchema(db: Database.Database): void {
     }
 }
 
-/**
- * Initializes the Milestone 1 document processing schema on a SQLite database,
- * and applies any pending migrations idempotently.
- * 
- * Migration order:
- * Migrations must run BEFORE `DOCUMENT_SCHEMA_DDL` so that existing tables
- * from previous slices (e.g. Slice 1F) have missing columns added before
- * index creation runs on those columns.
- */
-export function initDocumentSchema(db: Database.Database): void {
-    migrateDocumentSchema(db);
-    db.pragma('foreign_keys = ON');
-    db.exec(DOCUMENT_SCHEMA_DDL);
-}

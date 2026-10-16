@@ -7,7 +7,7 @@
  * 
  * Tricky logic:
  * - Supports both `multipart/form-data` (file upload from browser) and JSON payload (`file_base64`).
- * - Preserves original binary content in `m1_documents` and generates SHA-256 content hashes.
+ * - Preserves original binary content in `documents` and generates SHA-256 content hashes.
  * - Non-destructive reimport: If already approved, returns existing document without duplicate postings.
  * 
  * TODO: Add background asynchronous worker job dispatch for multi-page batch PDFs in Slice 1G.
@@ -15,13 +15,11 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { ingestPdfDocument } from '@/lib/domain/document/documentInboxService';
 
 export async function POST(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const contentType = request.headers.get('content-type') || '';
 

@@ -25,7 +25,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import Database from 'better-sqlite3';
 import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { recordBalanceObservation } from '@/lib/domain/accounting/balanceObservationService';
 import { POST } from './route';
@@ -40,7 +40,8 @@ describe('Mentor Authoritative Server Figures & Local Safety (Findings B & F)', 
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
         setTestDb(db);
     });
 

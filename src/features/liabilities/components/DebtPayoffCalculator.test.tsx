@@ -44,7 +44,10 @@ import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
 import { Liability } from '@/features/liabilities/types';
 import { CurrencyCode } from '@/types';
 import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
+import { GET as settingsGet, POST as settingsPost, DELETE as settingsDelete } from '@/app/api/settings/route';
 
+// The component reads its saved plan from the settings kv via /api/settings
+// (Phase 2.5); bridge that URL to the real route handlers on the test DB.
 const vaultFetchMock = vi.fn(async (url: any, init?: RequestInit) => {
     const urlStr = String(url);
     if (urlStr.includes('/api/vault')) {
@@ -54,6 +57,17 @@ const vaultFetchMock = vi.fn(async (url: any, init?: RequestInit) => {
             return vaultGet(req);
         }
         return vaultPost(req);
+    }
+    if (urlStr.includes('/api/settings')) {
+        const method = init?.method?.toUpperCase() || 'GET';
+        const req = new Request('http://localhost:4000/api/settings', init);
+        if (method === 'GET') {
+            return settingsGet(req);
+        }
+        if (method === 'POST') {
+            return settingsPost(req);
+        }
+        return settingsDelete(req);
     }
     if (urlStr.includes('/api/accounting/balances')) {
         return new Response(JSON.stringify({
@@ -81,7 +95,7 @@ if (typeof window !== 'undefined') {
     window.fetch = vaultFetchMock as any;
 }
 
-import { saveFreedomSettings } from '@/infrastructure/local_driver';
+import { saveFreedomSettings, resetUiStateMigrationForTests } from '@/infrastructure/local_driver';
 
 // Mock hook states
 let mockLiabilities: Liability[] = [];
@@ -118,6 +132,20 @@ vi.mock('@/features/accounting/hooks/useAccountingCheck', () => ({
         hasModernLiabilities: false,
         hasModernAssets: false,
         isLoading: false
+    })
+}));
+
+// The component checks demo mode to pick its settings source; these tests
+// exercise the real-vault (SQLite) path.
+vi.mock('@/contexts/ProfileContext', () => ({
+    useProfile: () => ({
+        profile: null,
+        isLoading: false,
+        isDemoMode: false,
+        canEdit: true,
+        refreshData: vi.fn(),
+        switchProfile: vi.fn(),
+        updateCurrency: vi.fn()
     })
 }));
 
@@ -178,6 +206,10 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         // Setup clean localStorage
         window.localStorage.clear();
 
+        // Each test gets a fresh DB; let the boot migration re-check the marker
+        // against it instead of trusting a resolved promise from a prior test.
+        resetUiStateMigrationForTests();
+
         // Bridge fetch to vault handlers for SQLite persistence
         (globalThis as any).fetch = vaultFetchMock;
         window.fetch = vaultFetchMock as any;
@@ -216,10 +248,12 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
      * - Zero writes to SQLite occur during loading or mounting.
      */
     it('Loading → matching currency: restores matching saved plan correctly without writing', async () => {
-        // Seed saved plan in USD 500
+        // Seed saved plan in USD 500 — saveFreedomSettings writes the settings kv
+        // in the SQLite vault (no localStorage writes after Phase 2.5).
         await saveFreedomSettings({ strategy: 'avalanche', extraMonthlyPayment: 500, currency: 'USD' });
-        const stored = window.localStorage.getItem('opennetworth_freedom_settings');
-        expect(stored).toContain('"extraMonthlyPayment":500');
+        const stored = testDb.prepare("SELECT value FROM settings WHERE key = 'freedomSettings'").get() as any;
+        expect(stored).toBeTruthy();
+        expect(JSON.parse(stored.value).extraMonthlyPayment).toBe(500);
 
         // Dashboard is AUD, debts initially loading
         mockBaseCurrency = 'AUD';
@@ -227,7 +261,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         mockLiabilities = [];
 
         // Mount actual component
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -236,14 +270,14 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(container.querySelector('input')).toBeNull();
 
         // Ensure zero writes to SQLite while loading
-        const initialRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const initialRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(initialRecurring).toBeUndefined();
 
         // Debts finish loading with USD debt (matching saved plan currency)
         mockIsLoading = false;
         mockLiabilities = usdDebts;
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -265,7 +299,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(container.textContent).toContain('Active plan saved (USD)');
 
         // Still zero writes to SQLite
-        const afterLoadRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const afterLoadRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(afterLoadRecurring).toBeUndefined();
     });
 
@@ -290,7 +324,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         mockIsLoading = true;
         mockLiabilities = [];
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
         expect(container.innerHTML).toContain('animate-pulse');
@@ -299,7 +333,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         mockIsLoading = false;
         mockLiabilities = audDebts;
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -319,7 +353,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(container.textContent).toContain('Saved in USD — review required before saving');
 
         // Verify zero writes to SQLite
-        const recurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const recurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(recurring).toBeUndefined();
     });
 
@@ -341,7 +375,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         mockBaseCurrency = 'USD';
         mockLiabilities = usdDebts;
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -358,7 +392,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         // Now active liabilities switch to AUD debts while calculator remains mounted
         mockLiabilities = audDebts;
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -371,7 +405,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         // Switch back to USD debts while mounted
         mockLiabilities = usdDebts;
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -396,7 +430,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         mockIsLoading = false;
         mockLiabilities = audDebts;
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -413,10 +447,10 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(input.value).toBe('250');
 
         // Simulate multiple ordinary rerenders (e.g. parent component rerender)
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -425,7 +459,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(input.value).toBe('250');
 
         // Verify zero writes have occurred to SQLite
-        const recurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const recurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(recurring).toBeUndefined();
     });
 
@@ -444,7 +478,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         mockIsLoading = false;
         mockLiabilities = audDebts;
 
-        act(() => {
+        await act(async () => {
             root.render(<DebtPayoffCalculator />);
         });
 
@@ -461,7 +495,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         const beforeSaveSettings = testDb.prepare("SELECT value FROM settings WHERE key = 'freedomSettings'").get() as any;
         expect(JSON.parse(beforeSaveSettings.value).currency).toBe('USD');
 
-        const beforeSaveRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get();
+        const beforeSaveRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get();
         expect(beforeSaveRecurring).toBeUndefined();
 
         // Find "Save Plan to Budget" button
@@ -483,7 +517,7 @@ describe('DebtPayoffCalculator Component-Level Loading-State & Currency Consiste
         expect(savedData.currency).toBe('AUD');
 
         // Verify recurring accelerator in SQLite
-        const afterSaveRecurring = testDb.prepare("SELECT * FROM recurring_transactions WHERE id = 'debt-freedom-accelerator'").get() as any;
+        const afterSaveRecurring = testDb.prepare("SELECT * FROM recurring_schedules WHERE id = 'debt-freedom-accelerator'").get() as any;
         expect(afterSaveRecurring).toBeDefined();
         expect(afterSaveRecurring.amount).toBe(300);
         expect(afterSaveRecurring.currency).toBe('AUD');

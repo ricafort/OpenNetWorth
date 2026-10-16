@@ -5,14 +5,14 @@
  * Fulfills Delivery 2B (Statement Files to Reviewed Balances):
  * Exposes endpoints for uploading financial statement PDFs, assessing per-page coverage,
  * running the portable PDF extraction pipeline with cross-page context propagation,
- * and managing durable pending review sessions in SQLite (`m1_statement_reviews`).
+ * and managing durable pending review sessions in SQLite (`statement_reviews`).
  * 
  * Tricky logic:
  * - Duplicate Detection & Preservation: If a statement PDF with the exact same SHA-256 hash
  *   is re-uploaded, inspects whether it was already saved. If saved, preserves saved decisions.
  *   If pending review, returns the preserved modified proposals so users can resume review.
  * - Multi-Part Form Data: Reads incoming PDF file buffers safely without external upload dependencies.
- * - Non-Posting Invariant: Uploading and updating proposals NEVER posts to the transaction ledger (`m1_transactions`).
+ * - Non-Posting Invariant: Uploading and updating proposals NEVER posts to the transaction ledger (`transactions`).
  * - Debounced Review Autosync: PUT endpoint allows the review modal to autosync modified proposal fields
  *   so browser reloads don't discard in-flight user adjustments.
  * 
@@ -22,7 +22,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { extractStatementBalancesFromPdf } from '@/lib/domain/document/pdfStatementExtractor';
 import {
     saveStatementReview,
@@ -40,7 +39,6 @@ export async function POST(request: Request) {
 
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const formData = await request.formData();
         const file = formData.get('file') as File | null;
@@ -61,8 +59,8 @@ export async function POST(request: Request) {
         const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
         const now = new Date().toISOString();
 
-        // 1. Check if document already exists in m1_documents
-        const existingDoc = db.prepare('SELECT * FROM m1_documents WHERE content_hash = ?').get(contentHash) as any;
+        // 1. Check if document already exists in documents
+        const existingDoc = db.prepare('SELECT * FROM documents WHERE content_hash = ?').get(contentHash) as any;
 
         if (existingDoc) {
             const existingReview = getStatementReviewByDocumentId(db, existingDoc.id);
@@ -105,11 +103,11 @@ export async function POST(request: Request) {
             }
         }
 
-        // 2. Persist new document record in m1_documents
+        // 2. Persist new document record in documents
         const docId = existingDoc ? existingDoc.id : `doc-${crypto.randomUUID()}`;
         if (!existingDoc) {
             db.prepare(`
-                INSERT INTO m1_documents (
+                INSERT INTO documents (
                     id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
@@ -150,7 +148,7 @@ export async function POST(request: Request) {
             }, { status: 422 }));
         }
 
-        // 4. Save durable pending review session in m1_statement_reviews
+        // 4. Save durable pending review session in statement_reviews
         const review = saveStatementReview(db, {
             document_id: docId,
             status: 'pending_review',
@@ -187,7 +185,6 @@ export async function GET(request: Request) {
 
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const url = new URL(request.url);
         const documentId = url.searchParams.get('document_id');
@@ -215,7 +212,6 @@ export async function PUT(request: Request) {
 
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { document_id, proposals, version } = body;

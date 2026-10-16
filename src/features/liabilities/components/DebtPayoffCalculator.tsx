@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Liability, LiabilityType, DebtPayoffResult, PayoffStrategy } from '@/features/liabilities/types';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
-import { loadFreedomSettings, saveFreedomSettings, updateDebtRecurringTransaction } from '@/infrastructure/local_driver';
+import { loadFreedomSettingsFromVault, saveFreedomSettings, updateDebtRecurringTransaction } from '@/infrastructure/local_driver';
 import { TrendingDown, Calendar, DollarSign, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/features/dashboard/context/DashboardContext';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
@@ -98,18 +98,37 @@ export default function DebtPayoffCalculator() {
     const isMultiCurrency = rawCurrencies.length > 1;
     const debtCurrency = (rawCurrencies[0] || (baseCurrency as CurrencyCode) || 'USD') as CurrencyCode;
 
-    // Saved settings loaded from local SQLite storage / cache
+    // Saved settings loaded from the SQLite settings kv (localStorage only for demo personas)
     // Why this exists:
     // Holds the currently persisted freedom plan (strategy, extraMonthlyPayment, currency).
     // Tricky logic:
     // Preserves historical USD meaning of old currency-less settings (defaults to 'USD').
+    // The load is async, so settingsLoaded gates the currency-change block below: without it,
+    // that block would run with placeholder defaults and could lock in a default amount
+    // before the real saved plan arrives.
     // TODO: Support multiple named scenario profiles in SQLite settings.
-    const [savedSettings, setSavedSettings] = useState(() => {
-        if (typeof window !== 'undefined') {
-            return loadFreedomSettings();
-        }
-        return { strategy: 'avalanche' as PayoffStrategy, extraMonthlyPayment: 500, currency: 'USD' as CurrencyCode };
+    const [savedSettings, setSavedSettings] = useState<{ strategy: PayoffStrategy; extraMonthlyPayment: number; currency: CurrencyCode }>({
+        strategy: 'avalanche',
+        extraMonthlyPayment: 500,
+        currency: 'USD'
     });
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        const apply = (s: { strategy: PayoffStrategy; extraMonthlyPayment: number; currency: CurrencyCode }) => {
+            if (cancelled) return;
+            setSavedSettings(s);
+            setStrategy(s.strategy);
+            setSettingsLoaded(true);
+        };
+        // The payoff plan lives in the SQLite settings kv; in demo mode the
+        // `demo_persona` cookie makes the read target the persona vault (Phase 2.7).
+        loadFreedomSettingsFromVault()
+            .then(apply)
+            .catch(() => { if (!cancelled) setSettingsLoaded(true); /* keep visible defaults */ });
+        return () => { cancelled = true; };
+    }, []);
 
     // Associated editable payment state coupled to its currency
     // Why this exists:
@@ -127,7 +146,7 @@ export default function DebtPayoffCalculator() {
     const [paymentPlan, setPaymentPlan] = useState<{ amount: number; currency: CurrencyCode } | null>(null);
     const [prevDebtCurrency, setPrevDebtCurrency] = useState<CurrencyCode | null>(null);
 
-    if (!isLoading && debtCurrency !== prevDebtCurrency) {
+    if (!isLoading && settingsLoaded && debtCurrency !== prevDebtCurrency) {
         setPrevDebtCurrency(debtCurrency);
         const initialAmount = (savedSettings.currency && savedSettings.currency === debtCurrency)
             ? savedSettings.extraMonthlyPayment
@@ -154,28 +173,29 @@ export default function DebtPayoffCalculator() {
     // TODO: In Milestone 2, offer an automated FX conversion preview using dated exchange rates.
     const isCurrencyMismatch = Boolean(
         !isLoading &&
+        settingsLoaded &&
         activeDebts.length > 0 &&
         !isMultiCurrency &&
         savedSettings.currency &&
         savedSettings.currency !== debtCurrency
     );
 
-    const [strategy, setStrategy] = useState<PayoffStrategy>(() => {
-        if (typeof window !== 'undefined') {
-            return loadFreedomSettings().strategy;
-        }
-        return 'avalanche';
-    });
+    // Seeded with the default; the settings-load effect above syncs it from the vault
+    // (or localStorage for demo personas) once the saved plan arrives.
+    const [strategy, setStrategy] = useState<PayoffStrategy>('avalanche');
 
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
     const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
     const hasUnsavedChanges = useMemo(() => {
+        // While the saved plan is still loading, the placeholder defaults must not
+        // masquerade as unsaved edits (e.g. a USD placeholder vs AUD debts).
+        if (!settingsLoaded) return false;
         return strategy !== savedSettings.strategy ||
             Math.round(extraPayment) !== Math.round(savedSettings.extraMonthlyPayment) ||
             savedSettings.currency !== debtCurrency;
-    }, [strategy, extraPayment, savedSettings, debtCurrency]);
+    }, [settingsLoaded, strategy, extraPayment, savedSettings, debtCurrency]);
 
     const handleSavePlan = async () => {
         setIsSaving(true);

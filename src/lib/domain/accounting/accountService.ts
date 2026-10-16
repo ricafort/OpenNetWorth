@@ -59,6 +59,9 @@ export interface CreateAccountInput {
     opening_date?: string | null; // YYYY-MM-DD
     opening_balance_cents?: number | null; // Integer cents
     tracking_mode?: TrackingMode;
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null; // Integer cents
+    investment_details?: string | null; // JSON string
 }
 
 export interface UpdateAccountInput {
@@ -68,6 +71,36 @@ export interface UpdateAccountInput {
     account_number_mask?: string | null;
     is_active?: boolean;
     tracking_mode?: TrackingMode;
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null; // Integer cents
+    investment_details?: string | null; // JSON string
+}
+
+/**
+ * Validates the optional terms fields shared by create and update paths.
+ * `investment_details` is stored as JSON text; we reject malformed JSON at the
+ * boundary so readers never have to guard against it.
+ */
+function assertValidAccountTerms(input: {
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null;
+    investment_details?: string | null;
+}): void {
+    if (input.interest_rate !== undefined && input.interest_rate !== null) {
+        if (typeof input.interest_rate !== 'number' || !Number.isFinite(input.interest_rate) || input.interest_rate < 0) {
+            throw new ValidationError('Interest rate must be a finite non-negative number.');
+        }
+    }
+    if (input.minimum_payment_cents !== undefined && input.minimum_payment_cents !== null) {
+        assertValidMoneyCents(input.minimum_payment_cents, 'Minimum payment cents');
+    }
+    if (input.investment_details !== undefined && input.investment_details !== null) {
+        try {
+            JSON.parse(input.investment_details);
+        } catch {
+            throw new ValidationError('Investment details must be valid JSON.');
+        }
+    }
 }
 
 export class ConflictError extends Error {
@@ -100,7 +133,7 @@ export function createEntity(db: Database.Database, input: CreateEntityInput): E
     const now = new Date().toISOString();
 
     const stmt = db.prepare(`
-        INSERT INTO m1_entities (id, name, type, currency, parent_entity_id, created_at, updated_at)
+        INSERT INTO entities (id, name, type, currency, parent_entity_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(id, input.name.trim(), input.type, currency, input.parent_entity_id || null, now, now);
@@ -120,7 +153,7 @@ export function createEntity(db: Database.Database, input: CreateEntityInput): E
  * Lists all entities in the ledger.
  */
 export function listEntities(db: Database.Database): Entity[] {
-    const rows = db.prepare('SELECT * FROM m1_entities ORDER BY name ASC').all() as any[];
+    const rows = db.prepare('SELECT * FROM entities ORDER BY name ASC').all() as any[];
     return rows.map(r => ({
         id: r.id,
         name: r.name,
@@ -136,7 +169,7 @@ export function listEntities(db: Database.Database): Entity[] {
  * Retrieves an entity by ID.
  */
 export function getEntity(db: Database.Database, id: string): Entity | null {
-    const row = db.prepare('SELECT * FROM m1_entities WHERE id = ?').get(id) as any;
+    const row = db.prepare('SELECT * FROM entities WHERE id = ?').get(id) as any;
     if (!row) return null;
     return {
         id: row.id,
@@ -154,7 +187,7 @@ export function getEntity(db: Database.Database, id: string): Entity | null {
  */
 function ensureOpeningEquityAccount(db: Database.Database, entityId: string, currency: CurrencyCode): Account {
     const existing = db.prepare(`
-        SELECT * FROM m1_accounts
+        SELECT * FROM accounts
         WHERE entity_id = ? AND type = 'equity' AND sub_type = 'opening_balance_equity' AND currency = ?
     `).get(entityId, currency) as any;
 
@@ -180,7 +213,7 @@ function ensureOpeningEquityAccount(db: Database.Database, entityId: string, cur
     const id = `acc-equity-${entityId}-${currency.toLowerCase()}`;
     const now = new Date().toISOString();
     db.prepare(`
-        INSERT INTO m1_accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
+        INSERT INTO accounts (id, entity_id, name, type, sub_type, currency, is_active, revision, created_at, updated_at)
         VALUES (?, ?, 'Opening Balance Equity', 'equity', 'opening_balance_equity', ?, 1, 1, ?, ?)
     `).run(id, entityId, currency, now, now);
 
@@ -224,6 +257,8 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
     const accountId = input.id || crypto.randomUUID();
     const now = new Date().toISOString();
 
+    assertValidAccountTerms(input);
+
     const isOpeningBasisKnown = input.opening_balance_cents !== undefined && input.opening_balance_cents !== null;
     const hasOpeningTransaction = isOpeningBasisKnown && input.opening_balance_cents !== 0;
 
@@ -248,11 +283,12 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             input.type === 'equity' ? 'opening_balance_equity' : 'other'
         );
         db.prepare(`
-            INSERT INTO m1_accounts (
+            INSERT INTO accounts (
                 id, entity_id, name, type, sub_type, currency, is_active,
                 institution, account_number_mask, opening_date, opening_balance_cents,
-                tracking_mode, balance_revision, revision, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+                tracking_mode, balance_revision, revision, created_at, updated_at,
+                interest_rate, minimum_payment_cents, investment_details
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?)
         `).run(
             accountId,
             input.entity_id,
@@ -266,7 +302,10 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             isOpeningBasisKnown ? input.opening_balance_cents : null,
             trackingMode,
             now,
-            now
+            now,
+            input.interest_rate ?? null,
+            input.minimum_payment_cents ?? null,
+            input.investment_details ?? null
         );
 
         createdAccount = {
@@ -285,7 +324,10 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             balance_revision: 1,
             revision: 1,
             created_at: now,
-            updated_at: now
+            updated_at: now,
+            interest_rate: input.interest_rate ?? null,
+            minimum_payment_cents: input.minimum_payment_cents ?? null,
+            investment_details: input.investment_details ?? null
         };
 
         // 2. If opening balance provided, post balanced double-entry transaction (M1-FLOW-01, T1)
@@ -325,7 +367,7 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             validateTransactionBalance(postings);
 
             db.prepare(`
-                INSERT INTO m1_transactions (
+                INSERT INTO transactions (
                     id, date, description, status, origin, idempotency_key, revision, created_at, updated_at
                 ) VALUES (?, ?, ?, 'posted', 'opening_balance', ?, 1, ?, ?)
             `).run(
@@ -338,7 +380,7 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             );
 
             const insertPosting = db.prepare(`
-                INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
+                INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency, memo)
                 VALUES (?, ?, ?, ?, ?, ?)
             `);
 
@@ -373,10 +415,12 @@ export function updateAccount(
     expectedRevision: number,
     updates: UpdateAccountInput
 ): Account {
-    const existing = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    const existing = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as any;
     if (!existing) {
         throw new ValidationError(`Account not found with ID: ${accountId}`);
     }
+
+    assertValidAccountTerms(updates);
 
     const now = new Date().toISOString();
     const newName = updates.name !== undefined ? updates.name.trim() : existing.name;
@@ -385,12 +429,17 @@ export function updateAccount(
     const newMask = updates.account_number_mask !== undefined ? updates.account_number_mask : existing.account_number_mask;
     const newActive = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : existing.is_active;
     const newTracking = updates.tracking_mode !== undefined ? updates.tracking_mode : (existing.tracking_mode || 'transactions');
+    const newInterestRate = updates.interest_rate !== undefined ? updates.interest_rate : (existing.interest_rate ?? null);
+    const newMinimumPaymentCents = updates.minimum_payment_cents !== undefined ? updates.minimum_payment_cents : (existing.minimum_payment_cents ?? null);
+    const newInvestmentDetails = updates.investment_details !== undefined ? updates.investment_details : (existing.investment_details ?? null);
 
     const res = db.prepare(`
-        UPDATE m1_accounts
-        SET name = ?, sub_type = ?, institution = ?, account_number_mask = ?, is_active = ?, tracking_mode = ?, revision = revision + 1, updated_at = ?
+        UPDATE accounts
+        SET name = ?, sub_type = ?, institution = ?, account_number_mask = ?, is_active = ?, tracking_mode = ?,
+            interest_rate = ?, minimum_payment_cents = ?, investment_details = ?,
+            revision = revision + 1, updated_at = ?
         WHERE id = ? AND revision = ?
-    `).run(newName, newSubType, newInst, newMask, newActive, newTracking, now, accountId, expectedRevision);
+    `).run(newName, newSubType, newInst, newMask, newActive, newTracking, newInterestRate, newMinimumPaymentCents, newInvestmentDetails, now, accountId, expectedRevision);
 
     if (res.changes === 0) {
         throw new ConflictError(`Account update failed due to stale revision (expected revision ${expectedRevision}). Another update has occurred.`);
@@ -412,7 +461,10 @@ export function updateAccount(
         balance_revision: existing.balance_revision || 1,
         revision: expectedRevision + 1,
         created_at: existing.created_at,
-        updated_at: now
+        updated_at: now,
+        interest_rate: newInterestRate,
+        minimum_payment_cents: newMinimumPaymentCents,
+        investment_details: newInvestmentDetails
     };
 }
 
@@ -420,7 +472,7 @@ export function updateAccount(
  * Retrieves a single account by ID.
  */
 export function getAccount(db: Database.Database, accountId: string): Account | null {
-    const r = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    const r = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as any;
     if (!r) return null;
 
     return {
@@ -439,7 +491,10 @@ export function getAccount(db: Database.Database, accountId: string): Account | 
         balance_revision: r.balance_revision || 1,
         revision: r.revision,
         created_at: r.created_at,
-        updated_at: r.updated_at
+        updated_at: r.updated_at,
+        interest_rate: r.interest_rate ?? null,
+        minimum_payment_cents: r.minimum_payment_cents ?? null,
+        investment_details: r.investment_details ?? null
     };
 }
 
@@ -448,8 +503,8 @@ export function getAccount(db: Database.Database, accountId: string): Account | 
  */
 export function listAccounts(db: Database.Database, entityId?: string): Account[] {
     const query = entityId
-        ? db.prepare('SELECT * FROM m1_accounts WHERE entity_id = ? ORDER BY type ASC, name ASC').all(entityId)
-        : db.prepare('SELECT * FROM m1_accounts ORDER BY type ASC, name ASC').all();
+        ? db.prepare('SELECT * FROM accounts WHERE entity_id = ? ORDER BY type ASC, name ASC').all(entityId)
+        : db.prepare('SELECT * FROM accounts ORDER BY type ASC, name ASC').all();
 
     return (query as any[]).map(r => ({
         id: r.id,
@@ -467,7 +522,10 @@ export function listAccounts(db: Database.Database, entityId?: string): Account[
         balance_revision: r.balance_revision || 1,
         revision: r.revision,
         created_at: r.created_at,
-        updated_at: r.updated_at
+        updated_at: r.updated_at,
+        interest_rate: r.interest_rate ?? null,
+        minimum_payment_cents: r.minimum_payment_cents ?? null,
+        investment_details: r.investment_details ?? null
     }));
 }
 
@@ -499,19 +557,19 @@ export function setAccountOwnership(
     accountId: string,
     allocations: AccountOwnershipInput[]
 ): AccountOwnership[] {
-    const account = db.prepare('SELECT id, name, entity_id FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    const account = db.prepare('SELECT id, name, entity_id FROM accounts WHERE id = ?').get(accountId) as any;
     if (!account) {
         throw new ValidationError(`Account not found: ${accountId}`);
     }
 
     if (!allocations || allocations.length === 0) {
         // Clearing joint ownership - account belongs 100% to primary entity
-        db.prepare('DELETE FROM m1_account_ownership WHERE account_id = ?').run(accountId);
+        db.prepare('DELETE FROM account_ownership WHERE account_id = ?').run(accountId);
         return [];
     }
 
     let totalPercentage = 0;
-    const entityLookup = db.prepare('SELECT id, name FROM m1_entities WHERE id = ?');
+    const entityLookup = db.prepare('SELECT id, name FROM entities WHERE id = ?');
     const seenEntities = new Set<string>();
 
     for (const alloc of allocations) {
@@ -560,9 +618,9 @@ export function setAccountOwnership(
     const results: AccountOwnership[] = [];
 
     const runAtomic = db.transaction(() => {
-        db.prepare('DELETE FROM m1_account_ownership WHERE account_id = ?').run(accountId);
+        db.prepare('DELETE FROM account_ownership WHERE account_id = ?').run(accountId);
         const insertStmt = db.prepare(`
-            INSERT INTO m1_account_ownership (id, account_id, entity_id, share_percentage, created_at)
+            INSERT INTO account_ownership (id, account_id, entity_id, share_percentage, created_at)
             VALUES (?, ?, ?, ?, ?)
         `);
 
@@ -593,7 +651,7 @@ export function setAccountOwnership(
  */
 export function getAccountOwnership(db: Database.Database, accountId: string): AccountOwnership[] {
     const rows = db.prepare(`
-        SELECT * FROM m1_account_ownership WHERE account_id = ? ORDER BY share_percentage DESC
+        SELECT * FROM account_ownership WHERE account_id = ? ORDER BY share_percentage DESC
     `).all(accountId) as any[];
 
     return rows.map(r => ({
@@ -620,7 +678,7 @@ export function getAccountOwnership(db: Database.Database, accountId: string): A
  */
 export function listEntityMembers(db: Database.Database, householdEntityId: string): Entity[] {
     const rows = db.prepare(`
-        SELECT * FROM m1_entities WHERE id = ? OR parent_entity_id = ? ORDER BY type DESC, name ASC
+        SELECT * FROM entities WHERE id = ? OR parent_entity_id = ? ORDER BY type DESC, name ASC
     `).all(householdEntityId, householdEntityId) as any[];
 
     return rows.map(r => ({
@@ -654,7 +712,7 @@ export function setAccountOpeningBalance(
     }
     assertValidCalendarDate(date, 'Opening date');
 
-    const account = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as any;
     if (!account) {
         throw new ValidationError(`Account not found: ${accountId}`);
     }
@@ -669,8 +727,8 @@ export function setAccountOpeningBalance(
 
     // History Guard: check for existing posted activity
     const earliestTx = db.prepare(`
-        SELECT t.date FROM m1_transactions t
-        JOIN m1_journal_entries je ON je.transaction_id = t.id
+        SELECT t.date FROM transactions t
+        JOIN journal_entries je ON je.transaction_id = t.id
         WHERE je.account_id = ? AND t.status = 'posted'
         ORDER BY t.date ASC
         LIMIT 1
@@ -685,7 +743,7 @@ export function setAccountOpeningBalance(
     db.transaction(() => {
         // Update the account metadata
         db.prepare(`
-            UPDATE m1_accounts 
+            UPDATE accounts 
             SET opening_balance_cents = ?, opening_date = ?, updated_at = ?, revision = revision + 1, balance_revision = balance_revision + 1
             WHERE id = ?
         `).run(amountCents, date, now, accountId);
@@ -695,10 +753,10 @@ export function setAccountOpeningBalance(
             const txId = `tx-open-${accountId}`;
             const idempotencyKey = `idemp-open-${accountId}`;
 
-            const existingTx = db.prepare('SELECT id FROM m1_transactions WHERE idempotency_key = ?').get(idempotencyKey);
+            const existingTx = db.prepare('SELECT id FROM transactions WHERE idempotency_key = ?').get(idempotencyKey);
             if (!existingTx) {
                 db.prepare(`
-                    INSERT INTO m1_transactions (
+                    INSERT INTO transactions (
                         id, date, description, status, origin, idempotency_key, revision, created_at, updated_at
                     ) VALUES (?, ?, ?, 'posted', 'opening_balance', ?, 1, ?, ?)
                 `).run(
@@ -726,12 +784,12 @@ export function setAccountOpeningBalance(
                 }
 
                 db.prepare(`
-                    INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+                    INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency)
                     VALUES (?, ?, ?, ?, ?)
                 `).run(crypto.randomUUID(), txId, accountId, targetPostingAmount, account.currency);
 
                 db.prepare(`
-                    INSERT INTO m1_journal_entries (id, transaction_id, account_id, amount_cents, currency)
+                    INSERT INTO journal_entries (id, transaction_id, account_id, amount_cents, currency)
                     VALUES (?, ?, ?, ?, ?)
                 `).run(crypto.randomUUID(), txId, equityAccount.id, equityPostingAmount, account.currency);
             }

@@ -15,14 +15,12 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { approveProposals, getDocumentProposals, updateProposalReview } from '@/lib/domain/document/documentInboxService';
 import { BatchApproveProposalsInput } from '@/lib/domain/document/types';
 
 export async function GET(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const url = new URL(request.url);
         const documentId = url.searchParams.get('document_id');
@@ -42,7 +40,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { document_id, target_account_id, entity_id, items } = body;
@@ -75,7 +72,6 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { proposal_id, event_date, counterparty, description, amount_cents, original_currency, account_id, suggested_category, review_status, save_categorization_rule } = body;

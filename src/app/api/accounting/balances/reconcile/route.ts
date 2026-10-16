@@ -17,7 +17,6 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { getReconciliationComparison, getObservationById, getLatestObservation } from '@/lib/domain/accounting/balanceObservationService';
 import { ValidationError } from '@/lib/domain/accounting/accountService';
 import { isValidCalendarDate } from '@/lib/domain/calendarDate';
@@ -28,7 +27,6 @@ export async function POST(request: Request) {
     if (securityCheck) return securityCheck;
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { account_id, amount_cents, currency, balance_kind, effective_date, observation_id, latest } = body;

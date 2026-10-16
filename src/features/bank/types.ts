@@ -66,7 +66,7 @@ export interface UniversalBankConnector {
     getTransactions(accessToken: string, startDate: Date, endDate?: Date): Promise<UnifiedTransaction[]>;
 }
 
-// --- Database Types (Linked items & Bank accounts in Supabase) ---
+// --- Vault kv record shapes (stored under settings keys bank_linked_items_credentials / bank_accounts) ---
 export interface LinkedItemRow {
     id: string;
     user_id: string;

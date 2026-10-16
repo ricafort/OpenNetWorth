@@ -4,7 +4,7 @@
  * Why this file exists:
  * Implements Delivery 1 endpoints for:
  * 1. GET: Fetching the shared financial summary (net worth, assets, liabilities, account breakdown, freshness, and reconciliation differences).
- * 2. POST: Atomically committing approved balance observations into m1_balance_observations and updating source mappings.
+ * 2. POST: Atomically committing approved balance observations into balance_observations and updating source mappings.
  * 
  * Tricky logic:
  * - Atomic commits: Multiple observation updates are executed inside a single SQLite transaction.
@@ -15,8 +15,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
 import {
     recordBalanceObservation,
     recordBalanceImportBatch,
@@ -39,8 +38,8 @@ export async function GET(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
     try {
-        const db = getDb();
-        initAccountingSchema(db);
+        // Demo cookie present → persona vault's ledger (Phase 2.7).
+        const db = getDbForRequest(request);
 
         const { searchParams } = new URL(request.url);
         const scopeEntityId = searchParams.get('scopeEntityId') || searchParams.get('entity_id') || undefined;
@@ -58,6 +57,8 @@ export async function GET(request: Request) {
             summary
         });
     } catch (error: any) {
+        const demoRes = demoErrorResponse(error);
+        if (demoRes) return demoRes;
         console.error('Balances GET Error:', error);
         return secureJson({ error: error.message }, { status: 500 });
     }
@@ -66,9 +67,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
-        const db = getDb();
-        initAccountingSchema(db);
+        const db = getDbForRequest(request);
 
         const body = await request.json();
         const { items, provider, connectionId, batch } = body;
@@ -186,7 +189,7 @@ export async function POST(request: Request) {
             // Why this exists:
             // Fulfills Independent Assessment Finding 4 & Delivery 2B Correction 2:
             // Partial saves leave remaining items visibly pending, and committed values (amount_cents, account_id, etc.)
-            // are persisted directly into m1_statement_reviews so reopened reviews match committed observations.
+            // are persisted directly into statement_reviews so reopened reviews match committed observations.
             //
             // Tricky logic:
             // Groups saved proposals by document_id. Passes the full committed item list to markStatementProposalsSaved
@@ -207,7 +210,7 @@ export async function POST(request: Request) {
                     if (savedItems.length > 0) {
                         markStatementProposalsSaved(db, docId, savedItems);
                     } else {
-                        db.prepare("UPDATE m1_statement_reviews SET status = 'saved', updated_at = ? WHERE document_id = ?")
+                        db.prepare("UPDATE statement_reviews SET status = 'saved', updated_at = ? WHERE document_id = ?")
                             .run(new Date().toISOString(), docId);
                     }
                 } catch {

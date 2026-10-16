@@ -22,7 +22,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from './accountService';
 import { getSharedFinancialSummary } from './sharedFinancialSummaryService';
 import { postTransaction } from './transactionService';
@@ -35,7 +35,8 @@ describe('Transaction-tracked Account Opening Balance Coverage & Anchoring', () 
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
 
         const alice = createEntity(db, {
             name: 'Alice Household',
@@ -339,12 +340,12 @@ describe('Transaction-tracked Account Opening Balance Coverage & Anchoring', () 
             source_type: 'document'
         });
 
-        const initialTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const initialTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
 
         // Run summary
         getSharedFinancialSummary(db, { reporting_currency: 'AUD', asOfDate: '2026-09-24' });
 
-        const finalTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const finalTxCount = (db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as any).cnt;
 
         // Transaction count in SQLite must NOT increase (no unexplained adjustments)
         expect(finalTxCount).toBe(initialTxCount);

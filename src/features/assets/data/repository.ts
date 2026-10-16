@@ -1,9 +1,13 @@
-import { Asset } from '@/features/assets/types';
+import { Asset, AssetType, InvestmentDetails } from '@/features/assets/types';
 import { IRepository } from '@/types/repository';
-import { createClient } from '@/utils/supabase/client';
-import { loadAssets, saveAssets, persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
-
-const supabase = createClient();
+import { CurrencyCode } from '@/types';
+import {
+    LedgerAccountRow,
+    listLedgerAccounts,
+    createLedgerAccount,
+    updateLedgerAccount,
+    archiveLedgerAccount
+} from '@/lib/domain/accounting/legacyAccountBridge';
 
 /**
  * Domain-specific Asset Repository Interface.
@@ -13,110 +17,127 @@ export interface IAssetRepository extends IRepository<Asset> {
     // getByClass(assetClass: string): Promise<Asset[]>;
 }
 
-/**
- * PRODUCTION Implementation: Uses Supabase
- */
-export class SupabaseAssetRepository implements IAssetRepository {
-    constructor(private templateId?: string | null) { }
+const LIQUID_SUB_TYPES = ['cash', 'checking', 'savings'];
 
-    async getAll(): Promise<Asset[]> {
-        let query = supabase.from('assets').select('*');
+/** Maps an m1 asset sub_type onto the legacy AssetType shown by the widgets. */
+function subTypeToAssetType(subType: string): AssetType {
+    if (LIQUID_SUB_TYPES.includes(subType)) return 'cash';
+    if (subType === 'brokerage' || subType === 'investment') return 'investment';
+    if (subType === 'crypto') return 'crypto';
+    if (subType === 'property' || subType === 'real_estate' || subType === 'land') return 'real_estate';
+    if (subType === 'retirement' || subType === 'superannuation' || subType === 'pension') return 'retirement';
+    if (subType === 'vehicle') return 'vehicle';
+    return 'other';
+}
 
-        if (this.templateId) {
-            query = query.eq('user_id', this.templateId);
-        } else {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                query = query.eq('user_id', user.id);
-            } else {
-                return [];
-            }
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-        return (data || []) as Asset[];
-    }
-
-    async getById(id: string): Promise<Asset | null> {
-        const { data, error } = await supabase.from('assets').select('*').eq('id', id).single();
-        if (error) return null;
-        return data as Asset;
-    }
-
-    async create(item: Asset): Promise<Asset> {
-        // Ensure user_id is set
-        let userId = item.user_id;
-        if (!userId) {
-            if (this.templateId) {
-                userId = this.templateId;
-            } else {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) userId = user.id;
-            }
-        }
-
-        if (!userId) throw new Error("Cannot create asset: User unsupported or not logged in");
-
-        const payload = { ...item, user_id: userId };
-
-        const { data, error } = await (supabase.from('assets') as any).insert([payload]).select().single();
-        if (error) {
-            console.error("Supabase Create Error:", error);
-            throw error;
-        }
-        return data as Asset;
-    }
-
-    async update(item: Asset): Promise<Asset> {
-        const { data, error } = await (supabase.from('assets') as any)
-            .update(item)
-            .eq('id', item.id)
-            .select()
-            .single();
-        if (error) throw error;
-        return data as Asset;
-    }
-
-    async delete(id: string): Promise<void> {
-        const { error } = await supabase.from('assets').delete().eq('id', id);
-        if (error) throw error;
+/** Maps the legacy AssetType picker onto an m1 asset sub_type. */
+function assetTypeToSubType(type?: AssetType): string {
+    switch (type) {
+        case 'cash': return 'cash';
+        case 'investment': return 'investment';
+        case 'crypto': return 'crypto';
+        case 'real_estate': return 'property';
+        case 'retirement': return 'retirement';
+        case 'vehicle': return 'vehicle';
+        default: return 'other';
     }
 }
 
+/**
+ * Maps a ledger asset account onto the legacy Asset shape.
+ *
+ * - `account_id` is set to the account id itself: the pages dedupe their
+ *   "unlinked legacy" section by `account_id ∈ authoritativeAccountIds`, so
+ *   ledger-backed rows never double-display.
+ * - Unknown balances map to 0, matching the summary's "known totals"
+ *   semantics; unrecorded accounts are surfaced separately by
+ *   `useSharedFinancialSummary`.
+ * - `investment_details` is stored as JSON text on the account (migration
+ *   0009); malformed JSON degrades to "no details" rather than throwing.
+ */
+function toAsset(row: LedgerAccountRow): Asset {
+    let investment_details: InvestmentDetails | undefined;
+    if (row.investment_details) {
+        try {
+            investment_details = JSON.parse(row.investment_details) as InvestmentDetails;
+        } catch {
+            investment_details = undefined;
+        }
+    }
+    return {
+        id: row.id,
+        user_id: 'local_user',
+        name: row.name,
+        type: subTypeToAssetType(row.sub_type),
+        value: row.is_unknown ? 0 : row.balance_cents / 100,
+        // accounting/types widens CurrencyCode with `| string`; narrow back.
+        currency: row.currency as CurrencyCode,
+        is_liquid: LIQUID_SUB_TYPES.includes(row.sub_type),
+        account_id: row.id,
+        last_updated: row.updated_at,
+        interest_rate: row.interest_rate ?? undefined,
+        investment_details
+    };
+}
 
 /**
- * Authoritative Local SQLite-backed Asset Repository (DATA-01, DATA-04, DATA-05).
+ * Local Asset Repository (DATA-01, DATA-04, DATA-05).
+ *
+ * Why this exists:
+ * The double-entry ledger is the single source of truth for real holdings:
+ * reads list `type='asset'` accounts from `/api/accounting`, and writes
+ * create/update/archive ledger accounts through the shared bridge. The
+ * retired m0 `assets` table is no longer read or written.
+ *
+ * Tricky logic:
+ * - Demo mode (Phase 2.7) is served by the API routes themselves: the
+ *   `demo_persona` cookie makes `/api/accounting` return the persona vault's
+ *   ledger.
+ * - The old localStorage merge is gone: migration 0006 copied every legacy
+ *   row into the ledger, so the ledger list is complete on its own.
  */
 export class LocalAssetRepository implements IAssetRepository {
-    constructor(private templateId?: string | null) { }
-
     async getAll(): Promise<Asset[]> {
-        const allAssets = loadAssets();
-        // If templateId is provided (e.g. 'fam', 'grow'), filter by it.
-        // If not provided (Guest), filter by 'local_user' OR null/undefined to capture manual guest entries
-        const targetId = this.templateId || 'local_user';
-
-        return allAssets.filter(a => a.user_id === targetId || (!a.user_id && targetId === 'local_user'));
+        return (await listLedgerAccounts('asset')).map(toAsset);
     }
 
     async getById(id: string): Promise<Asset | null> {
-        const assets = loadAssets();
-        return assets.find(a => a.id === id) || null;
+        const items = await this.getAll();
+        return items.find(i => i.id === id) || null;
     }
 
     async create(item: Asset): Promise<Asset> {
-        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
-        return await persistScopedRecord<Asset>('assets', item);
+        await createLedgerAccount({
+            id: item.id,
+            name: item.name,
+            type: 'asset',
+            sub_type: assetTypeToSubType(item.type),
+            currency: item.currency || 'AUD',
+            balance_cents: Math.round((item.value || 0) * 100),
+            interest_rate: item.interest_rate ?? null,
+            investment_details: item.investment_details ? JSON.stringify(item.investment_details) : null
+        });
+        return item;
     }
 
     async update(item: Asset): Promise<Asset> {
-        // Enforce durable scoped SQLite persistence (DATA-01, DATA-02, DATA-04)
-        return await persistScopedRecord<Asset>('assets', item);
+        await updateLedgerAccount({
+            id: item.id,
+            type: 'asset',
+            name: item.name,
+            sub_type: assetTypeToSubType(item.type),
+            balance_cents: Math.round((item.value || 0) * 100),
+            interest_rate: item.interest_rate,
+            investment_details: item.investment_details !== undefined
+                ? (item.investment_details ? JSON.stringify(item.investment_details) : null)
+                : undefined
+        });
+        return item;
     }
 
     async delete(id: string): Promise<void> {
-        // Enforce durable scoped SQLite deletion (DATA-04, DATA-05)
-        await deleteScopedRecord('assets', id);
+        // Archive instead of hard delete: the ledger must keep its history.
+        // In demo mode the route refuses this with 403 (read-only personas).
+        await archiveLedgerAccount(id);
     }
 }

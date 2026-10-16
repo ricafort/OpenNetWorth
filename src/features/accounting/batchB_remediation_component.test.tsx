@@ -41,7 +41,6 @@ if (typeof (globalThis as any).ResizeObserver === 'undefined') {
 }
 
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { getActualCashFlowStatement } from '@/lib/domain/accounting/balanceService';
 import { recordBalanceObservation } from '@/lib/domain/accounting/balanceObservationService';
 import { recordIncome } from '@/lib/domain/accounting/transactionService';
@@ -152,7 +151,6 @@ describe('Batch B Remediation - Component and Domain Verification', () => {
 
         testDb = createTestDb();
         setTestDb(testDb);
-        initAccountingSchema(testDb);
 
         mockSummaryData = null;
         mockSummaryLoading = false;
@@ -360,12 +358,14 @@ describe('Batch B Remediation - Component and Domain Verification', () => {
         });
 
         it('failed entity loading in CashflowPage stops spinner, asserts absence of calculating spinner, and retry recovers into loaded report', async () => {
-            let callCount = 0;
             const originalFetch = globalThis.fetch;
+            let entitiesFailedOnce = false;
             globalThis.fetch = vi.fn(async (url: any) => {
                 const urlStr = String(url);
-                callCount++;
-                if (callCount === 1) {
+                // Fail only the first entity-list fetch (exactly '/api/accounting'), not the
+                // Manual Logs / Autopilot vault fetches that also fire on mount.
+                if (!entitiesFailedOnce && urlStr === '/api/accounting') {
+                    entitiesFailedOnce = true;
                     return new Response(JSON.stringify({ error: 'Auth token expired' }), { status: 401 });
                 }
                 // Second call (after Retry clicked) succeeds

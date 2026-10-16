@@ -159,7 +159,7 @@ function isPersonalMiddleInitialMatch(tokensA: string[], tokensB: string[]): boo
  * 
  * Tricky logic:
  * - If docOwner is absent/empty, there is no conflicting evidence -> returns compatible: true.
- * - Compares normalized docOwner against primary entity name and any co-owners in m1_account_ownership.
+ * - Compares normalized docOwner against primary entity name and any co-owners in account_ownership.
  * - Strips legal entity stop words so corporate descriptors do not satisfy matching thresholds.
  * - Eliminates unrestricted substring containment; requires exact token equality.
  * - Allows narrowly defined personal middle initials ([First, M, Last] vs [First, Last]).
@@ -708,8 +708,8 @@ function resolveProposalAccount(
             const ent = entityMap.get(acc.entity_id);
             const jointOwners = db.prepare(`
                 SELECT e.name
-                FROM m1_account_ownership o
-                JOIN m1_entities e ON o.entity_id = e.id
+                FROM account_ownership o
+                JOIN entities e ON o.entity_id = e.id
                 WHERE o.account_id = ?
             `).all(acc.id) as Array<{ name: string }>;
 
@@ -786,7 +786,7 @@ export async function extractStatementBalancesFromPdf(
 ): Promise<StatementExtractionResult> {
     // Validate supplied specific entity ID. Treat "all" as unconstrained.
     if (entityId && entityId.toLowerCase() !== 'all') {
-        const ent = db.prepare('SELECT id FROM m1_entities WHERE id = ?').get(entityId);
+        const ent = db.prepare('SELECT id FROM entities WHERE id = ?').get(entityId);
         if (!ent) {
             throw new Error(`Invalid entity ID: ${entityId}`);
         }

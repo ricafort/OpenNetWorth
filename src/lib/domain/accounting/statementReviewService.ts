@@ -3,7 +3,7 @@
  * 
  * Why this file exists:
  * Fulfills Delivery 2B Required Plan Adjustment 4:
- * Manages durable pending review state for statement balance extractions in SQLite (`m1_statement_reviews`).
+ * Manages durable pending review state for statement balance extractions in SQLite (`statement_reviews`).
  * When a user uploads a statement PDF, parses proposals, and modifies account mappings, amounts,
  * or classifications in the review modal, this service preserves their modifications across browser
  * reloads so they can resume review without silently losing corrections.
@@ -13,7 +13,7 @@
  *   updates the existing review session rather than creating duplicate orphaned rows.
  * - JSON Serialization: Proposals array and coverage summary are serialized to structured JSON strings
  *   with safe parsing and fallback defaults on deserialization.
- * - Non-destructive: Does NOT post or mutate the double-entry transaction ledger (`m1_transactions`).
+ * - Non-destructive: Does NOT post or mutate the double-entry transaction ledger (`transactions`).
  * 
  * TODO: Support multi-statement batched review sessions in future milestones.
  */
@@ -60,7 +60,7 @@ export function saveStatementReview(
 
     // Upsert on document_id
     db.prepare(`
-        INSERT INTO m1_statement_reviews (
+        INSERT INTO statement_reviews (
             id, document_id, status, proposals_json, coverage_summary_json, version, created_at, updated_at
         ) VALUES (
             ?, ?, ?, ?, ?, ?, ?, ?
@@ -102,7 +102,7 @@ export function getStatementReviewByDocumentId(
     documentId: string
 ): StatementReviewState | null {
     const row = db.prepare(`
-        SELECT * FROM m1_statement_reviews WHERE document_id = ?
+        SELECT * FROM statement_reviews WHERE document_id = ?
     `).get(documentId) as any;
 
     if (!row) return null;
@@ -256,7 +256,7 @@ export function updateStatementReviewProposals(
     const now = new Date().toISOString();
 
     db.prepare(`
-        UPDATE m1_statement_reviews
+        UPDATE statement_reviews
         SET proposals_json = ?, status = ?, updated_at = ?, version = ?
         WHERE document_id = ?
     `).run(JSON.stringify(merged), nextStatus, now, nextVersion, documentId);
@@ -283,7 +283,7 @@ export function markStatementReviewStatus(
 ): void {
     const now = new Date().toISOString();
     db.prepare(`
-        UPDATE m1_statement_reviews
+        UPDATE statement_reviews
         SET status = ?, updated_at = ?
         WHERE document_id = ?
     `).run(status, now, documentId);
@@ -291,7 +291,7 @@ export function markStatementReviewStatus(
 
 /**
  * Marks specific proposals as saved within a statement review session,
- * recording committed values (amount_cents, account_id, effective_date) into m1_statement_reviews.
+ * recording committed values (amount_cents, account_id, effective_date) into statement_reviews.
  * Automatically transitions review status to 'saved' ONLY IF all proposals are now saved.
  * If some proposals remain unsaved, retains status = 'pending_review' so the remaining
  * items remain visibly pending and actionable.
@@ -394,7 +394,7 @@ export function markStatementProposalsSaved(
     const nextVersion = ((review as any).version !== undefined ? (review as any).version : 1) + 1;
 
     db.prepare(`
-        UPDATE m1_statement_reviews
+        UPDATE statement_reviews
         SET proposals_json = ?, status = ?, updated_at = ?, version = ?
         WHERE document_id = ?
     `).run(JSON.stringify(updatedProposals), nextStatus, now, nextVersion, documentId);
@@ -419,8 +419,8 @@ export function listStatementReviews(
             r.id, r.document_id, r.status, r.proposals_json, r.coverage_summary_json,
             r.created_at, r.updated_at,
             d.filename, d.byte_size
-        FROM m1_statement_reviews r
-        JOIN m1_documents d ON r.document_id = d.id
+        FROM statement_reviews r
+        JOIN documents d ON r.document_id = d.id
         ORDER BY r.created_at DESC
     `).all() as any[];
 

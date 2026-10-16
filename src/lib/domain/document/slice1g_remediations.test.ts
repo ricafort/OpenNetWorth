@@ -22,11 +22,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, setTestDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount, createEntity } from '../accounting/accountService';
 import { getAccountBalance } from '../accounting/balanceService';
 import { postTransaction } from '../accounting/transactionService';
-import { initDocumentSchema } from './schema';
+import { DOCUMENT_SCHEMA_DDL, migrateDocumentSchema } from './schema';
 import {
     approveProposals,
     getCandidateTransactionsForProposal,
@@ -88,7 +87,6 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         const entity = createEntity(db, { name: 'Remediation Test Entity', type: 'person', currency: 'AUD' });
         entityId = entity.id;
@@ -118,7 +116,7 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
 
         // Create Slice 1F documents table (without raw_content)
         legacyDb.exec(`
-            CREATE TABLE m1_documents (
+            CREATE TABLE documents (
                 id TEXT PRIMARY KEY,
                 filename TEXT NOT NULL,
                 content_hash TEXT NOT NULL UNIQUE,
@@ -131,7 +129,7 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
 
         // Create Slice 1F proposals table (WITHOUT 'linked' in CHECK, and WITHOUT linked_transaction_id column)
         legacyDb.exec(`
-            CREATE TABLE m1_proposals (
+            CREATE TABLE proposals (
                 id TEXT PRIMARY KEY,
                 document_id TEXT NOT NULL,
                 entity_id TEXT,
@@ -151,14 +149,14 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
                 related_proposal_ids TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                FOREIGN KEY (document_id) REFERENCES m1_documents(id) ON DELETE CASCADE
+                FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
             );
         `);
 
         // Populate with Slice 1F records
         const docId = 'doc-slice1f-001';
         legacyDb.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
             VALUES (?, ?, ?, 'text/csv', 512, '2026-09-10T12:00:00Z')
         `).run(docId, 'statement.csv', 'hash-slice1f-123');
 
@@ -166,7 +164,7 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
         const prop2Id = 'prop-unreviewed-002';
 
         legacyDb.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, event_date, original_currency, amount_cents, description,
                 event_type, suggested_category, evidence_json, extraction_version, validation_findings,
                 review_status, created_at, updated_at
@@ -174,26 +172,29 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
         `).run(prop1Id, docId);
 
         legacyDb.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, event_date, original_currency, amount_cents, description,
                 event_type, suggested_category, evidence_json, extraction_version, validation_findings,
                 review_status, created_at, updated_at
             ) VALUES (?, ?, '2026-09-09', 'AUD', -1250, 'Officeworks Pen', 'expense', 'office_supplies', '{"page":1}', 'v1', '[]', 'unreviewed', '2026-09-10T12:01:00Z', '2026-09-10T12:01:00Z')
         `).run(prop2Id, docId);
 
-        // Run initDocumentSchema (which applies migrateDocumentSchema first)
-        expect(() => initDocumentSchema(legacyDb)).not.toThrow();
+        // Apply the document repairs + DDL in the same order migration 0003 uses
+        expect(() => {
+            migrateDocumentSchema(legacyDb);
+            legacyDb.exec(DOCUMENT_SCHEMA_DDL);
+        }).not.toThrow();
 
-        // 1. Verify m1_documents has raw_content column
-        const docCols = legacyDb.prepare("PRAGMA table_info(m1_documents)").all() as any[];
+        // 1. Verify documents has raw_content column
+        const docCols = legacyDb.prepare("PRAGMA table_info(documents)").all() as any[];
         expect(docCols.some(c => c.name === 'raw_content')).toBe(true);
 
-        // 2. Verify m1_proposals has linked_transaction_id column
-        const propCols = legacyDb.prepare("PRAGMA table_info(m1_proposals)").all() as any[];
+        // 2. Verify proposals has linked_transaction_id column
+        const propCols = legacyDb.prepare("PRAGMA table_info(proposals)").all() as any[];
         expect(propCols.some(c => c.name === 'linked_transaction_id')).toBe(true);
 
         // 3. Verify existing data was perfectly preserved
-        const rows = legacyDb.prepare("SELECT * FROM m1_proposals ORDER BY id ASC").all() as any[];
+        const rows = legacyDb.prepare("SELECT * FROM proposals ORDER BY id ASC").all() as any[];
         expect(rows).toHaveLength(2);
 
         const approvedProp = rows.find(r => r.id === prop1Id);
@@ -213,13 +214,13 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
         // 4. Verify new CHECK constraint allows 'linked' status
         expect(() => {
             legacyDb.prepare(`
-                UPDATE m1_proposals
+                UPDATE proposals
                 SET review_status = 'linked', linked_transaction_id = 'tx-test-999'
                 WHERE id = ?
             `).run(prop2Id);
         }).not.toThrow();
 
-        const updated = legacyDb.prepare("SELECT review_status, linked_transaction_id FROM m1_proposals WHERE id = ?").get(prop2Id) as any;
+        const updated = legacyDb.prepare("SELECT review_status, linked_transaction_id FROM proposals WHERE id = ?").get(prop2Id) as any;
         expect(updated.review_status).toBe('linked');
         expect(updated.linked_transaction_id).toBe('tx-test-999');
 
@@ -293,7 +294,7 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
         const postBalance = getAccountBalance(db, checkingAccountId);
         expect(postBalance.balance_cents).toBe(-6000);
 
-        const allTransactions = db.prepare("SELECT COUNT(*) as cnt FROM m1_transactions").get() as any;
+        const allTransactions = db.prepare("SELECT COUNT(*) as cnt FROM transactions").get() as any;
         expect(allTransactions.cnt).toBe(1); // Only the original bank transaction
     });
 
@@ -416,7 +417,7 @@ describe('Slice 1G Remediations: State Transitions, Direction Matching & Migrati
         expect(refreshedProposal.linked_transaction_id).toBe(tx1.id);
 
         // Verify tx2 has no evidence attached
-        const tx2Row = db.prepare("SELECT evidence_refs FROM m1_transactions WHERE id = ?").get(tx2.id) as any;
+        const tx2Row = db.prepare("SELECT evidence_refs FROM transactions WHERE id = ?").get(tx2.id) as any;
         expect(tx2Row.evidence_refs).toBeNull();
     });
 

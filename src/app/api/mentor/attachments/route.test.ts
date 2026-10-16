@@ -1,14 +1,14 @@
 /**
  * Why this file exists:
  * Proves the mentor-chat attachment ingest route enforces its limits (mime
- * allowlist 400, 10 MB cap 413, ≤4 files 400), stores files into m1_documents
+ * allowlist 400, 10 MB cap 413, ≤4 files 400), stores files into documents
  * with the right raw_content convention, dedups identical bytes via the UNIQUE
  * content_hash (backfilling extracted_text on reuse), and never lets a failed
  * PDF extraction reject the upload — it becomes a disclosure instead.
  *
  * Tricky logic:
- * - The route runs initDocumentSchema itself, so the test only needs a bare
- *   :memory: DB wired through setTestDb.
+ * - The test wires a fully-migrated in-memory DB through setTestDb, mirroring
+ *   production where getDb() runs migrations at database open.
  * - raw_content must stay UTF-8 for text/* and base64 for binary so
  *   GET /api/documents/raw?id= keeps serving files correctly.
  * - The dedup-backfill case seeds a row with extracted_text NULL (as stored
@@ -21,8 +21,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createHash, randomUUID } from 'crypto';
 import Database from 'better-sqlite3';
-import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
+import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
 import { POST } from './route';
 
 function makeRequest(body: any, headers?: Record<string, string>) {
@@ -46,8 +45,7 @@ describe('/api/mentor/attachments', () => {
     let db: Database.Database;
 
     beforeEach(() => {
-        db = new Database(':memory:');
-        initDocumentSchema(db);
+        db = createTestDb();
         setTestDb(db);
     });
 
@@ -62,7 +60,7 @@ describe('/api/mentor/attachments', () => {
             { host: 'localhost:4000', origin: 'https://evil.example' }
         ));
         expect(res.status).toBe(403);
-        const rows = db.prepare('SELECT COUNT(*) AS cnt FROM m1_documents').get() as any;
+        const rows = db.prepare('SELECT COUNT(*) AS cnt FROM documents').get() as any;
         expect(rows.cnt).toBe(0);
     });
 
@@ -88,7 +86,7 @@ describe('/api/mentor/attachments', () => {
             files: [{ filename: 'payload.exe', mimeType: 'application/x-msdownload', dataBase64: b64('MZ...') }]
         }));
         expect(res.status).toBe(400);
-        const rows = db.prepare('SELECT COUNT(*) AS cnt FROM m1_documents').get() as any;
+        const rows = db.prepare('SELECT COUNT(*) AS cnt FROM documents').get() as any;
         expect(rows.cnt).toBe(0);
     });
 
@@ -111,7 +109,7 @@ describe('/api/mentor/attachments', () => {
         expect(body.attachments).toHaveLength(1);
         expect(body.attachments[0]).toMatchObject({ filename: 'bank.csv', mimeType: 'text/csv', byteSize: Buffer.byteLength(csv) });
 
-        const row = db.prepare('SELECT id, raw_content, extracted_text, content_hash FROM m1_documents WHERE id = ?')
+        const row = db.prepare('SELECT id, raw_content, extracted_text, content_hash FROM documents WHERE id = ?')
             .get(body.attachments[0].id) as any;
         expect(row.raw_content).toBe(csv); // UTF-8, not base64 — matches /api/documents/raw serving
         expect(row.extracted_text).toBe(csv);
@@ -124,7 +122,7 @@ describe('/api/mentor/attachments', () => {
         const legacyId = randomUUID();
         // Simulate a row stored before extracted_text existed.
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, raw_content, extracted_text, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, raw_content, extracted_text, created_at)
             VALUES (?, 'old-name.csv', ?, 'text/csv', ?, ?, NULL, ?)
         `).run(legacyId, hash, Buffer.byteLength(csv), csv, new Date().toISOString());
 
@@ -133,9 +131,9 @@ describe('/api/mentor/attachments', () => {
         }));
         const body = await res.json();
         expect(body.attachments[0].id).toBe(legacyId); // dedup via UNIQUE content_hash
-        const rows = db.prepare('SELECT extracted_text FROM m1_documents WHERE id = ?').get(legacyId) as any;
+        const rows = db.prepare('SELECT extracted_text FROM documents WHERE id = ?').get(legacyId) as any;
         expect(rows.extracted_text).toBe(csv); // backfilled on reuse
-        const count = db.prepare('SELECT COUNT(*) AS cnt FROM m1_documents').get() as any;
+        const count = db.prepare('SELECT COUNT(*) AS cnt FROM documents').get() as any;
         expect(count.cnt).toBe(1);
     });
 
@@ -149,7 +147,7 @@ describe('/api/mentor/attachments', () => {
         expect(body.attachments).toHaveLength(1);
         expect(body.disclosures.join('\n')).toContain('vision is off');
 
-        const row = db.prepare('SELECT raw_content, extracted_text FROM m1_documents WHERE id = ?').get(body.attachments[0].id) as any;
+        const row = db.prepare('SELECT raw_content, extracted_text FROM documents WHERE id = ?').get(body.attachments[0].id) as any;
         expect(row.raw_content).toBe(png.toString('base64')); // binary stays base64
         expect(row.extracted_text).toBeNull();
     });
@@ -165,7 +163,7 @@ describe('/api/mentor/attachments', () => {
         expect(body.disclosures.length).toBeGreaterThan(0);
         expect(body.disclosures[0]).toContain('statement.pdf');
 
-        const row = db.prepare('SELECT extracted_text FROM m1_documents WHERE id = ?').get(body.attachments[0].id) as any;
+        const row = db.prepare('SELECT extracted_text FROM documents WHERE id = ?').get(body.attachments[0].id) as any;
         expect(row.extracted_text).toBeNull();
     });
 

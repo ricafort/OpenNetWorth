@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         }
 
         const db = getDb();
-        const doc = db.prepare('SELECT mime_type, raw_content FROM m1_documents WHERE id = ?').get(docId) as any;
+        const doc = db.prepare('SELECT mime_type, raw_content FROM documents WHERE id = ?').get(docId) as any;
 
         if (!doc || !doc.raw_content) {
             return new NextResponse('Document not found or has no raw content', { status: 404 });

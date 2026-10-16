@@ -29,8 +29,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { postTransaction } from '@/lib/domain/accounting/transactionService';
 import { getAccountBalance } from '@/lib/domain/accounting/balanceService';
@@ -65,8 +63,6 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
 
     beforeEach(() => {
         testDb = createTestDb();
-        initAccountingSchema(testDb);
-        initDocumentSchema(testDb);
         setTestDb(testDb);
 
         // Core Fixture Entities
@@ -194,7 +190,7 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
         }).account;
 
         testDb.prepare(`
-            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            INSERT INTO balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
             VALUES ('obs-usd-1', ?, 2500000, 'USD', 'current_balance', '2026-09-22', datetime('now'), 'manual', 'accepted', datetime('now'))
         `).run(accUsdHolding.id);
 
@@ -210,7 +206,7 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
         }).account;
 
         testDb.prepare(`
-            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            INSERT INTO balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
             VALUES ('obs-jpy-1', ?, 100000, 'JPY', 'current_balance', '2026-09-22', datetime('now'), 'manual', 'accepted', datetime('now'))
         `).run(accJpyBank.id);
     });
@@ -291,15 +287,15 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
             ]
         });
 
-        // Ingest document metadata (m1_documents DDL)
+        // Ingest document metadata (documents DDL)
         testDb.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
             VALUES ('doc-receipt-1', 'hardware_receipt.pdf', 'hash-12345', 'application/pdf', 15420, '/docs/receipt.pdf', 'Sample receipt content', datetime('now'))
         `).run();
 
         // Create extracted proposal
         testDb.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
                 original_currency, amount_cents, counterparty, description, event_type,
                 suggested_category, evidence_json, extraction_version, validation_findings,
@@ -323,7 +319,7 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
         expect(linkResult.proposal.linked_transaction_id).toBe(tx.id);
 
         // Verify zero additional financial postings were created
-        const postingsCount = (testDb.prepare("SELECT COUNT(*) as count FROM m1_journal_entries WHERE transaction_id = ?").get(tx.id) as any).count;
+        const postingsCount = (testDb.prepare("SELECT COUNT(*) as count FROM journal_entries WHERE transaction_id = ?").get(tx.id) as any).count;
         expect(postingsCount).toBe(2); // Only debit and credit
 
         // Bank balance unchanged
@@ -334,14 +330,14 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
     it('Case 4: reimporting identical documents or transactions prevents duplicate postings', () => {
         const docHash = 'sha256-unique-statement-hash';
         testDb.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
             VALUES ('doc-stmt-1', 'bank_statement.pdf', ?, 'application/pdf', 20480, '/docs/stmt.pdf', 'raw statement text', datetime('now'))
         `).run(docHash);
 
         // Attempt duplicate ingest query - unique hash prevents duplicate document
         expect(() => {
             testDb.prepare(`
-                INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
+                INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
                 VALUES ('doc-stmt-duplicate', 'bank_statement_2.pdf', ?, 'application/pdf', 20480, '/docs/stmt_2.pdf', 'raw statement text', datetime('now'))
             `).run(docHash);
         }).toThrow();
@@ -367,7 +363,7 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
 
         // Record unpaid invoice in drafts/proposals
         testDb.prepare(`
-            INSERT INTO m1_drafts (id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents, date, description, status, created_at, updated_at)
+            INSERT INTO drafts (id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents, date, description, status, created_at, updated_at)
             VALUES ('draft-inv-110', ?, ?, ?, 'AUD', 11000, '2026-09-22', 'Unpaid Supplier Invoice', 'draft', datetime('now'), datetime('now'))
         `).run(entCompany.id, entCompany.id, accCoBank.id);
 
@@ -387,12 +383,12 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
     // Case 6: Personally paid business-expense draft
     it('Case 6: personally paid business-expense draft does not affect posted accounting totals', () => {
         testDb.prepare(`
-            INSERT INTO m1_drafts (id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents, date, description, status, created_at, updated_at)
+            INSERT INTO drafts (id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents, date, description, status, created_at, updated_at)
             VALUES ('draft-personal-biz', ?, ?, ?, 'AUD', 3500, '2026-09-22', 'Director paid for team lunch', 'draft', datetime('now'), datetime('now'))
         `).run(entCompany.id, entHousehold.id, accHhBank.id);
 
         // Posted journal entries count must not include the draft
-        const draftEntries = testDb.prepare("SELECT COUNT(*) as count FROM m1_journal_entries WHERE transaction_id = 'draft-personal-biz'").get() as any;
+        const draftEntries = testDb.prepare("SELECT COUNT(*) as count FROM journal_entries WHERE transaction_id = 'draft-personal-biz'").get() as any;
         expect(draftEntries.count).toBe(0);
 
         // Personal bank balance is unchanged
@@ -412,7 +408,7 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
         });
 
         // Void the transaction
-        testDb.prepare("UPDATE m1_transactions SET status = 'void' WHERE id = ?").run(tx.id);
+        testDb.prepare("UPDATE transactions SET status = 'void' WHERE id = ?").run(tx.id);
 
         // Shared summary only includes posted transactions
         const activeSummary = getSharedFinancialSummary(testDb, {
@@ -564,14 +560,12 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
         expect(exportRes.status).toBe(200);
         const snapshot = await exportRes.json();
         expect(snapshot.success).toBe(true);
-        expect(snapshot.manifest.schemaVersion).toBe(2);
-        expect(snapshot.vault.schemaVersion).toBe(2);
+        expect(snapshot.manifest.schemaVersion).toBe(3);
+        expect(snapshot.vault.schemaVersion).toBe(3);
 
         // 2. Create a brand new pristine in-memory test database
         closeDb();
         const freshDb = createTestDb();
-        initAccountingSchema(freshDb);
-        initDocumentSchema(freshDb);
         setTestDb(freshDb);
 
         // 3. Restore snapshot into fresh isolated database via POST /api/vault
@@ -580,7 +574,7 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'bulk_restore',
-                schemaVersion: 2,
+                schemaVersion: 3,
                 manifest: snapshot.manifest,
                 vault: snapshot.vault
             })
@@ -588,18 +582,18 @@ describe('OpenNetWorth Core Acceptance Fixture (Section 18)', () => {
         expect(restoreRes.status).toBe(200);
 
         // 4. Verify entities and accounts survived intact
-        const entities = freshDb.prepare("SELECT * FROM m1_entities").all() as any[];
+        const entities = freshDb.prepare("SELECT * FROM entities").all() as any[];
         expect(entities.length).toBe(2);
         expect(entities.map(e => e.id)).toContain('ent-household');
         expect(entities.map(e => e.id)).toContain('ent-company');
 
-        const accounts = freshDb.prepare("SELECT * FROM m1_accounts").all() as any[];
+        const accounts = freshDb.prepare("SELECT * FROM accounts").all() as any[];
         expect(accounts.length).toBe(9); // 7 test accounts + 2 equity accounts
 
-        const transactions = freshDb.prepare("SELECT * FROM m1_transactions").all() as any[];
+        const transactions = freshDb.prepare("SELECT * FROM transactions").all() as any[];
         expect(transactions.length).toBe(2); // 2 opening balance transactions
 
-        const journalEntries = freshDb.prepare("SELECT * FROM m1_journal_entries").all() as any[];
+        const journalEntries = freshDb.prepare("SELECT * FROM journal_entries").all() as any[];
         expect(journalEntries.length).toBe(4); // 2 postings each
     });
 });

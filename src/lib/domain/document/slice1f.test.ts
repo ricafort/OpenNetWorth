@@ -27,7 +27,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { createTestDb, closeDb } from '../../../infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
 import { createAccount, createEntity } from '../accounting/accountService';
 import {
     approveProposals,
@@ -63,7 +62,6 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
     beforeEach(() => {
         // Ensure complete database isolation (M1-SAFE-01)
         db = createTestDb();
-        initAccountingSchema(db);
 
         // Provision test entity and AUD bank account
         const entity = createEntity(db, { name: 'Grace Bell', type: 'person', currency: 'AUD' });
@@ -142,7 +140,7 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
         expect(result.document.mime_type).toBe('application/pdf');
 
         // Check raw_content in database
-        const storedDoc = db.prepare('SELECT raw_content FROM m1_documents WHERE id = ?').get(result.document.id) as any;
+        const storedDoc = db.prepare('SELECT raw_content FROM documents WHERE id = ?').get(result.document.id) as any;
         expect(storedDoc.raw_content).toBe(pdfBuffer.toString('base64'));
 
         // Check proposal creation
@@ -213,7 +211,7 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
         }).toThrow(/payment must be explicitly confirmed/i);
 
         // Verify zero transactions posted
-        const txCount = db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any;
+        const txCount = db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any;
         expect(txCount.c).toBe(0);
 
         // Proposal status remains unreviewed
@@ -253,7 +251,7 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
         // Checking account credited -$22.00 (-2200 cents)
         // Office supplies expense account debited +$22.00 (+2200 cents)
         const txId = approvalResult.transaction_ids[0];
-        const postings = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(txId) as any[];
+        const postings = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(txId) as any[];
         expect(postings.length).toBe(2);
 
         const sum = postings.reduce((acc, p) => acc + p.amount_cents, 0);
@@ -263,7 +261,7 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
         expect(checkingPosting.amount_cents).toBe(-2200);
 
         // Evidence reference check
-        const tx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(txId) as any;
+        const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(txId) as any;
         expect(tx.evidence_refs).toContain(document.content_hash);
 
         // Proposal status updated to approved
@@ -295,7 +293,7 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
             ]
         });
 
-        const initialTxCount = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+        const initialTxCount = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any).c;
         expect(initialTxCount).toBe(1);
 
         // 2nd Import of identical PDF
@@ -310,7 +308,7 @@ describe('Milestone 1 Slice 1F — First Document Extraction Integration', () =>
         expect(reimportResult.document.id).toBe(document.id);
 
         // Zero duplicate financial effect
-        const subsequentTxCount = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE origin = 'document_extraction'").get() as any).c;
+        const subsequentTxCount = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE origin = 'document_extraction'").get() as any).c;
         expect(subsequentTxCount).toBe(1);
     });
 

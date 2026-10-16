@@ -13,13 +13,11 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { listCsvMappings, saveCsvMapping } from '@/lib/domain/document/documentInboxService';
 
 export async function GET() {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const mappings = listCsvMappings(db);
         return NextResponse.json({ success: true, mappings });
@@ -32,7 +30,6 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const {

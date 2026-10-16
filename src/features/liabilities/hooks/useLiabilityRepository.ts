@@ -1,26 +1,15 @@
 'use client';
 
-import { useProfile } from '@/contexts/ProfileContext';
-import { ILiabilityRepository, LocalLiabilityRepository, SupabaseLiabilityRepository } from '../data/repository';
+import { ILiabilityRepository, LocalLiabilityRepository } from '../data/repository';
 import { useMemo } from 'react';
 
 /**
  * Dependency Injection Hook for Liability Repository.
+ * The embedded SQLite ledger is the single data layer, so the local
+ * repository is always used; the Supabase branch was removed with the
+ * data-layer collapse. Demo mode (Phase 2.7) needs no injection: the
+ * `demo_persona` cookie makes the API routes serve the persona vault.
  */
 export function useLiabilityRepository(): ILiabilityRepository {
-    const { isDemoMode, profile } = useProfile();
-    const templateId = isDemoMode ? profile?.id : null;
-
-    const repository = useMemo(() => {
-        if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
-            if (isDemoMode) {
-                return new SupabaseLiabilityRepository(templateId);
-            } else if (profile?.id && profile.id !== 'local_user') {
-                return new SupabaseLiabilityRepository(profile.id);
-            }
-        }
-        return new LocalLiabilityRepository(templateId);
-    }, [isDemoMode, templateId, profile?.id]);
-
-    return repository;
+    return useMemo(() => new LocalLiabilityRepository(), []);
 }
