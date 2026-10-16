@@ -523,6 +523,17 @@ export const LiabilitiesPage = () => {
                                     />
                                 </div>
 
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Min payment</label>
+                                    <input
+                                        {...register('minimum_payment', { setValueAs: v => (v === '' || v == null ? undefined : Number(v)) })}
+                                        type="number"
+                                        placeholder="0.00"
+                                        step="0.01"
+                                        className="w-full bg-card border border-border rounded-lg p-2 outline-none focus:ring-2 focus:ring-primary/20"
+                                    />
+                                </div>
+
                                 <div className="col-span-5 flex justify-end gap-2">
                                     <button type="button" onClick={() => setIsAddingLegacy(false)} className="px-4 py-2 text-slate-500 hover:text-slate-700 font-medium">Cancel</button>
                                     <button
@@ -545,13 +556,14 @@ export const LiabilitiesPage = () => {
                                     <th className="px-6 py-4">Type</th>
                                     <th className="px-6 py-4 text-right">Balance</th>
                                     <th className="px-6 py-4 text-right">Rate</th>
+                                    <th className="px-6 py-4 text-right">Min payment</th>
                                     <th className="px-6 py-4 text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border text-sm">
                                 {legacyLiabilities.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground italic font-medium">
+                                        <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground italic font-medium">
                                             No liabilities recorded.
                                         </td>
                                     </tr>
@@ -569,6 +581,11 @@ export const LiabilitiesPage = () => {
                                             </td>
                                             <td className="px-6 py-5 text-right font-medium text-slate-500">
                                                 {liability.interest_rate > 0 ? `${liability.interest_rate}%` : '-'}
+                                            </td>
+                                            <td className={`px-6 py-5 text-right font-mono font-medium text-slate-500 ${blurClass}`}>
+                                                {liability.minimum_payment != null && liability.minimum_payment > 0
+                                                    ? formatCurrency(liability.minimum_payment, liability.currency || baseCurrency || 'USD')
+                                                    : '-'}
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <button
@@ -598,7 +615,7 @@ export const LiabilitiesPage = () => {
                                                 <div key={curr}>{formatCurrency(val, curr as CurrencyCode)}</div>
                                             ))}
                                         </td>
-                                        <td colSpan={2}></td>
+                                        <td colSpan={3}></td>
                                     </tr>
                                 </tfoot>
                             )}
