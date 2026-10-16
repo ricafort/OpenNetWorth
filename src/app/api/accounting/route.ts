@@ -46,6 +46,7 @@ import {
     resolveAccountBalanceInfo
 } from '@/lib/domain/accounting/balanceService';
 import { getBudgetVsActual } from '@/lib/domain/accounting/budgetService';
+import { getCashFlowForecast, clampHorizonDays } from '@/lib/domain/accounting/forecastService';
 import {
     postTransaction,
     recordIncome,
@@ -343,6 +344,16 @@ export async function GET(request: Request) {
                     return secureJson({ error: 'Missing required parameter: start_date (budget limits are prorated over the period)' }, { status: 400 });
                 }
                 const report = getBudgetVsActual(db, entityId, startDate, endDate);
+                return secureJson({ success: true, report });
+            }
+
+            if (reportType === 'cash_flow_forecast') {
+                if (!entityId) {
+                    return secureJson({ error: 'Missing required parameter: entity_id' }, { status: 400 });
+                }
+                // Always anchored at today — an arbitrary as-of date would let
+                // the projection contradict the ledger.
+                const report = getCashFlowForecast(db, entityId, clampHorizonDays(url.searchParams.get('horizon_days')));
                 return secureJson({ success: true, report });
             }
 
