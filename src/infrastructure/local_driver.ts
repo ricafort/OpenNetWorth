@@ -427,17 +427,12 @@ export async function saveFreedomSettings(settings: { strategy: PayoffStrategy; 
     await persistScopedRecord('settings' as any, { key: 'freedomSettings', value: settings } as any);
 }
 
-// Recurring Transactions
-export function toMonthlyAmount(amount: number, frequency: string): number {
-    switch (frequency) {
-        case 'weekly': return amount * 4.33;
-        case 'biweekly': return amount * 2.17;
-        case 'monthly': return amount;
-        case 'quarterly': return amount / 3;
-        case 'yearly': return amount / 12;
-        default: return amount;
-    }
-}
+// Recurring Transactions — the factor table moved to the domain layer
+// (`recurringNormalization.ts`) so server-side services (cash-flow forecast)
+// can share it without importing this browser-only module. Re-exported here so
+// existing importers (useWealthMomentum, RecurringList, autopilotGenerator)
+// keep their import paths.
+export { toMonthlyAmount } from '@/lib/domain/accounting/recurringNormalization';
 
 // NOTE: The old `applyRecurringToMonth` here fabricated fake cash_flow_summaries
 // rows from schedule sums. It was removed (zero callers) and replaced by
