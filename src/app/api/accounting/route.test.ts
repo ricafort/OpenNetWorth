@@ -160,6 +160,28 @@ describe('/api/accounting?view=reports&report_type=cash_flow_forecast', () => {
         ));
         expect((await garbage.json()).report.horizon_days).toBe(90);
     });
+
+    it('carries debt_projections through the route (empty without liabilities)', async () => {
+        const res = await GET(req(`/?view=reports&report_type=cash_flow_forecast&entity_id=${entityId}`));
+        const report = (await res.json()).report;
+        expect(report.debt_projections).toEqual([]);
+    });
+
+    it('projects a liability with explicit terms and a rate', async () => {
+        createAccount(db, {
+            entity_id: entityId, name: 'Route Card', type: 'liability', sub_type: 'credit_card',
+            currency: 'USD', opening_balance_cents: 100000, opening_date: '2026-01-01',
+            minimum_payment_cents: 3500, interest_rate: 12
+        });
+        const res = await GET(req(`/?view=reports&report_type=cash_flow_forecast&entity_id=${entityId}`));
+        const report = (await res.json()).report;
+        expect(report.debt_projections).toHaveLength(1);
+        const row = report.debt_projections[0];
+        expect(row.account_id).toBeTruthy();
+        expect(row.monthly_payment_cents).toBe(3500);
+        expect(row.interest_rate).toBe(12);
+        expect(row.formatted_monthly_payment).toBeTruthy();
+    });
 });
 
 describe('/api/accounting POST action=autopay_debt', () => {

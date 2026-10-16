@@ -139,6 +139,38 @@ export interface CurrencyForecast {
     formatted_min_balance: string | null;
 }
 
+/**
+ * Projection-only amortization step for one projected month: interest at the
+ * stored annual percent ÷ 12, then the minimum payment. The ledger never
+ * accrues this interest — see forecastService.ts.
+ */
+export interface DebtProjectionMonth {
+    month: string;            // YYYY-MM; already-paid months absent
+    payment_cents: number;    // capped at balance+interest in the final month
+    interest_cents: number;   // 0 when no rate; projection-only, never posted
+    balance_cents: number;    // credit-normal, never negative
+}
+
+export interface DebtProjection {
+    account_id: string;
+    name: string;
+    currency: string;
+    sub_type: string;
+    starting_balance_cents: number | null;  // null ⇔ balance unknown
+    interest_rate: number | null;           // annual percent 0–100, NOT decimal
+    monthly_payment_cents: number;          // same amount the events use
+    estimated_payment: boolean;
+    is_unknown: boolean;
+    months: DebtProjectionMonth[];
+    balance_at_horizon_end_cents: number | null;
+    paid_off_within_horizon: boolean;
+    payoff_date: string | null;             // horizon-bounded only
+    non_amortising: boolean;                // payment ≤ monthly interest
+    formatted_starting_balance: string | null;
+    formatted_monthly_payment: string;
+    formatted_balance_at_horizon_end: string | null;
+}
+
 export interface CashFlowForecastReport {
     entity_id: string;
     start_date: string;
@@ -148,5 +180,6 @@ export interface CashFlowForecastReport {
     excluded_schedules: Array<{ id: string; name: string; currency: string; reason: 'no_liquid_accounts' | 'invalid_amount' }>;
     excluded_budget_categories: Array<{ category: string; currency: string; reason: 'covered_by_recurring_schedule' }>;
     excluded_debt_accounts: Array<{ id: string; name: string; currency: string; reason: 'no_liquid_accounts' | 'balance_unknown' | 'covered_by_recurring_schedule' }>;
+    debt_projections: DebtProjection[];
     calculation_version: string;
 }
