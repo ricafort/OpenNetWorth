@@ -18,7 +18,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Plus, Wallet, CreditCard, Shield, AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
-import { Account, AccountSubType, AccountType, CurrencyCode, Entity, formatMoney, parseToCents } from '@/lib/domain/accounting/types';
+import { Account, AccountSubType, AccountType, CurrencyCode, Entity, centsToInputString, formatMoney, parseToCents } from '@/lib/domain/accounting/types';
 import { BalanceCheckModal } from './BalanceCheckModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
 import UpdateBalancesModal from '@/features/sync/components/UpdateBalancesModal';
@@ -84,6 +84,10 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
 
     const [formOpeningDate, setFormOpeningDate] = useState(getLocalIsoDate);
     const [formInstitution, setFormInstitution] = useState('');
+    // Liability terms (migration 0009 columns). The cash flow forecast projects
+    // `minimum_payment_cents` verbatim; blank falls back to the debtCalculator estimate.
+    const [formInterestRate, setFormInterestRate] = useState('');
+    const [formMinimumPayment, setFormMinimumPayment] = useState('');
 
     // Target account highlight and scrolling from URL parameter
     const [targetAccountId, setTargetAccountId] = useState<string | null>(null);
@@ -136,6 +140,8 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
         setFormSubType('checking');
         setFormInstitution('');
         setFormOpeningAmount('');
+        setFormInterestRate('');
+        setFormMinimumPayment('');
         setEditingAccountId(null);
         setError(null);
         setIsModalOpen(true);
@@ -150,6 +156,10 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
         setFormCurrency(acc.currency as CurrencyCode);
         setFormInstitution(acc.institution || '');
         setFormOpeningAmount('');
+        // Pre-populate terms so saving without touching them keeps the stored values,
+        // and clearing an input explicitly nulls the column (updateAccount: null = clear).
+        setFormInterestRate(acc.interest_rate != null ? String(acc.interest_rate) : '');
+        setFormMinimumPayment(centsToInputString(acc.minimum_payment_cents, acc.currency));
         setError(null);
         setIsModalOpen(true);
     };
@@ -209,6 +219,23 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                 openingCents = parseToCents(formOpeningAmount, formCurrency);
             }
 
+            // Liability terms: blank → null (no terms / clear on edit), value → validated number.
+            // updateAccount treats null as "clear the column" and undefined as "don't touch";
+            // we always send explicit values for liabilities so the UI is the source of truth.
+            let interestRate: number | null = null;
+            let minimumPaymentCents: number | null = null;
+            if (formType === 'liability') {
+                if (formInterestRate.trim() !== '') {
+                    interestRate = Number(formInterestRate);
+                    if (!Number.isFinite(interestRate) || interestRate < 0) {
+                        throw new Error('Interest rate must be a non-negative number, e.g. 18.99.');
+                    }
+                }
+                if (formMinimumPayment.trim() !== '') {
+                    minimumPaymentCents = parseToCents(formMinimumPayment, formCurrency);
+                }
+            }
+
             let payload: any;
             if (editingAccountId) {
                 const account = accounts.find(a => a.id === editingAccountId);
@@ -241,7 +268,11 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                     updates: {
                         name: formName,
                         sub_type: formSubType,
-                        institution: formInstitution || null
+                        institution: formInstitution || null,
+                        ...(formType === 'liability' ? {
+                            interest_rate: interestRate,
+                            minimum_payment_cents: minimumPaymentCents
+                        } : {})
                     }
                 };
             } else {
@@ -255,7 +286,11 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                         currency: formCurrency,
                         institution: formInstitution || null,
                         opening_date: openingCents !== null ? formOpeningDate : null,
-                        opening_balance_cents: openingCents
+                        opening_balance_cents: openingCents,
+                        ...(formType === 'liability' ? {
+                            interest_rate: interestRate,
+                            minimum_payment_cents: minimumPaymentCents
+                        } : {})
                     }
                 };
             }
@@ -275,6 +310,8 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
             setFormName('');
             setFormOpeningAmount('');
             setFormInstitution('');
+            setFormInterestRate('');
+            setFormMinimumPayment('');
             setEditingAccountId(null);
             setIsModalOpen(false);
 
@@ -477,6 +514,15 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                     <div className="text-xs text-muted-foreground capitalize mt-0.5">
                                         {acc.sub_type.replace('_', ' ')} {acc.institution ? `• ${acc.institution}` : ''}
                                     </div>
+                                    {(acc.interest_rate != null || acc.minimum_payment_cents != null) && (
+                                        <div className="text-[10px] text-muted-foreground mt-0.5" data-testid={`terms-${acc.id}`}>
+                                            {acc.interest_rate != null ? `${acc.interest_rate}% p.a.` : ''}
+                                            {acc.interest_rate != null && acc.minimum_payment_cents != null ? ' · ' : ''}
+                                            {acc.minimum_payment_cents != null
+                                                ? `min payment ${formatMoney({ amount_cents: acc.minimum_payment_cents, currency: acc.currency })}`
+                                                : ''}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="text-right flex flex-col items-end">
                                     <div className="font-semibold text-rose-500 font-mono">{acc.formatted_balance}</div>
@@ -679,6 +725,44 @@ export const AccountManagementView: React.FC<{ entities: Entity[], selectedEntit
                                     </select>
                                 </div>
                             </div>
+
+                            {/* Debt Terms (liabilities only) — consumed by the cash flow forecast */}
+                            {formType === 'liability' && (
+                                <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3">
+                                    <div className="text-xs font-semibold text-foreground flex items-center justify-between">
+                                        <span>Debt Terms</span>
+                                        <span className="text-[10px] text-muted-foreground">Optional</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[11px] text-muted-foreground mb-1">Interest Rate (% p.a.)</label>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={formInterestRate}
+                                                onChange={e => setFormInterestRate(e.target.value)}
+                                                placeholder="e.g. 18.99"
+                                                className="w-full px-3 py-1.5 rounded-lg border border-border bg-background text-sm font-mono"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] text-muted-foreground mb-1">Minimum Payment</label>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={formMinimumPayment}
+                                                onChange={e => setFormMinimumPayment(e.target.value)}
+                                                placeholder="e.g. 35.00"
+                                                className="w-full px-3 py-1.5 rounded-lg border border-border bg-background text-sm font-mono"
+                                            />
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground">
+                                        The cash flow forecast projects this minimum payment every month.
+                                        Without one, it estimates 1% of balance + monthly interest (min 25) and marks it "est.".
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Opening Balance (Optional) */}
                             {(!editingAccountId || (editingAccountId && accounts.find(a => a.id === editingAccountId)?.opening_balance_cents === null)) && (
