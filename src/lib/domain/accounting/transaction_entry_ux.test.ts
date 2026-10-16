@@ -15,7 +15,7 @@
  * 5. Idempotency & Duplicate Prevention: Submitting with identical idempotency keys prevents duplicate transactions.
  * 
  * Tricky logic:
- * - Draft items are intentionally isolated from m1_transactions and m1_journal_entries.
+ * - Draft items are intentionally isolated from transactions and journal_entries.
  *   Balances queried via balanceService before and after draft operations must remain strictly equal.
  * - Idempotency returns the existing transaction on identical retries and throws ConflictError on conflicting payloads.
  * 
@@ -24,7 +24,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import {
     createEntity,
     createAccount,
@@ -55,7 +55,7 @@ describe('Transaction Entry UX & Accounting Invariants', () => {
         // Pristine in-memory database for each test
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
     });
 
     afterEach(() => {
@@ -282,7 +282,7 @@ describe('Transaction Entry UX & Accounting Invariants', () => {
             // Verify initial balance
             const initialBal = getAccountBalance(db, personalAccount.id, '2026-09-16');
             expect(initialBal.balance_cents).toBe(1000000);
-            const txCountBefore = db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as { cnt: number };
+            const txCountBefore = db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as { cnt: number };
 
             // 1. Save draft
             const draftId = 'draft-test-123';
@@ -305,7 +305,7 @@ describe('Transaction Entry UX & Accounting Invariants', () => {
             expect(balAfterDraft.balance_cents).toBe(1000000);
 
             // Invariant check: No new transactions or journal entries created
-            const txCountAfterDraft = db.prepare('SELECT COUNT(*) as cnt FROM m1_transactions').get() as { cnt: number };
+            const txCountAfterDraft = db.prepare('SELECT COUNT(*) as cnt FROM transactions').get() as { cnt: number };
             expect(txCountAfterDraft.cnt).toBe(txCountBefore.cnt);
 
             // 2. Fetch draft and verify all facts are preserved
@@ -405,7 +405,7 @@ describe('Transaction Entry UX & Accounting Invariants', () => {
             }).toThrow();
 
             // Total transactions for this expense is exactly 1 (plus 1 opening balance)
-            const txs = db.prepare("SELECT COUNT(*) as cnt FROM m1_transactions WHERE description LIKE '%Electricity%'").get() as { cnt: number };
+            const txs = db.prepare("SELECT COUNT(*) as cnt FROM transactions WHERE description LIKE '%Electricity%'").get() as { cnt: number };
             expect(txs.cnt).toBe(1);
 
             // Balance only deducted once: 500,000 - 12,000 = 488,000 cents
@@ -484,11 +484,11 @@ describe('Transaction Entry UX & Accounting Invariants', () => {
 
             // Seed valid document and transaction to reference
             db.prepare(`
-                INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+                INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
                 VALUES ('doc-source-789', 'receipt.pdf', 'hash-789', 'application/pdf', 1024, datetime('now'))
             `).run();
             db.prepare(`
-                INSERT INTO m1_transactions (id, date, description, status, origin, revision, created_at, updated_at)
+                INSERT INTO transactions (id, date, description, status, origin, revision, created_at, updated_at)
                 VALUES ('tx-bank-456', '2026-09-17', 'Source bank event', 'posted', 'manual', 1, datetime('now'), datetime('now'))
             `).run();
 

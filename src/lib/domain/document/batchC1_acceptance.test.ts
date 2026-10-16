@@ -9,7 +9,7 @@
  * 2. Dynamic Parsing: Extracts closing balance from a varied-value/date synthetic fixture,
  *    proving dynamic parser extraction rather than hardcoded pattern matching.
  * 3. Proposal-Level Ownership: Atomically updates account_id and entity_id on pending proposals only,
- *    preserving approved and linked proposals, without touching non-existent m1_documents.entity_id.
+ *    preserving approved and linked proposals, without touching non-existent documents.entity_id.
  * 4. Atomic Rollback: Fails atomically via SQLite transaction if any pending proposal has a currency
  *    mismatch with the target account, rolling back so zero partial updates occur.
  * 5. Selective Finding Resolution: Clears CURRENCY_MISMATCH and account findings resolved by account
@@ -26,8 +26,6 @@ import path from 'path';
 import fs from 'fs';
 import { jsPDF } from 'jspdf';
 import { createTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '../accounting/schema';
-import { initDocumentSchema } from './schema';
 import { createEntity, createAccount } from '../accounting/accountService';
 import { extractStatementBalancesFromPdf } from './pdfStatementExtractor';
 import { bulkUpdateProposalAccount } from './documentInboxService';
@@ -39,8 +37,6 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
 
     beforeEach(() => {
         db = createTestDb();
-        initAccountingSchema(db);
-        initDocumentSchema(db);
 
         // Seed household entity and checking account
         const entity = createEntity(db, { name: 'Alex and Morgan Nguyen household', type: 'household', currency: 'AUD' });
@@ -176,15 +172,15 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
             currency: 'AUD'
         });
 
-        // Insert document into m1_documents (note: no entity_id column exists on m1_documents)
+        // Insert document into documents (note: no entity_id column exists on documents)
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
         `).run(docId, 'statement.pdf', 'hash-test-prop-1', 'application/pdf', 1024, now);
 
         // Insert proposals with mixed statuses
         const insertPropStmt = db.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
                 original_currency, amount_cents, counterparty, description, event_type,
                 suggested_category, evidence_json, extraction_version, validation_findings,
@@ -222,23 +218,23 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
         expect(updatedCount).toBe(2); // Only p1 and p2 updated
 
         // Verify pending proposals updated with both account_id and derived entity_id
-        const p1 = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get('prop-p1') as any;
+        const p1 = db.prepare('SELECT * FROM proposals WHERE id = ?').get('prop-p1') as any;
         expect(p1.account_id).toBe(targetAcc.id);
         expect(p1.entity_id).toBe(entity2.id); // Derived from target account!
         expect(p1.review_status).toBe('modified');
 
-        const p2 = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get('prop-p2') as any;
+        const p2 = db.prepare('SELECT * FROM proposals WHERE id = ?').get('prop-p2') as any;
         expect(p2.account_id).toBe(targetAcc.id);
         expect(p2.entity_id).toBe(entity2.id);
         expect(p2.review_status).toBe('modified');
 
         // Verify approved and linked proposals are untouched
-        const p3 = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get('prop-p3') as any;
+        const p3 = db.prepare('SELECT * FROM proposals WHERE id = ?').get('prop-p3') as any;
         expect(p3.account_id).toBe(everydayCheckingId);
         expect(p3.entity_id).toBe(householdEntityId);
         expect(p3.review_status).toBe('approved');
 
-        const p4 = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get('prop-p4') as any;
+        const p4 = db.prepare('SELECT * FROM proposals WHERE id = ?').get('prop-p4') as any;
         expect(p4.account_id).toBe(everydayCheckingId);
         expect(p4.entity_id).toBe(householdEntityId);
         expect(p4.review_status).toBe('linked');
@@ -261,12 +257,12 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
         });
 
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
         `).run(docId, 'statement.pdf', 'hash-test-prop-2', 'application/pdf', 1024, now);
 
         const insertPropStmt = db.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
                 original_currency, amount_cents, counterparty, description, event_type,
                 suggested_category, evidence_json, extraction_version, validation_findings,
@@ -293,8 +289,8 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
         }).toThrow(/does not match proposal currency "AUD"/i);
 
         // Atomic check: neither proposal was modified
-        const c1 = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get('prop-c1') as any;
-        const c2 = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get('prop-c2') as any;
+        const c1 = db.prepare('SELECT * FROM proposals WHERE id = ?').get('prop-c1') as any;
+        const c2 = db.prepare('SELECT * FROM proposals WHERE id = ?').get('prop-c2') as any;
         expect(c1.account_id).toBeNull();
         expect(c1.review_status).toBe('unreviewed');
         expect(c2.account_id).toBeNull();
@@ -309,7 +305,7 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
         const now = new Date().toISOString();
 
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
         `).run(docId, 'statement.pdf', 'hash-test-prop-3', 'application/pdf', 1024, now);
 
@@ -321,7 +317,7 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
         ];
 
         db.prepare(`
-            INSERT INTO m1_proposals (
+            INSERT INTO proposals (
                 id, document_id, entity_id, account_id, event_date, document_period,
                 original_currency, amount_cents, counterparty, description, event_type,
                 suggested_category, evidence_json, extraction_version, validation_findings,
@@ -336,7 +332,7 @@ describe('Batch C1 Acceptance: Remaining Acceptance Corrections', () => {
         // Bulk update to Everyday Checking (which is AUD)
         bulkUpdateProposalAccount(db, docId, everydayCheckingId);
 
-        const updatedProp = db.prepare('SELECT * FROM m1_proposals WHERE id = ?').get('prop-f1') as any;
+        const updatedProp = db.prepare('SELECT * FROM proposals WHERE id = ?').get('prop-f1') as any;
         const remainingFindings = JSON.parse(updatedProp.validation_findings);
 
         // CURRENCY_MISMATCH, MISSING_ACCOUNT, OWNER_CONFLICT must be cleared

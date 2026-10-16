@@ -10,7 +10,6 @@ import Database from 'better-sqlite3';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { getAccountBalance } from '@/lib/domain/accounting/balanceService';
 import { ingestCsvDocument, approveProposals, ingestPdfDocument, linkProposalToTransaction } from '@/lib/domain/document/documentInboxService';
@@ -42,7 +41,6 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
     beforeEach(async () => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Setup entities
         personalEntity = createEntity(db, { name: 'Household', type: 'household', currency: 'AUD' });
@@ -50,7 +48,7 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
         entities = [personalEntity, businessEntity];
 
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, storage_path, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run('doc-123', 'receipt.pdf', 'hash-123', 'application/pdf', 1024, '/docs/receipt.pdf', '2025-03-10T12:00:00Z');
 
@@ -109,7 +107,7 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
             ]
         });
 
-        const txRow = db.prepare('SELECT id FROM m1_transactions WHERE origin = ?').get('document_extraction') as any;
+        const txRow = db.prepare('SELECT id FROM transactions WHERE origin = ?').get('document_extraction') as any;
         testTxId = txRow.id;
 
         // Attach supporting document using actual linkProposalToTransaction
@@ -276,7 +274,7 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
         expect(finalBusiness).toBe(50000);
 
         // Check workflow exists
-        const workflow = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE personal_transaction_id = ?').get(testTxId) as any;
+        const workflow = db.prepare('SELECT * FROM reimbursement_workflows WHERE personal_transaction_id = ?').get(testTxId) as any;
         if (!workflow) {
             console.error('Workflow not found! DOM Content:', container.innerHTML);
         }
@@ -285,12 +283,12 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
         expect(workflow.evidence_document_id).toBe(testDocId); // Should carry forward evidence!
         
         // Verify business expense exists (the reclassified or newly recorded part)
-        const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(workflow.business_transaction_id) as any;
+        const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(workflow.business_transaction_id) as any;
         expect(busTx).toBeDefined();
         expect(busTx.date).toBe('2025-03-10'); // Same date
         
         // Assert Source transaction and evidence remain linked.
-        const sourceTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(workflow.personal_transaction_id) as any;
+        const sourceTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(workflow.personal_transaction_id) as any;
         expect(sourceTx.evidence_refs).toContain(testDocId);
 
         // --- D3 UNDO FLOW START ---
@@ -315,7 +313,7 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
         const confirmUndoBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('Confirm Undo')) as HTMLButtonElement;
         expect(confirmUndoBtn).toBeDefined();
         // Since we didn't mock the original_category_account_id perfectly in the route (it should find it), let's just make sure the button is clickable if we have a category selected.
-        // Wait, route.ts actually fetches it from m1_transaction_corrections!
+        // Wait, route.ts actually fetches it from transaction_corrections!
         
         // 12. Submit Undo
         await act(async () => {
@@ -330,15 +328,15 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
         expect(finalPersonalAfterUndo).toBe(89000); // 1000 - 110
         expect(finalBusinessAfterUndo).toBe(50000); // 500
         
-        const finalWorkflow = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(workflow.id) as any;
+        const finalWorkflow = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(workflow.id) as any;
         expect(finalWorkflow.status).toBe('cancelled');
 
-        const finalSourceTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(workflow.personal_transaction_id) as any;
+        const finalSourceTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(workflow.personal_transaction_id) as any;
         expect(finalSourceTx.evidence_refs).toContain(testDocId);
 
         // 14. Assert reporting state is complete and clearing accounts are zeroed out (Testing Issue 2)
-        const dueFromAcc = db.prepare('SELECT id FROM m1_accounts WHERE name = ?').get('Due from Acme Corp') as any;
-        const dueToAcc = db.prepare('SELECT id FROM m1_accounts WHERE name = ?').get('Due to Household') as any;
+        const dueFromAcc = db.prepare('SELECT id FROM accounts WHERE name = ?').get('Due from Acme Corp') as any;
+        const dueToAcc = db.prepare('SELECT id FROM accounts WHERE name = ?').get('Due to Household') as any;
 
         const summary1 = getSharedFinancialSummary(db, { as_of_date: '2025-03-15', reporting_currency: 'AUD' });
         console.log('Unrecorded accounts:', summary1.unrecorded_accounts);
@@ -400,13 +398,13 @@ describe('DailyEventsView Batch D3 Undo Acceptance Test', () => {
         });
 
         // 16. Assertions on second workflow
-        const workflows2 = db.prepare("SELECT * FROM m1_reimbursement_workflows WHERE status != 'cancelled'").all() as any[];
+        const workflows2 = db.prepare("SELECT * FROM reimbursement_workflows WHERE status != 'cancelled'").all() as any[];
         expect(workflows2.length).toBe(1); // the new one
         const wf2 = workflows2[0];
         
         expect(wf2.id).not.toBe(workflow.id); // Must be a genuinely new workflow
 
-        const businessTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(wf2.business_transaction_id) as any;
+        const businessTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(wf2.business_transaction_id) as any;
         expect(businessTx).toBeDefined();
         expect(businessTx.origin).toBe('manual'); // Should be newly created, not voided
         expect(businessTx.id).not.toBe(workflow.business_transaction_id); // Must have a new identity!

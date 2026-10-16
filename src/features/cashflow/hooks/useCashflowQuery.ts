@@ -2,7 +2,7 @@ import { useResourceQuery } from '@/hooks/useResourceQuery';
 import { useCashflowRepository } from './useCashflowRepository';
 import { RecurringTransaction } from '@/features/cashflow/types';
 
-const QUERY_KEY = ['recurring_transactions'];
+const QUERY_KEY = ['recurring_schedules'];
 
 export function useCashflowQuery() {
     const repository = useCashflowRepository();

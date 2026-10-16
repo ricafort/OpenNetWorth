@@ -17,7 +17,7 @@
  * 6. Acceptance Scenario T12: Concurrency Control (M1-SAFE-06)
  *    Stale revision throws ConflictError.
  * 7. Acceptance Scenario T13: Auditable Correction Trail (M1-DOM-05)
- *    Voiding/editing preserves original and records immutable snapshot in m1_transaction_corrections.
+ *    Voiding/editing preserves original and records immutable snapshot in transaction_corrections.
  * 8. Finding 1: Posting & Account Currency Validation
  *    - Cross-currency loan repayments (e.g. AUD bank vs USD loan) are rejected upfront.
  *    - Postings whose currency does not match the account's defined currency are rejected.
@@ -37,7 +37,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount, ConflictError, ValidationError } from './accountService';
 import { getAccountBalance, getEntityNetWorth, getPeriodIncomeAndExpenses } from './balanceService';
 import {
@@ -62,7 +62,7 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
         // Pristine in-memory database for each test (M1-SAFE-01)
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
         // Inject in-memory database into db.ts so API routes use this isolated instance
         setTestDb(db);
     });
@@ -678,8 +678,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
                 currency: 'USD'
             });
 
-            const initialAccountCount = (db.prepare('SELECT count(*) as count FROM m1_accounts').get() as any).count;
-            const initialTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const initialAccountCount = (db.prepare('SELECT count(*) as count FROM accounts').get() as any).count;
+            const initialTxCount = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
 
             // Attempt income with invalid date
             expect(() => {
@@ -694,8 +694,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             }).toThrow(ValidationError);
 
             // Verify database state is 100% UNCHANGED: No orphan category account was created!
-            const finalAccountCount = (db.prepare('SELECT count(*) as count FROM m1_accounts').get() as any).count;
-            const finalTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
+            const finalAccountCount = (db.prepare('SELECT count(*) as count FROM accounts').get() as any).count;
+            const finalTxCount = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
 
             expect(finalAccountCount).toBe(initialAccountCount);
             expect(finalTxCount).toBe(initialTxCount);
@@ -751,7 +751,7 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
     });
 
     describe('Acceptance Scenario T13: Auditable Correction Trail (M1-DOM-05)', () => {
-        it('T13: voiding a transaction preserves original and records immutable snapshot in m1_transaction_corrections', () => {
+        it('T13: voiding a transaction preserves original and records immutable snapshot in transaction_corrections', () => {
             const entity = createEntity(db, { name: 'Grace', type: 'person', currency: 'USD' });
             const bank = createAccount(db, {
                 entity_id: entity.id,
@@ -788,12 +788,12 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             expect(correction.performed_by).toBe('Grace Accountant');
 
             // Verify original transaction row is preserved with status 'void'
-            const persistedTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(tx.id) as any;
+            const persistedTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(tx.id) as any;
             expect(persistedTx.status).toBe('void');
             expect(persistedTx.revision).toBe(2);
 
-            // Verify audit table m1_transaction_corrections contains prior snapshot
-            const auditRow = db.prepare('SELECT * FROM m1_transaction_corrections WHERE id = ?').get(correction.id) as any;
+            // Verify audit table transaction_corrections contains prior snapshot
+            const auditRow = db.prepare('SELECT * FROM transaction_corrections WHERE id = ?').get(correction.id) as any;
             expect(auditRow).toBeDefined();
             const prev = JSON.parse(auditRow.previous_state);
             expect(prev.transaction.status).toBe('posted');
@@ -854,7 +854,7 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
          * Verifies that the attempt fails atomically, leaving records, revisions, and accounts 100% unchanged.
          * 
          * Tricky logic:
-         * Counts all rows in m1_transactions and m1_journal_entries before and after the rejected post.
+         * Counts all rows in transactions and journal_entries before and after the rejected post.
          * Confirms that no draft or orphan records leaked into the database.
          * 
          * TODO: Support inter-entity clearing accounts when intercompany modules are added.
@@ -879,8 +879,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
                 currency: 'USD'
             });
 
-            const initialTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
-            const initialEntryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            const initialTxCount = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
+            const initialEntryCount = (db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count;
 
             expect(() => {
                 postTransaction(db, {
@@ -893,8 +893,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
                 });
             }).toThrow(/Cross-entity transaction rejected/);
 
-            const finalTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
-            const finalEntryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            const finalTxCount = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
+            const finalEntryCount = (db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count;
 
             expect(finalTxCount).toBe(initialTxCount);
             expect(finalEntryCount).toBe(initialEntryCount);
@@ -911,7 +911,7 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
          * Verifies both:
          * 1) A correction mixing accounts from Entity A and Entity B.
          * 2) A correction trying to reassign all postings to Entity B from an Entity A transaction.
-         * Checks that m1_transactions.revision is unchanged and m1_transaction_corrections has 0 new records.
+         * Checks that transactions.revision is unchanged and transaction_corrections has 0 new records.
          * 
          * TODO: Add multi-party dispute resolution workflows in future milestones.
          */
@@ -960,9 +960,9 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
 
             expect(origTx.revision).toBe(1);
 
-            const initialTxRow = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(origTx.id) as any;
-            const initialEntries = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
-            const initialCorrectionsCount = (db.prepare('SELECT count(*) as count FROM m1_transaction_corrections').get() as any).count;
+            const initialTxRow = db.prepare('SELECT * FROM transactions WHERE id = ?').get(origTx.id) as any;
+            const initialEntries = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
+            const initialCorrectionsCount = (db.prepare('SELECT count(*) as count FROM transaction_corrections').get() as any).count;
 
             // 1. Attempt correction mixing Entity A and Entity B accounts
             expect(() => {
@@ -982,12 +982,12 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             }).toThrow(/Cross-entity correction rejected/);
 
             // Verify unchanged state
-            let txRowAfter = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(origTx.id) as any;
+            let txRowAfter = db.prepare('SELECT * FROM transactions WHERE id = ?').get(origTx.id) as any;
             expect(txRowAfter.revision).toBe(1);
             expect(txRowAfter.updated_at).toBe(initialTxRow.updated_at);
-            let entriesAfter = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
+            let entriesAfter = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
             expect(entriesAfter).toEqual(initialEntries);
-            let correctionsCountAfter = (db.prepare('SELECT count(*) as count FROM m1_transaction_corrections').get() as any).count;
+            let correctionsCountAfter = (db.prepare('SELECT count(*) as count FROM transaction_corrections').get() as any).count;
             expect(correctionsCountAfter).toBe(initialCorrectionsCount);
 
             // 2. Attempt correction moving transaction entirely into Entity B
@@ -1008,11 +1008,11 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             }).toThrow(/Cross-entity correction rejected/);
 
             // Verify state is still 100% unchanged
-            txRowAfter = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(origTx.id) as any;
+            txRowAfter = db.prepare('SELECT * FROM transactions WHERE id = ?').get(origTx.id) as any;
             expect(txRowAfter.revision).toBe(1);
-            entriesAfter = db.prepare('SELECT * FROM m1_journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
+            entriesAfter = db.prepare('SELECT * FROM journal_entries WHERE transaction_id = ?').all(origTx.id) as any[];
             expect(entriesAfter).toEqual(initialEntries);
-            correctionsCountAfter = (db.prepare('SELECT count(*) as count FROM m1_transaction_corrections').get() as any).count;
+            correctionsCountAfter = (db.prepare('SELECT count(*) as count FROM transaction_corrections').get() as any).count;
             expect(correctionsCountAfter).toBe(initialCorrectionsCount);
         });
 
@@ -1113,7 +1113,7 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             expect(correctBody.error).toMatch(/Cross-entity correction rejected/);
 
             // Verify validTx is untouched
-            const storedTx = db.prepare('SELECT revision FROM m1_transactions WHERE id = ?').get(validTx.id) as any;
+            const storedTx = db.prepare('SELECT revision FROM transactions WHERE id = ?').get(validTx.id) as any;
             expect(storedTx.revision).toBe(1);
         });
     });
@@ -1164,8 +1164,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
 
             expect(initialTx.id).toBeDefined();
 
-            const txCountBefore = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
-            const entriesCountBefore = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            const txCountBefore = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
+            const entriesCountBefore = (db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count;
 
             // Retry 1: Exact byte match
             const retry1 = postTransaction(db, {
@@ -1196,8 +1196,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             expect(retry2.id).toBe(initialTx.id);
 
             // Verify zero duplicate records created
-            const txCountAfter = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
-            const entriesCountAfter = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            const txCountAfter = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
+            const entriesCountAfter = (db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count;
             expect(txCountAfter).toBe(txCountBefore);
             expect(entriesCountAfter).toBe(entriesCountBefore);
         });
@@ -1248,8 +1248,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
                 ]
             });
 
-            const baselineTxCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
-            const baselineEntryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            const baselineTxCount = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
+            const baselineEntryCount = (db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count;
 
             // 1. Conflict on changed payee
             expect(() => {
@@ -1266,8 +1266,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
                 });
             }).toThrow(ConflictError);
 
-            expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
-            expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
+            expect((db.prepare('SELECT count(*) as count FROM transactions').get() as any).count).toBe(baselineTxCount);
+            expect((db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count).toBe(baselineEntryCount);
 
             // 2. Conflict on changed description
             expect(() => {
@@ -1284,8 +1284,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
                 });
             }).toThrow(ConflictError);
 
-            expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
-            expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
+            expect((db.prepare('SELECT count(*) as count FROM transactions').get() as any).count).toBe(baselineTxCount);
+            expect((db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count).toBe(baselineEntryCount);
 
             // 3. Changed evidence references returns existing transaction without conflict (Fix A-E Idempotency)
             const result = postTransaction(db, {
@@ -1301,11 +1301,11 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             });
             expect(result.id).toBe(seedTx.id);
 
-            expect((db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count).toBe(baselineTxCount);
-            expect((db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count).toBe(baselineEntryCount);
+            expect((db.prepare('SELECT count(*) as count FROM transactions').get() as any).count).toBe(baselineTxCount);
+            expect((db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count).toBe(baselineEntryCount);
 
             // 4. Verify existing transaction retained its exact initial values
-            const stored = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(seedTx.id) as any;
+            const stored = db.prepare('SELECT * FROM transactions WHERE id = ?').get(seedTx.id) as any;
             expect(stored.payee_or_payer).toBe('AWS Cloud');
             expect(stored.description).toBe('Hosting Subscription');
             expect(JSON.parse(stored.evidence_refs)).toEqual(['receipt_sep2026.pdf']);
@@ -1416,8 +1416,8 @@ describe('Milestone 1 — Slice 1C: Daily Financial Events Acceptance & Regressi
             expect(body3.error).toMatch(/Idempotency conflict/);
 
             // Verify database counts remain exactly 1 transaction and 2 journal entries
-            const txCount = (db.prepare('SELECT count(*) as count FROM m1_transactions').get() as any).count;
-            const entryCount = (db.prepare('SELECT count(*) as count FROM m1_journal_entries').get() as any).count;
+            const txCount = (db.prepare('SELECT count(*) as count FROM transactions').get() as any).count;
+            const entryCount = (db.prepare('SELECT count(*) as count FROM journal_entries').get() as any).count;
             expect(txCount).toBe(1);
             expect(entryCount).toBe(2);
         });

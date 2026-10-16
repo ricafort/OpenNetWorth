@@ -5,7 +5,8 @@ import CheckInModal from './CheckInModal';
 import GeneralSettingsModal from './GeneralSettingsModal';
 import MentorSettings from './MentorSettings';
 import { useState, useEffect } from 'react';
-import { loadSettings, saveSettings } from '@/infrastructure/local_driver';
+import { saveSettings, loadSettingsFromVault } from '@/infrastructure/local_driver';
+import { UserSettings } from '@/types';
 
 export default function DashboardModals() {
     const { isSettingsOpen, closeSettings } = useDashboard();
@@ -46,7 +47,11 @@ export default function DashboardModals() {
     */
 
     const handleCheckInUpdate = async () => {
-        const settings = loadSettings();
+        // Read from the same source the settings UI reads (the SQLite settings kv —
+        // in demo mode the persona vault's kv via the `demo_persona` cookie) so
+        // stamping lastCheckIn never overwrites the vault with a stale object.
+        const settings: UserSettings = await loadSettingsFromVault()
+            .catch(() => ({ baseCurrency: 'USD', theme: 'system', checkInFrequency: 'monthly' }));
         try {
             await saveSettings({ ...settings, lastCheckIn: new Date().toISOString() });
         } catch (e) {

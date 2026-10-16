@@ -35,7 +35,6 @@ import Database from 'better-sqlite3';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { postTransaction } from '@/lib/domain/accounting/transactionService';
 import { saveDraft } from '@/lib/domain/accounting/draftService';
@@ -66,7 +65,6 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
 
         // Setup entities
         personalEntity = createEntity(db, { name: 'Household', type: 'household', currency: 'AUD' });
@@ -206,8 +204,8 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         expect(initialPersonalBal).toBe(100000); // 1,000.00 AUD
         expect(initialBusinessBal).toBe(39000);  // 390.00 AUD
 
-        const initialTxCount = (db.prepare('SELECT count(*) as cnt FROM m1_transactions').get() as any).cnt;
-        const initialJournalCount = (db.prepare('SELECT count(*) as cnt FROM m1_journal_entries').get() as any).cnt;
+        const initialTxCount = (db.prepare('SELECT count(*) as cnt FROM transactions').get() as any).cnt;
+        const initialJournalCount = (db.prepare('SELECT count(*) as cnt FROM journal_entries').get() as any).cnt;
 
         // Render DailyEventsView connected to real API
         await act(async () => {
@@ -239,7 +237,7 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
 
         // Verify Database Post-Conditions:
         // 1. Workflow status updated to reimbursed
-        const updatedWf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(wf.id) as any;
+        const updatedWf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(wf.id) as any;
         expect(updatedWf.status).toBe('reimbursed');
         expect(updatedWf.personal_reimbursement_tx_id).toBe(persTx.id);
         expect(updatedWf.business_reimbursement_tx_id).toBe(busTx.id);
@@ -252,10 +250,10 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         expect(finalBusinessBal).toBe(39000);  // AUD 390.00 (NOT 280.00!)
 
         // 3. Transactions were corrected in-place without creating new bank movements
-        const finalTxCount = (db.prepare('SELECT count(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const finalTxCount = (db.prepare('SELECT count(*) as cnt FROM transactions').get() as any).cnt;
         expect(finalTxCount).toBe(initialTxCount); // Zero new transactions!
 
-        const finalJournalCount = (db.prepare('SELECT count(*) as cnt FROM m1_journal_entries').get() as any).cnt;
+        const finalJournalCount = (db.prepare('SELECT count(*) as cnt FROM journal_entries').get() as any).cnt;
         expect(finalJournalCount).toBe(initialJournalCount); // Zero extra journal lines!
 
         // 4. Clearing accounts are fully settled
@@ -353,7 +351,7 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         });
 
         // Assert Database State
-        const updatedWf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(wf.id) as any;
+        const updatedWf = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(wf.id) as any;
         expect(updatedWf.status).toBe('reimbursed');
         expect(updatedWf.personal_reimbursement_tx_id).toBe(persTx.id);
         expect(updatedWf.business_reimbursement_tx_id).toBeDefined();
@@ -438,12 +436,12 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         expect(postRes.status).toBe(201);
 
         // Verify authoritative dates preserved
-        const pTxDb = db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(persTx.id) as any;
-        const bTxDb = db.prepare('SELECT date FROM m1_transactions WHERE id = ?').get(busTx.id) as any;
+        const pTxDb = db.prepare('SELECT date FROM transactions WHERE id = ?').get(persTx.id) as any;
+        const bTxDb = db.prepare('SELECT date FROM transactions WHERE id = ?').get(busTx.id) as any;
         expect(pTxDb.date).toBe('2025-03-06');
         expect(bTxDb.date).toBe('2025-03-04');
 
-        const journalCountBeforeRetry = (db.prepare('SELECT count(*) as cnt FROM m1_journal_entries').get() as any).cnt;
+        const journalCountBeforeRetry = (db.prepare('SELECT count(*) as cnt FROM journal_entries').get() as any).cnt;
 
         // Step 4: Identical retry with different dates succeeds without new writes
         const retryRes = await POST(new Request('http://localhost:3000/api/accounting', {
@@ -466,7 +464,7 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         }));
         expect(retryRes.status).toBe(201);
 
-        const journalCountAfterRetry = (db.prepare('SELECT count(*) as cnt FROM m1_journal_entries').get() as any).cnt;
+        const journalCountAfterRetry = (db.prepare('SELECT count(*) as cnt FROM journal_entries').get() as any).cnt;
         expect(journalCountAfterRetry).toBe(journalCountBeforeRetry); // No writes on identical retry!
 
         // Step 5: Conflicting retry (attempting to alter date to March 10) must be rejected
@@ -538,7 +536,7 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
 
     it('Scenario 6: Retain source revisions and draft/evidence linkage during purchase confirmation', async () => {
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
             VALUES (?, 'invoice.pdf', 'dummy-hash-xyz', 'application/pdf', 1024, datetime('now'))
         `).run('doc-invoice-xyz-123');
 
@@ -584,15 +582,15 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         expect(data.workflow).toBeDefined();
 
         // Verify business transaction preserves evidence document link
-        const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(data.workflow.business_transaction_id) as any;
+        const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(data.workflow.business_transaction_id) as any;
         expect(JSON.parse(busTx.evidence_refs)).toContain('doc-invoice-xyz-123');
 
         // Verify reimbursement workflow preserves evidence document id
-        const wfRow = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE id = ?').get(data.workflow.id) as any;
+        const wfRow = db.prepare('SELECT * FROM reimbursement_workflows WHERE id = ?').get(data.workflow.id) as any;
         expect(wfRow.evidence_document_id).toBe('doc-invoice-xyz-123');
 
-        // Verify draft was marked posted in m1_drafts
-        const draftRow = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(draft.id) as any;
+        // Verify draft was marked posted in drafts
+        const draftRow = db.prepare('SELECT * FROM drafts WHERE id = ?').get(draft.id) as any;
         expect(draftRow.status).toBe('posted');
     });
 
@@ -646,7 +644,7 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
             ]
         });
 
-        const initialTxCount = (db.prepare('SELECT count(*) as cnt FROM m1_transactions').get() as any).cnt;
+        const initialTxCount = (db.prepare('SELECT count(*) as cnt FROM transactions').get() as any).cnt;
         expect(getAccountBalance(db, personalBankId, '2025-01-15').balance_cents).toBe(100000);
         expect(getAccountBalance(db, businessBankId, '2025-01-15').balance_cents).toBe(39000);
 
@@ -700,7 +698,7 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         // 4. Assert: Database state completely untouched
         expect(getAccountBalance(db, personalBankId, '2025-01-15').balance_cents).toBe(100000);
         expect(getAccountBalance(db, businessBankId, '2025-01-15').balance_cents).toBe(39000);
-        expect((db.prepare('SELECT count(*) as cnt FROM m1_transactions').get() as any).cnt).toBe(initialTxCount);
+        expect((db.prepare('SELECT count(*) as cnt FROM transactions').get() as any).cnt).toBe(initialTxCount);
 
         // 5. Heal the endpoint and click Retry
         simulateBusinessFailure = false;
@@ -722,8 +720,8 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         // 8. Assert: Final balances remain Personal 1,000 and Business 390 (NOT reduced to 280!)
         expect(getAccountBalance(db, personalBankId, '2025-01-15').balance_cents).toBe(100000);
         expect(getAccountBalance(db, businessBankId, '2025-01-15').balance_cents).toBe(39000);
-        expect((db.prepare('SELECT count(*) as cnt FROM m1_transactions').get() as any).cnt).toBe(initialTxCount);
-        expect((db.prepare('SELECT status FROM m1_reimbursement_workflows WHERE id = ?').get(wf.id) as any).status).toBe('reimbursed');
+        expect((db.prepare('SELECT count(*) as cnt FROM transactions').get() as any).cnt).toBe(initialTxCount);
+        expect((db.prepare('SELECT status FROM reimbursement_workflows WHERE id = ?').get(wf.id) as any).status).toBe('reimbursed');
     });
 
     it('Scenario 8: Closing Correction 2 — Preserve linked-draft identity and evidence during purchase confirmation', async () => {
@@ -744,9 +742,9 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         const initialPersonalBal = getAccountBalance(db, personalBankId, '2025-03-05').balance_cents;
         expect(initialPersonalBal).toBe(85000);
 
-        // Step 2: Seed evidence document and linked draft in m1_drafts
+        // Step 2: Seed evidence document and linked draft in drafts
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at)
             VALUES (?, 'bunnings_receipt.pdf', 'hash-bunnings-123', 'application/pdf', 2048, datetime('now'))
         `).run('doc-bunnings-receipt-999');
 
@@ -811,12 +809,12 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         expect(finalPersonalBal).toBe(85000);
 
         // 2. Workflow references originating draft
-        const createdWf = db.prepare('SELECT * FROM m1_reimbursement_workflows WHERE personal_transaction_id = ?').get(importedPurchaseTx.id) as any;
+        const createdWf = db.prepare('SELECT * FROM reimbursement_workflows WHERE personal_transaction_id = ?').get(importedPurchaseTx.id) as any;
         expect(createdWf).toBeDefined();
         expect(createdWf.draft_id).toBe(draft.id);
 
-        // 3. Draft becomes posted in m1_drafts atomically
-        const draftRow = db.prepare('SELECT * FROM m1_drafts WHERE id = ?').get(draft.id) as any;
+        // 3. Draft becomes posted in drafts atomically
+        const draftRow = db.prepare('SELECT * FROM drafts WHERE id = ?').get(draft.id) as any;
         expect(draftRow.status).toBe('posted');
 
         // 4. Draft disappears from "Unresolved Drafts"
@@ -824,17 +822,17 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
 
         // 5. Evidence survives on workflow and transactions
         expect(createdWf.evidence_document_id).toBe('doc-bunnings-receipt-999');
-        const reclassifiedPersTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(importedPurchaseTx.id) as any;
+        const reclassifiedPersTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(importedPurchaseTx.id) as any;
         expect(JSON.parse(reclassifiedPersTx.evidence_refs)).toContain('doc-bunnings-receipt-999');
 
-        const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(createdWf.business_transaction_id) as any;
+        const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(createdWf.business_transaction_id) as any;
         expect(JSON.parse(busTx.evidence_refs)).toContain('doc-bunnings-receipt-999');
 
         // 6. Identical retry creates nothing additional (idempotent)
-        const txCountBeforeRetry = (db.prepare('SELECT count(*) as cnt FROM m1_transactions').get() as any).cnt;
-        const wfCountBeforeRetry = (db.prepare('SELECT count(*) as cnt FROM m1_reimbursement_workflows').get() as any).cnt;
+        const txCountBeforeRetry = (db.prepare('SELECT count(*) as cnt FROM transactions').get() as any).cnt;
+        const wfCountBeforeRetry = (db.prepare('SELECT count(*) as cnt FROM reimbursement_workflows').get() as any).cnt;
 
-        const busTxPostings = db.prepare('SELECT account_id FROM m1_journal_entries WHERE transaction_id = ? AND amount_cents > 0').all(createdWf.business_transaction_id) as any[];
+        const busTxPostings = db.prepare('SELECT account_id FROM journal_entries WHERE transaction_id = ? AND amount_cents > 0').all(createdWf.business_transaction_id) as any[];
         const actualBusinessExpenseId = busTxPostings[0].account_id;
 
         const retryRes = await POST(new Request('http://localhost:3000/api/accounting', {
@@ -867,8 +865,8 @@ describe('DailyEventsView Component-to-Real-API Acceptance Tests', () => {
         expect(retryRes.status).toBe(201);
         expect(retryData.workflow.id).toBe(createdWf.id);
 
-        const txCountAfterRetry = (db.prepare('SELECT count(*) as cnt FROM m1_transactions').get() as any).cnt;
-        const wfCountAfterRetry = (db.prepare('SELECT count(*) as cnt FROM m1_reimbursement_workflows').get() as any).cnt;
+        const txCountAfterRetry = (db.prepare('SELECT count(*) as cnt FROM transactions').get() as any).cnt;
+        const wfCountAfterRetry = (db.prepare('SELECT count(*) as cnt FROM reimbursement_workflows').get() as any).cnt;
         expect(txCountAfterRetry).toBe(txCountBeforeRetry);
         expect(wfCountAfterRetry).toBe(wfCountBeforeRetry);
     });

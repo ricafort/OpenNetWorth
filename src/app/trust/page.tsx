@@ -1,12 +1,8 @@
 
 import React from 'react';
 import Link from 'next/link';
-import SupportAccessManager from '@/features/privacy/components/SupportAccessManager';
-import { getSupportStatus } from '@/features/privacy/actions';
 
-export default async function TrustPage() {
-    const supportStatus = await getSupportStatus();
-
+export default function TrustPage() {
     return (
         <div className="min-h-screen bg-gray-50 text-gray-900 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
@@ -38,7 +34,7 @@ export default async function TrustPage() {
                                     Never.
                                 </dd>
                                 <dd className="mt-1 text-sm text-gray-600">
-                                    All your Assets, Liabilities, and Net Worth history are stored in your device&apos;s local browser storage. We operate zero centralized telemetry servers.
+                                    All your Assets, Liabilities, and Net Worth history are stored in an embedded SQLite vault on your own machine. We operate zero centralized telemetry servers.
                                 </dd>
                             </div>
                             <div className="sm:col-span-1">
@@ -53,28 +49,6 @@ export default async function TrustPage() {
                                 </dd>
                             </div>
                         </dl>
-                    </div>
-                </div>
-
-                {/* Local Mode vs Self-Hosted Support */}
-                <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-                    <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">
-                            Support Access &amp; Break-Glass Control
-                        </h3>
-                    </div>
-                    <div className="px-4 py-5 sm:p-6">
-                        <p className="text-gray-600 mb-4 text-sm">
-                            In <strong>Local Vault Mode</strong> (default), there is <strong>no remote admin access possible</strong> because no data leaves your machine. For optional self-hosted multi-user Supabase instances, emergency support requires explicit cryptographic consent:
-                        </p>
-                        <SupportAccessManager initialActive={supportStatus.active} initialExpiresAt={supportStatus.expiresAt} />
-
-                        <div className="mt-4 text-sm text-gray-500">
-                            <p>
-                                When active in self-hosted mode, a banner alerts you transparently that temporary access was authorized.
-                                You can revoke this at any second.
-                            </p>
-                        </div>
                     </div>
                 </div>
 
@@ -100,7 +74,7 @@ export default async function TrustPage() {
                             <tbody className="bg-white divide-y divide-gray-200 text-sm">
                                 <tr>
                                     <td className="px-3 py-2 text-gray-900 font-medium">Financial Records (Assets, Debts, History)</td>
-                                    <td className="px-3 py-2 text-gray-600">Local Browser Storage / IndexedDB</td>
+                                    <td className="px-3 py-2 text-gray-600">Embedded SQLite vault on your machine (data/opennetworth.sqlite)</td>
                                     <td className="px-3 py-2 text-green-600 font-bold">100% OFFLINE / ZERO CLOUD</td>
                                 </tr>
                                 <tr>

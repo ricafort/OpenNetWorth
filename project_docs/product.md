@@ -55,10 +55,10 @@
 ### Privacy Suite
 -   **Stealth Mode**: A dedicated **Theme** setting. Forces dark mode + hides all sensitive values (matching background color) for public usage.
 -   **Privacy Blur**: A **Toggle** state. Temporarily blurs values (`filter: blur(4px)`) without changing the entire theme.
--   **Data Isolation**: The default vault is a single-user local SQLite file — isolation is inherent. Supabase RLS policies apply only to the optional self-hosted adapter.
+-   **Data Isolation**: The vault is a single-user local SQLite file — isolation is inherent. The former Supabase adapter and its RLS policies were removed (git history preserves them).
 
 ### Fast Balance Updates & Observation Ledger (Delivery 1)
--   **Observation-Based Ledger**: Non-destructive tracking of balance snapshots in `m1_balance_observations` without fabricating journal entries. Supports revision tracking and audit trails.
+-   **Observation-Based Ledger**: Non-destructive tracking of balance snapshots in `balance_observations` without fabricating journal entries. Supports revision tracking and audit trails.
 -   **Deterministic Structured Table Parser**: Instantly parses pasted CSV, TSV, pipe-delimited, and whitespace tables offline without external LLM dependencies (`structuredBalanceParser.ts`).
 -   **Review & Confirmation Workflow**: Displays proposed balances alongside live deltas against current ledger state, allowing inline account mapping, account creation, currency toggles, and atomic commits.
 -   **Multi-Currency Sovereignty**: Tracks multi-currency assets and liabilities (AUD, USD, JPY, EUR, GBP) natively. Discloses currency subtotals and prevents misleading 1:1 synthetic conversions when FX rates are missing.
@@ -73,13 +73,13 @@
 
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
-| **Observation Ledger** | 🟢 Implemented (D1) | `m1_balance_observations` with supersession and revision tracking. |
+| **Observation Ledger** | 🟢 Implemented (D1) | `balance_observations` with supersession and revision tracking. |
 | **Fast Balance Updates** | 🟢 Implemented (D1) | `UpdateBalancesModal` with live deltas, inline creation, and atomic save. |
 | **Structured Table Parser** | 🟢 Implemented (D1) | Deterministic CSV/TSV/table paste parsing with currency & date normalization. |
 | **Multi-Currency Ledger** | 🟢 Implemented (D1) | `sharedFinancialSummaryService` with strict currency subtotals & FX disclosure. |
 | **Bank Integration** | 🟢 Implemented | Basiq (AU) & Plaid (US) connectors behind `src/features/bank/factory.ts`. |
 | **Debt Calculator** | 🟢 Implemented | Logic in `debtCalculator.ts`, UI in `DebtPayoffCalculator.tsx`. |
-| **Gamification** | 🟢 Implemented | Persistent badges via `user_badges`; rules evaluated by `evaluateAchievements` domain logic (1.2.0). |
+| **Gamification** | 🟢 Implemented | Badges derived in-memory by `evaluateAchievements` domain logic (1.2.0); no badge store. |
 | **Time Machine** | 🟢 Implemented | Control UI exists, Vintage Overlay active on `/timemachine`. |
 | **Mentorship** | 🟢 Implemented | `ChatInterface` active with Context, Action Parsing, and Consensus Board. |
 | **Cash Flow** | 🟢 Implemented | History tracking and Autopilot (Recurring) engine active. |
@@ -88,12 +88,11 @@
 ## 4. Core Business Rules
 
 ### Gamification & Persistence
--   **Badges**: Stored in `user_badges` (user_id, badge_id).
--   **Unlock Logic**: `evaluateAchievements` domain service (since 1.2.0); legacy DB triggers (`on_asset_change` etc.) apply only to the optional Supabase adapter.
+-   **Badges**: Derived facts, not stored state — evaluated in-memory from live ledger figures.
+-   **Unlock Logic**: `evaluateAchievements` domain service (since 1.2.0); legacy DB triggers (`on_asset_change` etc.) were removed with the Supabase adapter.
 -   **Security**:
-    -   Users view their own badges.
-    -   Admins view ALL badges (God Mode).
-    -   Public (Anon) views "Template" badges (Demo Mode).
+    -   The device owner sees their own badges.
+    -   Demo personas (read-only vaults) show their own derived badges; they can never write to the live vault.
 
 ### Financial-Math
 -   **Rounding**: All currency displays must use 2 decimal places.

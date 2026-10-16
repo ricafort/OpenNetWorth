@@ -21,7 +21,7 @@ description: Enforce presence and integrity of project_docs and standard AI docu
    - **Output**: Warn if widespread violations found.
 
 4. **Update Documentation**:
-   - If new tables were added to `supabase_schema.sql`, prompt to update `techStack.md` or `architecture.md`.
+   - If new tables were added via `src/infrastructure/sqlite/migrations/`, prompt to update `techStack.md` or `architecture.md`.
    - If new patterns introduced, update `agents.md` examples.
 
 // turbo

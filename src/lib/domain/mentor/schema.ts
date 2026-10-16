@@ -7,8 +7,8 @@
  * vault so history survives reloads and travels with vault backups.
  *
  * Design:
- * - `m1_mentor_sessions` is the conversation header (title + timestamps).
- * - `m1_mentor_messages` stores every bubble in `seq` order, including the
+ * - `mentor_sessions` is the conversation header (title + timestamps).
+ * - `mentor_messages` stores every bubble in `seq` order, including the
  *   structured payloads (action intents, verified facts, pending intents,
  *   attachment references) as JSON columns so a restored chat renders exactly
  *   as it was sent.
@@ -24,7 +24,7 @@ import Database from 'better-sqlite3';
 
 export const MENTOR_CHAT_SCHEMA_DDL = `
     -- Mentor Chat Conversations
-    CREATE TABLE IF NOT EXISTS m1_mentor_sessions (
+    CREATE TABLE IF NOT EXISTS mentor_sessions (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -32,7 +32,7 @@ export const MENTOR_CHAT_SCHEMA_DDL = `
     );
 
     -- Chat Bubbles (ordered by seq within a session)
-    CREATE TABLE IF NOT EXISTS m1_mentor_messages (
+    CREATE TABLE IF NOT EXISTS mentor_messages (
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
         seq INTEGER NOT NULL,
@@ -46,19 +46,11 @@ export const MENTOR_CHAT_SCHEMA_DDL = `
         action_intent_resolved TEXT CHECK (action_intent_resolved IN ('confirmed', 'cancelled')),
         attachments_json TEXT,
         created_at TEXT NOT NULL,
-        FOREIGN KEY (session_id) REFERENCES m1_mentor_sessions(id) ON DELETE CASCADE
+        FOREIGN KEY (session_id) REFERENCES mentor_sessions(id) ON DELETE CASCADE
     );
 
     -- Indices
-    CREATE INDEX IF NOT EXISTS idx_m1_mentor_messages_session ON m1_mentor_messages(session_id, seq);
-    CREATE INDEX IF NOT EXISTS idx_m1_mentor_sessions_updated ON m1_mentor_sessions(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_mentor_messages_session ON mentor_messages(session_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_mentor_sessions_updated ON mentor_sessions(updated_at);
 `;
 
-/**
- * Initializes the mentor chat schema idempotently.
- * New tables only — no migration step is required for a first-version schema.
- */
-export function initMentorChatSchema(db: Database.Database): void {
-    db.pragma('foreign_keys = ON');
-    db.exec(MENTOR_CHAT_SCHEMA_DDL);
-}

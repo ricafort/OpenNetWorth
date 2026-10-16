@@ -7,7 +7,7 @@
  *    accounts and rejects property, mortgage, loan, and investment accounts in manual and proposal flows.
  * 2. Deterministic Pagination & Ordering (U5): Verifies stable tie-breaker ordering (date DESC, created_at DESC, id DESC)
  *    and flexible limit/offset retrieval over 100+ records without gaps or duplicates.
- * 3. Draft Persistence & Validation (U3): Verifies m1_drafts storage, server-side field validation, in-place edit by ID,
+ * 3. Draft Persistence & Validation (U3): Verifies drafts storage, server-side field validation, in-place edit by ID,
  *    and strict exclusion of draft balances from posted totals and balances.
  * 4. Everything Scope & Currency Balances (U1, U4): Verifies multi-entity component balances and dated balance evaluations.
  * 5. Status Recognition (U5): Verifies both 'void' and 'voided' status strings are cleanly handled.
@@ -15,14 +15,15 @@
  * Tricky logic:
  * - Pagination tie-breakers must use the unique transaction primary key (id) so identical timestamps
  *   never cause indeterminate sort orders across page boundaries.
- * - Drafts are stored in m1_drafts and never touch m1_journal_entries or m1_transactions.
+ * - Drafts are stored in drafts and never touch journal_entries or transactions.
  * 
  * TODO: Add browser integration tests for keyboard shortcuts (Escape key dismissal) in Milestone 2.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema, migrateAccountingSchema } from './schema';
+import { migrateAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from './accountService';
 import {
     recordExpense,
@@ -40,7 +41,7 @@ describe('Milestone 1 — Unified Workspace Acceptance & Remediation Tests', () 
     beforeEach(() => {
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
         migrateAccountingSchema(db);
     });
 
@@ -236,9 +237,9 @@ describe('Milestone 1 — Unified Workspace Acceptance & Remediation Tests', () 
                 updated_at: new Date().toISOString()
             };
 
-            // Insert draft into m1_drafts
+            // Insert draft into drafts
             db.prepare(`
-                INSERT INTO m1_drafts (
+                INSERT INTO drafts (
                     id, entity_id, payer_entity_id, payment_account_id, amount_cents, currency,
                     date, merchant, description, reimbursement_intent, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -249,7 +250,7 @@ describe('Milestone 1 — Unified Workspace Acceptance & Remediation Tests', () 
             );
 
             // Fetch draft and verify
-            const saved = db.prepare(`SELECT * FROM m1_drafts WHERE id = ?`).get(draftId) as any;
+            const saved = db.prepare(`SELECT * FROM drafts WHERE id = ?`).get(draftId) as any;
             expect(saved).toBeDefined();
             expect(saved.amount_cents).toBe(8550);
             expect(saved.merchant).toBe('Bunnings Warehouse');
@@ -264,19 +265,19 @@ describe('Milestone 1 — Unified Workspace Acceptance & Remediation Tests', () 
 
             // In-place edit by ID: update amount and description without creating a duplicate row
             db.prepare(`
-                UPDATE m1_drafts
+                UPDATE drafts
                 SET amount_cents = ?, description = ?, updated_at = ?
                 WHERE id = ?
             `).run(9500, 'Timber, screws, and paint', new Date().toISOString(), draftId);
 
-            const allDrafts = db.prepare(`SELECT * FROM m1_drafts WHERE entity_id = ?`).all(entity.id) as any[];
+            const allDrafts = db.prepare(`SELECT * FROM drafts WHERE entity_id = ?`).all(entity.id) as any[];
             expect(allDrafts.length).toBe(1);
             expect(allDrafts[0].amount_cents).toBe(9500);
             expect(allDrafts[0].description).toBe('Timber, screws, and paint');
 
             // Delete draft
-            db.prepare(`DELETE FROM m1_drafts WHERE id = ?`).run(draftId);
-            const remainingDrafts = db.prepare(`SELECT * FROM m1_drafts WHERE id = ?`).all(draftId);
+            db.prepare(`DELETE FROM drafts WHERE id = ?`).run(draftId);
+            const remainingDrafts = db.prepare(`SELECT * FROM drafts WHERE id = ?`).all(draftId);
             expect(remainingDrafts.length).toBe(0);
         });
     });

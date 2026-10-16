@@ -8,7 +8,7 @@
  * Connects the Liabilities view directly to authoritative account and balance services.
  * 
  * Tricky logic:
- * - Shows modern debt accounts from m1_accounts.
+ * - Shows modern debt accounts from accounts.
  * - NEVER claims "No liabilities" or "Debt free" when modern debts exist or when balances are unknown.
  * - Preserves native currency and positive liability sign conventions (e.g. AUD 300.00 outstanding).
  * - Distinguishes an outstanding valuation balance from available credit or credit limit.

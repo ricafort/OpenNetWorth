@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useProfile } from '@/contexts/ProfileContext';
-import { createClient } from '@/utils/supabase/client';
-import { GamificationRepository } from '../data/repository';
 import { evaluateAchievements } from '../domain/achievementRules';
 
 // Domain Types needed for checks
@@ -32,62 +30,22 @@ export function useBadgeSync({
     const { profile } = useProfile();
     const [unlockedBadges, setUnlockedBadges] = useState<Set<string>>(new Set());
 
-    // Repository Pattern
-    const supabase = createClient();
-    const repository = new GamificationRepository(supabase);
-
+    // Badges are derived facts, not stored state: evaluate them in-memory against
+    // the authoritative m1 figures supplied by the caller. The old Supabase
+    // user_badges sync branch (fetch earned badges, award missing ones via RPC)
+    // was removed in Phase 2.6 — there is no cloud badge store to reconcile
+    // against, and the local evaluation was already the source of truth for
+    // every profile the app actually serves.
     useEffect(() => {
-        async function syncBadges() {
-            // 1. Validation
-            const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+        if (!profile?.id) return;
 
-            if (!profile?.id) return;
-
-            // 2. Local/Guest Mode Logic — evaluate ALL six badges against authoritative facts.
-            // (Previously only four badges were checked, using legacy assets and USD-only net
-            // worth, which wrongly locked badges for users whose data lives in the accounting DB.)
-            if (profile.id === 'local_user') {
-                setUnlockedBadges(evaluateAchievements({
-                    hasAnyAsset: assets.length > 0 || assetAccountCount > 0,
-                    hasAnyGoal: goals.length > 0,
-                    netWorthBase,
-                    hasAnyDebt,
-                    checkInStreakDays
-                }));
-                return;
-            }
-
-            // 3. Real Mode: Fetch & Sync
-            if (!isUUID(profile.id)) return;
-
-            // A. Fetch existing
-            const loadedBadges = await repository.getEarnedBadges(profile.id);
-            setUnlockedBadges(loadedBadges);
-
-            // B. Check for missing badges (Trigger Backup)
-            const locallyEarned = evaluateAchievements({
-                hasAnyAsset: assets.length > 0 || assetAccountCount > 0,
-                hasAnyGoal: goals.length > 0,
-                netWorthBase,
-                hasAnyDebt,
-                checkInStreakDays
-            });
-            const missingBadges = Array.from(locallyEarned).filter(id => !loadedBadges.has(id));
-
-            // C. Award missing
-            if (missingBadges.length > 0) {
-                console.log("useBadgeSync: Awarding missing badges", missingBadges);
-                for (const badgeId of missingBadges) {
-                    const success = await repository.awardBadge(profile.id, badgeId);
-                    if (success) {
-                        loadedBadges.add(badgeId);
-                    }
-                }
-                setUnlockedBadges(new Set(loadedBadges));
-            }
-        }
-
-        syncBadges();
+        setUnlockedBadges(evaluateAchievements({
+            hasAnyAsset: assets.length > 0 || assetAccountCount > 0,
+            hasAnyGoal: goals.length > 0,
+            netWorthBase,
+            hasAnyDebt,
+            checkInStreakDays
+        }));
     }, [
         assets.length,
         goals.length,

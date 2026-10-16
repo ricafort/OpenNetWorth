@@ -10,7 +10,6 @@ import { Trophy, Trash2, Edit2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { useSharedFinancialSummary } from '@/features/sync/hooks/useSharedFinancialSummary';
 import { centsToMajorUnits } from '@/lib/domain/accounting/types';
-import { useFinancialSourceSelection } from '@/features/dashboard/hooks/useFinancialSourceSelection';
 
 interface GoalItemProps {
     goal: Goal;
@@ -40,9 +39,6 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
         reportingCurrency: goalCurrency,
         skip: !isNetWorthGoal
     });
-
-    const sourceState = useFinancialSourceSelection(baseCurrency);
-    const isLegacyMode = sourceState.mode === 'legacy';
 
     // --- FORM SETUP (for Edit Mode) ---
     const {
@@ -98,14 +94,6 @@ export default function GoalItem({ goal, netWorth, baseCurrency, onUpdate, onDel
         
         if (isGoalSummaryLoading || isStaleSummary) {
             currentNativeAmount = null; // Still loading or stale summary
-        } else if (isLegacyMode) {
-            // Legacy fallback: An empty modern summary must not override valid legacy-only data.
-            // If currencies do not match, we lack a legacy FX engine, so it is strictly Unavailable (not 0%).
-            if (goalCurrency === baseCurrency && netWorth !== null && typeof netWorth === 'number') {
-                currentNativeAmount = netWorth;
-            } else {
-                currentNativeAmount = null;
-            }
         } else if (isGoalSummaryError) {
             currentNativeAmount = null; // Failed requests remain unknown
         } else if (goalCurrencySummary) {

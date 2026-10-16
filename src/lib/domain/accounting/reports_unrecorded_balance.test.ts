@@ -22,7 +22,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from './accountService';
 import { getScopeNetWorth, getEntityNetWorth, getConsolidatedNetWorth } from './balanceService';
 import { recordBalanceObservation } from './balanceObservationService';
@@ -32,7 +32,8 @@ describe('Reports Unrecorded Balance Accounts Integrity (Finding B)', () => {
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
     });
 
     afterEach(() => {

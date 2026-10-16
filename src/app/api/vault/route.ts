@@ -16,7 +16,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDb } from '@/infrastructure/sqlite/db';
+import { getDbForRequest, demoErrorResponse, demoReadOnlyResponse } from '@/infrastructure/sqlite/db';
 
 class ValidationError extends Error {
     statusCode = 400;
@@ -90,7 +90,7 @@ function assertValidCalendarDateLocal(dateStr: any, context: string): void {
 
 import { CURRENCY_DECIMALS } from '@/lib/domain/accounting/types';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
-import { initMentorChatSchema } from '@/lib/domain/mentor/schema';
+import { backfillLegacyLedgerFromPayload } from '@/lib/domain/accounting/legacyBackfill';
 
 function secureJson(data: any, init?: ResponseInit): NextResponse {
     return applySensitiveHeaders(NextResponse.json(data, init));
@@ -102,13 +102,14 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const entity = searchParams.get('entity');
-        const db = getDb();
+        // Demo cookie present → read-only persona vault (Phase 2.7).
+        const db = getDbForRequest(request);
 
         if (entity) {
-            const allowed = ['assets', 'liabilities', 'goals', 'recurring_transactions', 'net_worth_history', 'cash_flow_history', 'profiles', 'settings'];
-            const table = entity === 'recurring' ? 'recurring_transactions' :
-                entity === 'history' ? 'net_worth_history' :
-                    entity === 'cashFlow' ? 'cash_flow_history' : entity;
+            const allowed = ['goals', 'recurring_schedules', 'net_worth_snapshots', 'cash_flow_summaries', 'profiles', 'settings'];
+            const table = entity === 'recurring' ? 'recurring_schedules' :
+                entity === 'history' ? 'net_worth_snapshots' :
+                    entity === 'cashFlow' ? 'cash_flow_summaries' : entity;
 
             if (!allowed.includes(table)) {
                 return secureJson({ error: `Invalid entity: ${entity}` }, { status: 400 });
@@ -122,25 +123,14 @@ export async function GET(request: Request) {
         // Why: Wrapping reads inside a single read transaction guarantees point-in-time consistency
         // across all financial and document tables without partial reads.
         const snapshot = db.transaction(() => {
-            const assets = db.prepare('SELECT * FROM assets').all().map((a: any) => ({
-                ...a,
-                is_liquid: Boolean(a.is_liquid),
-                investment_details: a.investment_details ? JSON.parse(a.investment_details) : undefined
-            }));
-
-            const liabilities = db.prepare('SELECT * FROM liabilities').all().map((l: any) => ({
-                ...l,
-                is_good_debt: Boolean(l.is_good_debt)
-            }));
-
             const goals = db.prepare('SELECT * FROM goals').all();
 
-            const recurring = db.prepare('SELECT * FROM recurring_transactions').all().map((r: any) => ({
+            const recurring = db.prepare('SELECT * FROM recurring_schedules').all().map((r: any) => ({
                 ...r,
                 is_active: Boolean(r.is_active)
             }));
 
-            const history = db.prepare('SELECT * FROM net_worth_history ORDER BY date ASC').all().map((h: any) => ({
+            const history = db.prepare('SELECT * FROM net_worth_snapshots ORDER BY date ASC').all().map((h: any) => ({
                 id: h.id,
                 date: h.date,
                 totalAssets: h.total_assets,
@@ -149,7 +139,7 @@ export async function GET(request: Request) {
                 currency: h.currency || undefined
             }));
 
-            const cashFlow = db.prepare('SELECT * FROM cash_flow_history ORDER BY month ASC').all();
+            const cashFlow = db.prepare('SELECT * FROM cash_flow_summaries ORDER BY month ASC').all();
 
             const settingsRows = db.prepare('SELECT * FROM settings').all();
             const settings: Record<string, any> = {};
@@ -173,8 +163,8 @@ export async function GET(request: Request) {
             };
 
             // Modern accounting collections
-            const entities = tableExists('m1_entities') ? db.prepare('SELECT * FROM m1_entities').all() : [];
-            const accounts = tableExists('m1_accounts') ? db.prepare('SELECT * FROM m1_accounts').all().map((a: any) => {
+            const entities = tableExists('entities') ? db.prepare('SELECT * FROM entities').all() : [];
+            const accounts = tableExists('accounts') ? db.prepare('SELECT * FROM accounts').all().map((a: any) => {
                 const acc: any = {
                     id: a.id,
                     entity_id: a.entity_id,
@@ -199,35 +189,33 @@ export async function GET(request: Request) {
                 }
                 return acc;
             }) : [];
-            const account_ownership = tableExists('m1_account_ownership') ? db.prepare('SELECT * FROM m1_account_ownership').all() : [];
-            const transactions = tableExists('m1_transactions') ? db.prepare('SELECT * FROM m1_transactions').all() : [];
-            const journal_entries = tableExists('m1_journal_entries') ? db.prepare('SELECT * FROM m1_journal_entries').all() : [];
-            const transaction_corrections = tableExists('m1_transaction_corrections') ? db.prepare('SELECT * FROM m1_transaction_corrections').all() : [];
-            const exchange_rates = tableExists('m1_exchange_rates') ? db.prepare('SELECT * FROM m1_exchange_rates').all() : [];
-            const asset_valuations = tableExists('m1_asset_valuations') ? db.prepare('SELECT * FROM m1_asset_valuations').all() : [];
-            const drafts = tableExists('m1_drafts') ? db.prepare('SELECT * FROM m1_drafts').all() : [];
-            const reimbursement_workflows = tableExists('m1_reimbursement_workflows') ? db.prepare('SELECT * FROM m1_reimbursement_workflows').all() : [];
+            const account_ownership = tableExists('account_ownership') ? db.prepare('SELECT * FROM account_ownership').all() : [];
+            const transactions = tableExists('transactions') ? db.prepare('SELECT * FROM transactions').all() : [];
+            const journal_entries = tableExists('journal_entries') ? db.prepare('SELECT * FROM journal_entries').all() : [];
+            const transaction_corrections = tableExists('transaction_corrections') ? db.prepare('SELECT * FROM transaction_corrections').all() : [];
+            const exchange_rates = tableExists('exchange_rates') ? db.prepare('SELECT * FROM exchange_rates').all() : [];
+            const asset_valuations = tableExists('asset_valuations') ? db.prepare('SELECT * FROM asset_valuations').all() : [];
+            const drafts = tableExists('drafts') ? db.prepare('SELECT * FROM drafts').all() : [];
+            const reimbursement_workflows = tableExists('reimbursement_workflows') ? db.prepare('SELECT * FROM reimbursement_workflows').all() : [];
 
             // Modern document collections
-            const documents = tableExists('m1_documents') ? db.prepare('SELECT * FROM m1_documents').all() : [];
-            const csv_mappings = tableExists('m1_csv_mappings') ? db.prepare('SELECT * FROM m1_csv_mappings').all() : [];
-            const document_jobs = tableExists('m1_document_jobs') ? db.prepare('SELECT * FROM m1_document_jobs').all() : [];
-            const proposals = tableExists('m1_proposals') ? db.prepare('SELECT * FROM m1_proposals').all() : [];
+            const documents = tableExists('documents') ? db.prepare('SELECT * FROM documents').all() : [];
+            const csv_mappings = tableExists('csv_mappings') ? db.prepare('SELECT * FROM csv_mappings').all() : [];
+            const document_jobs = tableExists('document_jobs') ? db.prepare('SELECT * FROM document_jobs').all() : [];
+            const proposals = tableExists('proposals') ? db.prepare('SELECT * FROM proposals').all() : [];
 
             // Balance observations, import batches, account mappings, and statement reviews (Delivery 1, 2A & 2B)
-            const balance_observations = tableExists('m1_balance_observations') ? db.prepare('SELECT * FROM m1_balance_observations').all() : [];
-            const account_source_mappings = tableExists('m1_account_source_mappings') ? db.prepare('SELECT * FROM m1_account_source_mappings').all() : [];
-            const balance_import_batches = tableExists('m1_balance_import_batches') ? db.prepare('SELECT * FROM m1_balance_import_batches').all() : [];
-            const statement_reviews = tableExists('m1_statement_reviews') ? db.prepare('SELECT * FROM m1_statement_reviews').all() : [];
-            const categorization_rules = tableExists('m1_categorization_rules') ? db.prepare('SELECT * FROM m1_categorization_rules').all() : [];
+            const balance_observations = tableExists('balance_observations') ? db.prepare('SELECT * FROM balance_observations').all() : [];
+            const account_source_mappings = tableExists('account_source_mappings') ? db.prepare('SELECT * FROM account_source_mappings').all() : [];
+            const balance_import_batches = tableExists('balance_import_batches') ? db.prepare('SELECT * FROM balance_import_batches').all() : [];
+            const statement_reviews = tableExists('statement_reviews') ? db.prepare('SELECT * FROM statement_reviews').all() : [];
+            const categorization_rules = tableExists('categorization_rules') ? db.prepare('SELECT * FROM categorization_rules').all() : [];
 
             // Mentor chat conversations (optional: only added to the snapshot when non-empty)
-            const mentor_sessions = tableExists('m1_mentor_sessions') ? db.prepare('SELECT * FROM m1_mentor_sessions').all() : [];
-            const mentor_messages = tableExists('m1_mentor_messages') ? db.prepare('SELECT * FROM m1_mentor_messages ORDER BY session_id, seq ASC').all() : [];
+            const mentor_sessions = tableExists('mentor_sessions') ? db.prepare('SELECT * FROM mentor_sessions').all() : [];
+            const mentor_messages = tableExists('mentor_messages') ? db.prepare('SELECT * FROM mentor_messages ORDER BY session_id, seq ASC').all() : [];
 
             const snapshot: any = {
-                assets,
-                liabilities,
                 goals,
                 recurring,
                 history,
@@ -282,11 +270,13 @@ export async function GET(request: Request) {
             success: true,
             manifest: {
                 app: 'OpenNetWorth',
-                schemaVersion: 2,
+                schemaVersion: 3,
+                // v3 = same collections as v2, but the vault's tables carry plain
+                // domain names (migration 0008). Archive JSON keys were already
+                // unprefixed, so v2 archives restore into the renamed schema as-is.
+                table_naming: 'plain',
                 exportTimestamp: new Date().toISOString(),
                 recordCounts: {
-                    assets: snapshot.assets.length,
-                    liabilities: snapshot.liabilities.length,
                     goals: snapshot.goals.length,
                     recurring: snapshot.recurring.length,
                     history: snapshot.history.length,
@@ -302,11 +292,14 @@ export async function GET(request: Request) {
                 }
             },
             vault: {
-                schemaVersion: 2,
+                schemaVersion: 3,
                 ...snapshot
             }
         });
     } catch (error: any) {
+        // Unknown persona → 400, unseeded vault → 503 (Phase 2.7).
+        const demoRes = demoErrorResponse(error);
+        if (demoRes) return demoRes;
         console.error('Vault GET Error:', error);
         return secureJson({ error: error.message }, { status: 500 });
     }
@@ -315,9 +308,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     const securityCheck = validateLocalSecurity(request);
     if (securityCheck) return securityCheck;
+    // Demo mode is read-only: any mutation carrying the demo cookie is refused (Phase 2.7).
+    const demoDenied = demoReadOnlyResponse(request);
+    if (demoDenied) return demoDenied;
     try {
         const body = await request.json();
-        const db = getDb();
+        const db = getDbForRequest(request);
 
         const { action, entity, item, id } = body;
 
@@ -327,70 +323,8 @@ export async function POST(request: Request) {
                 return secureJson({ error: 'Missing entity, item, or item ID for scoped save' }, { status: 400 });
             }
 
-            if (entity === 'assets') {
-                const value = parseFiniteNumber(item.value, 'Asset value', { allowNegative: false, required: true });
-                const interest_rate = parseFiniteNumber(item.interest_rate, 'Interest rate', { allowNegative: true, required: false });
-
-                const stmt = db.prepare(`
-                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
-                    ON CONFLICT(id) DO UPDATE SET
-                        name = excluded.name,
-                        type = excluded.type,
-                        value = excluded.value,
-                        is_liquid = excluded.is_liquid,
-                        currency = excluded.currency,
-                        interest_rate = excluded.interest_rate,
-                        investment_details = excluded.investment_details,
-                        last_updated = excluded.last_updated
-                `);
-                stmt.run({
-                    id: item.id,
-                    user_id: item.user_id || 'local_user',
-                    name: item.name || 'Unnamed Asset',
-                    type: item.type || 'other',
-                    value,
-                    is_liquid: item.is_liquid ? 1 : 0,
-                    currency: item.currency || 'USD',
-                    interest_rate,
-                    investment_details: item.investment_details ? JSON.stringify(item.investment_details) : null,
-                    last_updated: item.last_updated || new Date().toISOString()
-                });
-                return secureJson({ success: true, item: { ...item, value, interest_rate } });
-            }
-
-            if (entity === 'liabilities') {
-                const balance = parseFiniteNumber(item.balance, 'Liability balance', { allowNegative: false, required: true });
-                const interest_rate = parseFiniteNumber(item.interest_rate, 'Interest rate', { allowNegative: true, required: false });
-                const minimum_payment = parseFiniteNumber(item.minimum_payment, 'Minimum payment', { allowNegative: false, required: false });
-
-                const stmt = db.prepare(`
-                    INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
-                    ON CONFLICT(id) DO UPDATE SET
-                        name = excluded.name,
-                        type = excluded.type,
-                        balance = excluded.balance,
-                        interest_rate = excluded.interest_rate,
-                        minimum_payment = excluded.minimum_payment,
-                        is_good_debt = excluded.is_good_debt,
-                        currency = excluded.currency,
-                        last_updated = excluded.last_updated
-                `);
-                stmt.run({
-                    id: item.id,
-                    user_id: item.user_id || 'local_user',
-                    name: item.name || 'Unnamed Debt',
-                    type: item.type || 'other',
-                    balance,
-                    interest_rate,
-                    minimum_payment,
-                    is_good_debt: item.is_good_debt ? 1 : 0,
-                    currency: item.currency || 'USD',
-                    last_updated: item.last_updated || new Date().toISOString()
-                });
-                return secureJson({ success: true, item: { ...item, balance, interest_rate, minimum_payment } });
-            }
+            // NOTE: `assets`/`liabilities` scoped saves were removed with the m0 tables
+            // (migration 0007). Asset/liability writes go through /api/accounting instead.
 
             if (entity === 'goals') {
                 const target_amount = parseFiniteNumber(item.target_amount, 'Target amount', { allowNegative: false, required: true });
@@ -428,7 +362,7 @@ export async function POST(request: Request) {
                 const amount = parseFiniteNumber(item.amount, 'Recurring amount', { allowNegative: false, required: true });
 
                 const stmt = db.prepare(`
-                    INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+                    INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
                     VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
@@ -472,11 +406,11 @@ export async function POST(request: Request) {
                  * By fetching the existing id upfront (or generating one only for new months), the UI
                  * and DB remain in exact 1-to-1 sync.
                  */
-                const existing = db.prepare("SELECT * FROM cash_flow_history WHERE user_id = 'local_user' AND month = ?").get(month) as any;
+                const existing = db.prepare("SELECT * FROM cash_flow_summaries WHERE user_id = 'local_user' AND month = ?").get(month) as any;
                 const finalId = existing?.id || item.id || crypto.randomUUID();
 
                 const stmt = db.prepare(`
-                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    INSERT INTO cash_flow_summaries (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
                     ON CONFLICT(user_id, month) DO UPDATE SET
                         income = excluded.income,
@@ -493,7 +427,7 @@ export async function POST(request: Request) {
                 });
 
                 // Return the authoritative persisted record from the database
-                const persisted = db.prepare("SELECT * FROM cash_flow_history WHERE user_id = 'local_user' AND month = ?").get(month) as any;
+                const persisted = db.prepare("SELECT * FROM cash_flow_summaries WHERE user_id = 'local_user' AND month = ?").get(month) as any;
                 return secureJson({
                     success: true,
                     item: {
@@ -519,7 +453,7 @@ export async function POST(request: Request) {
                     return secureJson({ error: 'History snapshot date must be YYYY-MM-DD' }, { status: 400 });
                 }
 
-                const existing = db.prepare("SELECT id FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as { id: string } | undefined;
+                const existing = db.prepare("SELECT id FROM net_worth_snapshots WHERE user_id = 'local_user' AND date = ?").get(date) as { id: string } | undefined;
                 const finalId = existing?.id || item.id || crypto.randomUUID();
                 // Why this exists:
                 // Resolves Finding 2 & Clarification 4: Retains snapshot currency in SQLite
@@ -527,7 +461,7 @@ export async function POST(request: Request) {
                 const currency = (item.currency && typeof item.currency === 'string') ? item.currency : null;
 
                 const stmt = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    INSERT INTO net_worth_snapshots (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
                     VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                     ON CONFLICT(user_id, date) DO UPDATE SET
                         total_assets = excluded.total_assets,
@@ -545,7 +479,7 @@ export async function POST(request: Request) {
                     currency
                 });
 
-                const persisted = db.prepare("SELECT * FROM net_worth_history WHERE user_id = 'local_user' AND date = ?").get(date) as any;
+                const persisted = db.prepare("SELECT * FROM net_worth_snapshots WHERE user_id = 'local_user' AND date = ?").get(date) as any;
                 return secureJson({
                     success: true,
                     item: {
@@ -602,12 +536,10 @@ export async function POST(request: Request) {
                 return secureJson({ error: 'Missing entity or id for scoped delete' }, { status: 400 });
             }
             const tableMap: Record<string, string> = {
-                assets: 'assets',
-                liabilities: 'liabilities',
                 goals: 'goals',
-                recurring: 'recurring_transactions',
-                cashFlow: 'cash_flow_history',
-                history: 'net_worth_history'
+                recurring: 'recurring_schedules',
+                cashFlow: 'cash_flow_summaries',
+                history: 'net_worth_snapshots'
             };
             const table = tableMap[entity];
             if (!table) {
@@ -616,9 +548,9 @@ export async function POST(request: Request) {
 
             let result;
             if (entity === 'cashFlow') {
-                result = db.prepare("DELETE FROM cash_flow_history WHERE id = ? OR month = ?").run(id, id);
+                result = db.prepare("DELETE FROM cash_flow_summaries WHERE id = ? OR month = ?").run(id, id);
             } else if (entity === 'history') {
-                result = db.prepare("DELETE FROM net_worth_history WHERE id = ? OR date = ?").run(id, id);
+                result = db.prepare("DELETE FROM net_worth_snapshots WHERE id = ? OR date = ?").run(id, id);
             } else {
                 result = db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
             }
@@ -632,12 +564,10 @@ export async function POST(request: Request) {
         // --- COMPLETE VAULT CLEAR/WIPE (DATA-01, DATA-05) ---
         if (action === 'clear_vault' || action === 'wipe') {
             const clearTx = db.transaction(() => {
-                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM recurring_schedules WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM net_worth_snapshots WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM cash_flow_summaries WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM settings").run();
             });
             clearTx();
@@ -647,10 +577,12 @@ export async function POST(request: Request) {
         // --- BULK RESTORE OR BULK SYNCHRONIZATION ---
         const rawVault = (body.vault && typeof body.vault === 'object') ? body.vault : body;
         const schemaVersion = body.schemaVersion ?? body.manifest?.schemaVersion ?? rawVault.schemaVersion ?? 1;
-        const isV2 = schemaVersion === 2;
+        // v2 (m1_-prefixed era) and v3 (plain names) share the same collection
+        // keys and validation — archive JSON keys were always unprefixed.
+        const isModernArchive = schemaVersion === 2 || schemaVersion === 3;
         const isBulkRestore = action === 'bulk_restore' || action === 'restore';
 
-        if (isBulkRestore && schemaVersion !== 1 && schemaVersion !== 2) {
+        if (isBulkRestore && schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3) {
             return secureJson({
                 error: `Unsupported archive schemaVersion: ${schemaVersion}`
             }, { status: 400 });
@@ -667,8 +599,11 @@ export async function POST(request: Request) {
          * 4. Version 2 restores distinguish missing required collections (invalid archive) from explicitly empty collections (valid empty data).
          * 5. Restore validation includes balanced postings per currency, safe integer amounts, supported currencies, and evidence/source references.
          */
-        if (isBulkRestore && isV2) {
-            // Version 2 Required Collections (13 modern + 6 legacy + settings)
+        if (isBulkRestore && isModernArchive) {
+            // Version 2 Required Collections (13 modern + 4 planning + settings).
+            // `assets`/`liabilities` are OPTIONAL: old v2 archives still carry them and
+            // get mapped into the ledger by the shared backfill (same semantics as
+            // migration 0006); newer archives simply omit them.
             const requiredModernCollections = [
                 'entities',
                 'accounts',
@@ -685,8 +620,6 @@ export async function POST(request: Request) {
                 'proposals'
             ];
             const requiredLegacyCollections = [
-                'assets',
-                'liabilities',
                 'goals',
                 'recurring',
                 'history',
@@ -927,17 +860,21 @@ export async function POST(request: Request) {
                 }
             }
 
-            // 5. Validate legacy amounts
-            for (const a of rawVault.assets) {
-                parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
-                if (a.interest_rate !== undefined && a.interest_rate !== null) {
-                    parseFiniteNumber(a.interest_rate, `Asset "${a.name || a.id}" interest rate`, { allowNegative: true, required: false });
+            // 5. Validate legacy amounts (optional collections — old archives only)
+            if (Array.isArray(rawVault.assets)) {
+                for (const a of rawVault.assets) {
+                    parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
+                    if (a.interest_rate !== undefined && a.interest_rate !== null) {
+                        parseFiniteNumber(a.interest_rate, `Asset "${a.name || a.id}" interest rate`, { allowNegative: true, required: false });
+                    }
                 }
             }
-            for (const l of rawVault.liabilities) {
-                parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
-                if (l.interest_rate !== undefined && l.interest_rate !== null) {
-                    parseFiniteNumber(l.interest_rate, `Liability "${l.name || l.id}" interest rate`, { allowNegative: true, required: false });
+            if (Array.isArray(rawVault.liabilities)) {
+                for (const l of rawVault.liabilities) {
+                    parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
+                    if (l.interest_rate !== undefined && l.interest_rate !== null) {
+                        parseFiniteNumber(l.interest_rate, `Liability "${l.name || l.id}" interest rate`, { allowNegative: true, required: false });
+                    }
                 }
             }
             for (const g of rawVault.goals) {
@@ -963,37 +900,35 @@ export async function POST(request: Request) {
                 const tableExists = (name: string) => (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) as any).cnt > 0;
 
                 // Wipe modern tables in reverse dependency order
-                if (tableExists('m1_categorization_rules')) db.prepare('DELETE FROM m1_categorization_rules').run();
-                if (tableExists('m1_reimbursement_workflows')) db.prepare('DELETE FROM m1_reimbursement_workflows').run();
-                if (tableExists('m1_proposals')) db.prepare('DELETE FROM m1_proposals').run();
-                if (tableExists('m1_document_jobs')) db.prepare('DELETE FROM m1_document_jobs').run();
-                if (tableExists('m1_csv_mappings')) db.prepare('DELETE FROM m1_csv_mappings').run();
-                if (tableExists('m1_documents')) db.prepare('DELETE FROM m1_documents').run();
-                if (tableExists('m1_drafts')) db.prepare('DELETE FROM m1_drafts').run();
-                if (tableExists('m1_asset_valuations')) db.prepare('DELETE FROM m1_asset_valuations').run();
-                if (tableExists('m1_exchange_rates')) db.prepare('DELETE FROM m1_exchange_rates').run();
-                if (tableExists('m1_transaction_corrections')) db.prepare('DELETE FROM m1_transaction_corrections').run();
-                if (tableExists('m1_journal_entries')) db.prepare('DELETE FROM m1_journal_entries').run();
-                if (tableExists('m1_transactions')) db.prepare('DELETE FROM m1_transactions').run();
-                if (tableExists('m1_account_ownership')) db.prepare('DELETE FROM m1_account_ownership').run();
-                if (tableExists('m1_account_source_mappings')) db.prepare('DELETE FROM m1_account_source_mappings').run();
-                if (tableExists('m1_balance_observations')) db.prepare('DELETE FROM m1_balance_observations').run();
-                if (tableExists('m1_balance_import_batches')) db.prepare('DELETE FROM m1_balance_import_batches').run();
-                if (tableExists('m1_accounts')) db.prepare('DELETE FROM m1_accounts').run();
-                if (tableExists('m1_entities')) db.prepare('DELETE FROM m1_entities').run();
+                if (tableExists('categorization_rules')) db.prepare('DELETE FROM categorization_rules').run();
+                if (tableExists('reimbursement_workflows')) db.prepare('DELETE FROM reimbursement_workflows').run();
+                if (tableExists('proposals')) db.prepare('DELETE FROM proposals').run();
+                if (tableExists('document_jobs')) db.prepare('DELETE FROM document_jobs').run();
+                if (tableExists('csv_mappings')) db.prepare('DELETE FROM csv_mappings').run();
+                if (tableExists('documents')) db.prepare('DELETE FROM documents').run();
+                if (tableExists('drafts')) db.prepare('DELETE FROM drafts').run();
+                if (tableExists('asset_valuations')) db.prepare('DELETE FROM asset_valuations').run();
+                if (tableExists('exchange_rates')) db.prepare('DELETE FROM exchange_rates').run();
+                if (tableExists('transaction_corrections')) db.prepare('DELETE FROM transaction_corrections').run();
+                if (tableExists('journal_entries')) db.prepare('DELETE FROM journal_entries').run();
+                if (tableExists('transactions')) db.prepare('DELETE FROM transactions').run();
+                if (tableExists('account_ownership')) db.prepare('DELETE FROM account_ownership').run();
+                if (tableExists('account_source_mappings')) db.prepare('DELETE FROM account_source_mappings').run();
+                if (tableExists('balance_observations')) db.prepare('DELETE FROM balance_observations').run();
+                if (tableExists('balance_import_batches')) db.prepare('DELETE FROM balance_import_batches').run();
+                if (tableExists('accounts')) db.prepare('DELETE FROM accounts').run();
+                if (tableExists('entities')) db.prepare('DELETE FROM entities').run();
 
-                // Wipe legacy tables
-                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
+                // Wipe planning/metadata tables (m0 assets/liabilities retired by migration 0007)
                 db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM recurring_schedules WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM net_worth_snapshots WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM cash_flow_summaries WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM settings").run();
 
                 // Insert modern entities
                 const insertEntity = db.prepare(`
-                    INSERT INTO m1_entities (id, name, type, currency, parent_entity_id, created_at, updated_at)
+                    INSERT INTO entities (id, name, type, currency, parent_entity_id, created_at, updated_at)
                     VALUES (@id, @name, @type, @currency, @parent_entity_id, @created_at, @updated_at)
                 `);
                 for (const e of rawVault.entities) {
@@ -1010,12 +945,14 @@ export async function POST(request: Request) {
 
                 // Insert accounts
                 const insertAccount = db.prepare(`
-                    INSERT INTO m1_accounts (
+                    INSERT INTO accounts (
                         id, entity_id, name, type, sub_type, currency, is_active, institution,
-                        account_number_mask, opening_date, opening_balance_cents, tracking_mode, balance_revision, revision, created_at, updated_at
+                        account_number_mask, opening_date, opening_balance_cents, tracking_mode, balance_revision, revision, created_at, updated_at,
+                        interest_rate, minimum_payment_cents, investment_details
                     ) VALUES (
                         @id, @entity_id, @name, @type, @sub_type, @currency, @is_active, @institution,
-                        @account_number_mask, @opening_date, @opening_balance_cents, @tracking_mode, @balance_revision, @revision, @created_at, @updated_at
+                        @account_number_mask, @opening_date, @opening_balance_cents, @tracking_mode, @balance_revision, @revision, @created_at, @updated_at,
+                        @interest_rate, @minimum_payment_cents, @investment_details
                     )
                 `);
                 for (const a of rawVault.accounts) {
@@ -1035,13 +972,16 @@ export async function POST(request: Request) {
                         balance_revision: a.balance_revision || 1,
                         revision: a.revision || 1,
                         created_at: a.created_at || new Date().toISOString(),
-                        updated_at: a.updated_at || new Date().toISOString()
+                        updated_at: a.updated_at || new Date().toISOString(),
+                        interest_rate: a.interest_rate ?? null,
+                        minimum_payment_cents: a.minimum_payment_cents ?? null,
+                        investment_details: a.investment_details ?? null
                     });
                 }
 
                 // Insert account ownership
                 const insertOwnership = db.prepare(`
-                    INSERT INTO m1_account_ownership (id, account_id, entity_id, share_percentage, created_at)
+                    INSERT INTO account_ownership (id, account_id, entity_id, share_percentage, created_at)
                     VALUES (@id, @account_id, @entity_id, @share_percentage, @created_at)
                 `);
                 for (const o of rawVault.account_ownership) {
@@ -1056,7 +996,7 @@ export async function POST(request: Request) {
 
                 // Insert transactions
                 const insertTx = db.prepare(`
-                    INSERT INTO m1_transactions (
+                    INSERT INTO transactions (
                         id, date, description, payee_or_payer, status, origin, idempotency_key, evidence_refs, revision, created_at, updated_at
                     ) VALUES (
                         @id, @date, @description, @payee_or_payer, @status, @origin, @idempotency_key, @evidence_refs, @revision, @created_at, @updated_at
@@ -1080,7 +1020,7 @@ export async function POST(request: Request) {
 
                 // Insert journal entries
                 const insertJournal = db.prepare(`
-                    INSERT INTO m1_journal_entries (
+                    INSERT INTO journal_entries (
                         id, transaction_id, account_id, amount_cents, currency, exchange_rate, rate_unresolved, memo
                     ) VALUES (
                         @id, @transaction_id, @account_id, @amount_cents, @currency, @exchange_rate, @rate_unresolved, @memo
@@ -1101,7 +1041,7 @@ export async function POST(request: Request) {
 
                 // Insert transaction corrections
                 const insertCorr = db.prepare(`
-                    INSERT INTO m1_transaction_corrections (
+                    INSERT INTO transaction_corrections (
                         id, transaction_id, operation, reason, previous_state, corrected_state, performed_by, timestamp
                     ) VALUES (
                         @id, @transaction_id, @operation, @reason, @previous_state, @corrected_state, @performed_by, @timestamp
@@ -1122,7 +1062,7 @@ export async function POST(request: Request) {
 
                 // Insert exchange rates
                 const insertRate = db.prepare(`
-                    INSERT INTO m1_exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
+                    INSERT INTO exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
                     VALUES (@id, @from_currency, @to_currency, @rate, @effective_date, @source, @created_at)
                 `);
                 for (const r of rawVault.exchange_rates) {
@@ -1139,7 +1079,7 @@ export async function POST(request: Request) {
 
                 // Insert asset valuations
                 const insertVal = db.prepare(`
-                    INSERT INTO m1_asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
+                    INSERT INTO asset_valuations (id, transaction_id, account_id, valuation_date, target_valuation_cents, source, created_at)
                     VALUES (@id, @transaction_id, @account_id, @valuation_date, @target_valuation_cents, @source, @created_at)
                 `);
                 for (const v of rawVault.asset_valuations) {
@@ -1156,7 +1096,7 @@ export async function POST(request: Request) {
 
                 // Insert drafts
                 const insertDraft = db.prepare(`
-                    INSERT INTO m1_drafts (
+                    INSERT INTO drafts (
                         id, entity_id, payer_entity_id, payment_account_id, currency, amount_cents,
                         date, merchant, description, reimbursement_intent, source_document_id,
                         source_transaction_id, status, created_at, updated_at
@@ -1189,7 +1129,7 @@ export async function POST(request: Request) {
                 // Insert reimbursement workflows
                 if (rawVault.reimbursement_workflows) {
                     const insertWf = db.prepare(`
-                        INSERT INTO m1_reimbursement_workflows (
+                        INSERT INTO reimbursement_workflows (
                             id, personal_entity_id, business_entity_id, currency,
                             due_from_account_id, due_to_account_id, draft_id, evidence_document_id,
                             personal_transaction_id, business_transaction_id, personal_reimbursement_tx_id, business_reimbursement_tx_id,
@@ -1226,7 +1166,7 @@ export async function POST(request: Request) {
 
                 // Insert documents
                 const insertDoc = db.prepare(`
-                    INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
+                    INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, storage_path, raw_content, created_at)
                     VALUES (@id, @filename, @content_hash, @mime_type, @byte_size, @storage_path, @raw_content, @created_at)
                 `);
                 for (const doc of rawVault.documents) {
@@ -1244,7 +1184,7 @@ export async function POST(request: Request) {
 
                 // Insert csv mappings
                 const insertMapping = db.prepare(`
-                    INSERT INTO m1_csv_mappings (
+                    INSERT INTO csv_mappings (
                         id, name, header_signature, date_column, date_format, description_column,
                         amount_mode, amount_column, debit_column, credit_column, created_at, updated_at
                     ) VALUES (
@@ -1271,7 +1211,7 @@ export async function POST(request: Request) {
 
                 // Insert document jobs
                 const insertJob = db.prepare(`
-                    INSERT INTO m1_document_jobs (id, document_id, state, attempts, lease_until, error_message, options, created_at, updated_at)
+                    INSERT INTO document_jobs (id, document_id, state, attempts, lease_until, error_message, options, created_at, updated_at)
                     VALUES (@id, @document_id, @state, @attempts, @lease_until, @error_message, @options, @created_at, @updated_at)
                 `);
                 for (const j of rawVault.document_jobs) {
@@ -1290,7 +1230,7 @@ export async function POST(request: Request) {
 
                 // Insert proposals
                 const insertProp = db.prepare(`
-                    INSERT INTO m1_proposals (
+                    INSERT INTO proposals (
                         id, document_id, entity_id, account_id, event_date, document_period, original_currency,
                         amount_cents, counterparty, description, event_type, suggested_category, evidence_json,
                         extraction_version, validation_findings, review_status, related_proposal_ids, linked_transaction_id,
@@ -1328,9 +1268,9 @@ export async function POST(request: Request) {
                 }
 
                 // Insert categorization rules
-                if (Array.isArray(rawVault.categorization_rules) && tableExists('m1_categorization_rules')) {
+                if (Array.isArray(rawVault.categorization_rules) && tableExists('categorization_rules')) {
                     const insertRule = db.prepare(`
-                        INSERT INTO m1_categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
+                        INSERT INTO categorization_rules (id, account_id, match_string, match_type, target_category, created_at, updated_at)
                         VALUES (@id, @account_id, @match_string, @match_type, @target_category, @created_at, @updated_at)
                     `);
                     for (const r of rawVault.categorization_rules) {
@@ -1347,9 +1287,9 @@ export async function POST(request: Request) {
                 }
 
                 // Insert balance import batches (Delivery 2A: Evidence preservation)
-                if (Array.isArray(rawVault.balance_import_batches) && tableExists('m1_balance_import_batches')) {
+                if (Array.isArray(rawVault.balance_import_batches) && tableExists('balance_import_batches')) {
                     const insertBatch = db.prepare(`
-                        INSERT INTO m1_balance_import_batches (id, raw_text, extraction_method, model_identifier, created_at)
+                        INSERT INTO balance_import_batches (id, raw_text, extraction_method, model_identifier, created_at)
                         VALUES (@id, @raw_text, @extraction_method, @model_identifier, @created_at)
                     `);
                     for (const b of rawVault.balance_import_batches) {
@@ -1367,9 +1307,9 @@ export async function POST(request: Request) {
                 // Why: Pass 1 inserts all observations with superseded_by_id = NULL and parent_observation_id = NULL
                 // so all observation IDs exist. Pass 2 updates superseded_by_id and parent_observation_id links,
                 // preventing foreign key violations when a superseded or component row appears before its parent in the backup payload.
-                if (Array.isArray(rawVault.balance_observations) && tableExists('m1_balance_observations')) {
+                if (Array.isArray(rawVault.balance_observations) && tableExists('balance_observations')) {
                     const insertObs = db.prepare(`
-                        INSERT INTO m1_balance_observations (
+                        INSERT INTO balance_observations (
                             id, account_id, amount_cents, currency, balance_kind, effective_date,
                             effective_time, imported_at, source_type, source_reference, source_batch_id,
                             source_excerpt, is_user_modified, is_component_of_total, parent_observation_id,
@@ -1409,7 +1349,7 @@ export async function POST(request: Request) {
 
                     // Pass 2: Link superseded_by_id and parent_observation_id now that all IDs are present
                     const updateSuperseded = db.prepare(`
-                        UPDATE m1_balance_observations
+                        UPDATE balance_observations
                         SET superseded_by_id = ?, parent_observation_id = ?
                         WHERE id = ?
                     `);
@@ -1421,9 +1361,9 @@ export async function POST(request: Request) {
                 }
 
                 // Insert account source mappings (Delivery 1)
-                if (Array.isArray(rawVault.account_source_mappings) && tableExists('m1_account_source_mappings')) {
+                if (Array.isArray(rawVault.account_source_mappings) && tableExists('account_source_mappings')) {
                     const insertMap = db.prepare(`
-                        INSERT INTO m1_account_source_mappings (
+                        INSERT INTO account_source_mappings (
                             id, account_id, provider, connection_id, source_account_id, institution, created_at
                         ) VALUES (
                             @id, @account_id, @provider, @connection_id, @source_account_id, @institution, @created_at
@@ -1443,9 +1383,9 @@ export async function POST(request: Request) {
                 }
 
                 // Insert statement reviews (Delivery 2B: Durable Pending Review State)
-                if (Array.isArray(rawVault.statement_reviews) && tableExists('m1_statement_reviews')) {
+                if (Array.isArray(rawVault.statement_reviews) && tableExists('statement_reviews')) {
                     const insertStmtRev = db.prepare(`
-                        INSERT INTO m1_statement_reviews (
+                        INSERT INTO statement_reviews (
                             id, document_id, status, proposals_json, coverage_summary_json, created_at, updated_at
                         ) VALUES (
                             @id, @document_id, @status, @proposals_json, @coverage_summary_json, @created_at, @updated_at
@@ -1469,12 +1409,11 @@ export async function POST(request: Request) {
                 // from the global m1_ wipe above: existing chats survive restores of backups
                 // that carry no mentor data, and are replaced only when the backup has any.)
                 if (Array.isArray(rawVault.mentor_sessions) || Array.isArray(rawVault.mentor_messages)) {
-                    initMentorChatSchema(db);
-                    db.prepare('DELETE FROM m1_mentor_messages').run();
-                    db.prepare('DELETE FROM m1_mentor_sessions').run();
+                    db.prepare('DELETE FROM mentor_messages').run();
+                    db.prepare('DELETE FROM mentor_sessions').run();
 
                     const insertMentorSession = db.prepare(`
-                        INSERT INTO m1_mentor_sessions (id, title, created_at, updated_at)
+                        INSERT INTO mentor_sessions (id, title, created_at, updated_at)
                         VALUES (@id, @title, @created_at, @updated_at)
                     `);
                     for (const s of Array.isArray(rawVault.mentor_sessions) ? rawVault.mentor_sessions : []) {
@@ -1488,7 +1427,7 @@ export async function POST(request: Request) {
                     }
 
                     const insertMentorMessage = db.prepare(`
-                        INSERT INTO m1_mentor_messages (
+                        INSERT INTO mentor_messages (
                             id, session_id, seq, role, content, mentor_id, mentor_name,
                             action_intent_json, facts_json, pending_intent_json, action_intent_resolved, attachments_json, created_at
                         ) VALUES (
@@ -1502,7 +1441,7 @@ export async function POST(request: Request) {
                         if (!m || typeof m !== 'object') continue;
                         if (typeof m.session_id !== 'string' || !m.session_id) continue;
                         if (!allowedMentorRoles.has(m.role)) continue; // drop malformed roles rather than failing the whole restore
-                        const sessionExists = db.prepare('SELECT id FROM m1_mentor_sessions WHERE id = ?').get(m.session_id);
+                        const sessionExists = db.prepare('SELECT id FROM mentor_sessions WHERE id = ?').get(m.session_id);
                         if (!sessionExists) continue; // orphaned message — FK would abort the transaction
                         const nextSeq = Number.isInteger(m.seq) && m.seq >= 0
                             ? m.seq
@@ -1528,42 +1467,15 @@ export async function POST(request: Request) {
                     }
                 }
 
-                // Insert legacy collections
-                const insertAsset = db.prepare(`
-                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
-                `);
-                for (const a of rawVault.assets) {
-                    insertAsset.run({
-                        id: a.id || crypto.randomUUID(),
-                        user_id: a.user_id || 'local_user',
-                        name: a.name || 'Unnamed Asset',
-                        type: a.type || 'other',
-                        value: Number(a.value),
-                        is_liquid: a.is_liquid ? 1 : 0,
-                        currency: a.currency || 'USD',
-                        interest_rate: a.interest_rate !== undefined && a.interest_rate !== null ? Number(a.interest_rate) : null,
-                        investment_details: a.investment_details ? JSON.stringify(a.investment_details) : null,
-                        last_updated: a.last_updated || new Date().toISOString()
-                    });
-                }
-
-                const insertLiab = db.prepare(`
-                    INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
-                `);
-                for (const l of rawVault.liabilities) {
-                    insertLiab.run({
-                        id: l.id || crypto.randomUUID(),
-                        user_id: l.user_id || 'local_user',
-                        name: l.name || 'Unnamed Debt',
-                        type: l.type || 'other',
-                        balance: Number(l.balance),
-                        interest_rate: l.interest_rate !== undefined && l.interest_rate !== null ? Number(l.interest_rate) : null,
-                        minimum_payment: l.minimum_payment !== undefined && l.minimum_payment !== null ? Number(l.minimum_payment) : null,
-                        is_good_debt: l.is_good_debt ? 1 : 0,
-                        currency: l.currency || 'USD',
-                        last_updated: l.last_updated || new Date().toISOString()
+                // Legacy assets/liabilities arrays (old archives only) map into the ledger via
+                // the shared backfill — identical semantics to migration 0006. Rows already
+                // present as accounts are skipped, so restoring is lossless and idempotent.
+                if (Array.isArray(rawVault.assets) || Array.isArray(rawVault.liabilities)) {
+                    backfillLegacyLedgerFromPayload(db, {
+                        assets: Array.isArray(rawVault.assets) ? rawVault.assets : [],
+                        liabilities: Array.isArray(rawVault.liabilities) ? rawVault.liabilities : [],
+                        settings: rawVault.settings,
+                        profile: rawVault.profile
                     });
                 }
 
@@ -1587,7 +1499,7 @@ export async function POST(request: Request) {
                 }
 
                 const insertRec = db.prepare(`
-                    INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+                    INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
                     VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
                 `);
                 for (const r of rawVault.recurring) {
@@ -1608,7 +1520,7 @@ export async function POST(request: Request) {
                 }
 
                 const insertHistory = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    INSERT INTO net_worth_snapshots (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
                     VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                 `);
                 for (const h of rawVault.history) {
@@ -1624,7 +1536,7 @@ export async function POST(request: Request) {
                 }
 
                 const insertCashFlow = db.prepare(`
-                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    INSERT INTO cash_flow_summaries (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
                 `);
                 for (const cf of rawVault.cashFlow) {
@@ -1667,13 +1579,15 @@ export async function POST(request: Request) {
             });
 
             v2RestoreTx();
-            return secureJson({ success: true, message: 'Version 2 vault fully restored and verified.' });
+            return secureJson({ success: true, message: 'Vault fully restored and verified.' });
         }
 
         // Handle Version 1 (Legacy) Bulk Restore
         // Why: Protects modern accounting records from silent deletion during a legacy import.
-        if (isBulkRestore && !isV2) {
-            const requiredLegacyCollections = ['assets', 'liabilities', 'goals', 'recurring', 'history', 'cashFlow'];
+        if (isBulkRestore && !isModernArchive) {
+            // assets/liabilities are OPTIONAL here too: when present they are mapped
+            // into the ledger by the shared backfill instead of the retired m0 tables.
+            const requiredLegacyCollections = ['goals', 'recurring', 'history', 'cashFlow'];
             for (const col of requiredLegacyCollections) {
                 if (!Array.isArray(rawVault[col])) {
                     return secureJson({
@@ -1687,12 +1601,16 @@ export async function POST(request: Request) {
                 }, { status: 400 });
             }
 
-            // Validate legacy numbers
-            for (const a of rawVault.assets) {
-                parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
+            // Validate legacy numbers (assets/liabilities optional — old archives only)
+            if (Array.isArray(rawVault.assets)) {
+                for (const a of rawVault.assets) {
+                    parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
+                }
             }
-            for (const l of rawVault.liabilities) {
-                parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
+            if (Array.isArray(rawVault.liabilities)) {
+                for (const l of rawVault.liabilities) {
+                    parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
+                }
             }
             for (const g of rawVault.goals) {
                 parseFiniteNumber(g.target_amount, `Goal "${g.name || g.id}" target amount`, { allowNegative: false, required: true });
@@ -1713,49 +1631,20 @@ export async function POST(request: Request) {
 
             // Execute Version 1 Restore - Wipe ONLY legacy tables, PRESERVE all m1_ tables!
             const v1RestoreTx = db.transaction(() => {
-                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
-                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM recurring_schedules WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM net_worth_snapshots WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM cash_flow_summaries WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM settings").run();
 
-                const insertAsset = db.prepare(`
-                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
-                `);
-                for (const a of rawVault.assets) {
-                    insertAsset.run({
-                        id: a.id || crypto.randomUUID(),
-                        user_id: a.user_id || 'local_user',
-                        name: a.name || 'Unnamed Asset',
-                        type: a.type || 'other',
-                        value: Number(a.value),
-                        is_liquid: a.is_liquid ? 1 : 0,
-                        currency: a.currency || 'USD',
-                        interest_rate: a.interest_rate !== undefined && a.interest_rate !== null ? Number(a.interest_rate) : null,
-                        investment_details: a.investment_details ? JSON.stringify(a.investment_details) : null,
-                        last_updated: a.last_updated || new Date().toISOString()
-                    });
-                }
-
-                const insertLiab = db.prepare(`
-                    INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
-                `);
-                for (const l of rawVault.liabilities) {
-                    insertLiab.run({
-                        id: l.id || crypto.randomUUID(),
-                        user_id: l.user_id || 'local_user',
-                        name: l.name || 'Unnamed Debt',
-                        type: l.type || 'other',
-                        balance: Number(l.balance),
-                        interest_rate: l.interest_rate !== undefined && l.interest_rate !== null ? Number(l.interest_rate) : null,
-                        minimum_payment: l.minimum_payment !== undefined && l.minimum_payment !== null ? Number(l.minimum_payment) : null,
-                        is_good_debt: l.is_good_debt ? 1 : 0,
-                        currency: l.currency || 'USD',
-                        last_updated: l.last_updated || new Date().toISOString()
+                // Legacy assets/liabilities arrays (old v1 archives) map into the PRESERVED
+                // ledger via the shared backfill — rows already present as accounts are skipped.
+                if (Array.isArray(rawVault.assets) || Array.isArray(rawVault.liabilities)) {
+                    backfillLegacyLedgerFromPayload(db, {
+                        assets: Array.isArray(rawVault.assets) ? rawVault.assets : [],
+                        liabilities: Array.isArray(rawVault.liabilities) ? rawVault.liabilities : [],
+                        settings: rawVault.settings,
+                        profile: rawVault.profile
                     });
                 }
 
@@ -1779,7 +1668,7 @@ export async function POST(request: Request) {
                 }
 
                 const insertRec = db.prepare(`
-                    INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+                    INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
                     VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
                 `);
                 for (const r of rawVault.recurring) {
@@ -1800,7 +1689,7 @@ export async function POST(request: Request) {
                 }
 
                 const insertHistory = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    INSERT INTO net_worth_snapshots (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
                     VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                 `);
                 for (const h of rawVault.history) {
@@ -1816,7 +1705,7 @@ export async function POST(request: Request) {
                 }
 
                 const insertCashFlow = db.prepare(`
-                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    INSERT INTO cash_flow_summaries (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
                 `);
                 for (const cf of rawVault.cashFlow) {
@@ -1847,54 +1736,9 @@ export async function POST(request: Request) {
         // --- ORDINARY SYNCHRONIZATION OR SAVE ---
         // Why: Ordinary synchronizations must NEVER clear unrelated tables or modern accounting records.
         const syncTransaction = db.transaction(() => {
-            if (Array.isArray(rawVault.assets)) {
-                db.prepare("DELETE FROM assets WHERE user_id = 'local_user'").run();
-                const insertAsset = db.prepare(`
-                    INSERT INTO assets (id, user_id, name, type, value, is_liquid, currency, interest_rate, investment_details, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @value, @is_liquid, @currency, @interest_rate, @investment_details, @last_updated)
-                `);
-                for (const a of rawVault.assets) {
-                    const value = parseFiniteNumber(a.value, `Asset "${a.name || a.id}" value`, { allowNegative: false, required: true });
-                    const interest_rate = parseFiniteNumber(a.interest_rate, `Asset "${a.name || a.id}" interest rate`, { allowNegative: true, required: false });
-                    insertAsset.run({
-                        id: a.id || crypto.randomUUID(),
-                        user_id: a.user_id || 'local_user',
-                        name: a.name || 'Unnamed Asset',
-                        type: a.type || 'other',
-                        value,
-                        is_liquid: a.is_liquid ? 1 : 0,
-                        currency: a.currency || 'USD',
-                        interest_rate,
-                        investment_details: a.investment_details ? JSON.stringify(a.investment_details) : null,
-                        last_updated: a.last_updated || new Date().toISOString()
-                    });
-                }
-            }
-
-            if (Array.isArray(rawVault.liabilities)) {
-                db.prepare("DELETE FROM liabilities WHERE user_id = 'local_user'").run();
-                const insertLiab = db.prepare(`
-                    INSERT INTO liabilities (id, user_id, name, type, balance, interest_rate, minimum_payment, is_good_debt, currency, last_updated)
-                    VALUES (@id, @user_id, @name, @type, @balance, @interest_rate, @minimum_payment, @is_good_debt, @currency, @last_updated)
-                `);
-                for (const l of rawVault.liabilities) {
-                    const balance = parseFiniteNumber(l.balance, `Liability "${l.name || l.id}" balance`, { allowNegative: false, required: true });
-                    const interest_rate = parseFiniteNumber(l.interest_rate, `Liability "${l.name || l.id}" interest rate`, { allowNegative: true, required: false });
-                    const minimum_payment = parseFiniteNumber(l.minimum_payment, `Liability "${l.name || l.id}" minimum payment`, { allowNegative: false, required: false });
-                    insertLiab.run({
-                        id: l.id || crypto.randomUUID(),
-                        user_id: l.user_id || 'local_user',
-                        name: l.name || 'Unnamed Debt',
-                        type: l.type || 'other',
-                        balance,
-                        interest_rate,
-                        minimum_payment,
-                        is_good_debt: l.is_good_debt ? 1 : 0,
-                        currency: l.currency || 'USD',
-                        last_updated: l.last_updated || new Date().toISOString()
-                    });
-                }
-            }
+            // NOTE: ordinary sync no longer accepts assets/liabilities arrays — the m0
+            // tables are retired by migration 0007; asset/liability writes go through
+            // /api/accounting (createAccount / journal entries).
 
             if (Array.isArray(rawVault.goals)) {
                 db.prepare("DELETE FROM goals WHERE user_id = 'local_user'").run();
@@ -1922,9 +1766,9 @@ export async function POST(request: Request) {
             }
 
             if (Array.isArray(rawVault.recurring)) {
-                db.prepare("DELETE FROM recurring_transactions WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM recurring_schedules WHERE user_id = 'local_user'").run();
                 const insertRec = db.prepare(`
-                    INSERT INTO recurring_transactions (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
+                    INSERT INTO recurring_schedules (id, user_id, name, amount, type, frequency, category, start_date, end_date, is_active, currency, created_at)
                     VALUES (@id, @user_id, @name, @amount, @type, @frequency, @category, @start_date, @end_date, @is_active, @currency, @created_at)
                 `);
                 for (const r of rawVault.recurring) {
@@ -1947,9 +1791,9 @@ export async function POST(request: Request) {
             }
 
             if (Array.isArray(rawVault.history)) {
-                db.prepare("DELETE FROM net_worth_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM net_worth_snapshots WHERE user_id = 'local_user'").run();
                 const insertHistory = db.prepare(`
-                    INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+                    INSERT INTO net_worth_snapshots (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
                     VALUES (@id, @user_id, @date, @total_assets, @total_liabilities, @net_worth, @currency)
                 `);
                 for (const h of rawVault.history) {
@@ -1970,9 +1814,9 @@ export async function POST(request: Request) {
             }
 
             if (Array.isArray(rawVault.cashFlow)) {
-                db.prepare("DELETE FROM cash_flow_history WHERE user_id = 'local_user'").run();
+                db.prepare("DELETE FROM cash_flow_summaries WHERE user_id = 'local_user'").run();
                 const insertCashFlow = db.prepare(`
-                    INSERT INTO cash_flow_history (id, user_id, month, income, expenses, currency)
+                    INSERT INTO cash_flow_summaries (id, user_id, month, income, expenses, currency)
                     VALUES (@id, @user_id, @month, @income, @expenses, @currency)
                 `);
                 for (const cf of rawVault.cashFlow) {

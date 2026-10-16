@@ -2,115 +2,86 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
-import { UserProfile, CurrencyCode } from '@/types';
+import { UserProfile, CurrencyCode, UserSettings } from '@/types';
 import * as LocalStorage from '@/infrastructure/local_driver';
+import {
+    isDemoPersonaKey,
+    setDemoPersonaCookie,
+    demoPersonaLabel,
+} from '@/features/demo/demoMode';
 
 interface ProfileContextType {
     // Identity
     profile: UserProfile | null;
     isLoading: boolean;
-    isDemoMode: boolean; // True if we are impersonating a template
-    canEdit: boolean;    // True if own profile or admin impersonating
+    isDemoMode: boolean; // True while previewing a read-only sample persona (Phase 2.7)
+    demoPersona: string | null; // Active persona key ('start', 'stab', ...) or null
+    canEdit: boolean;    // False in demo mode — persona vaults are read-only
 
     // Actions
     refreshData: () => Promise<void>;
-    switchProfile: (templateId: string | null) => void;
+    switchProfile: (persona: string | null) => void;
     updateCurrency: (code: CurrencyCode) => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
-    const supabase = createClient();
     const searchParams = useSearchParams(); // Hook into URL changes
     const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [templateId, setTemplateId] = useState<string | null>(null);
+    const [persona, setPersona] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const isDemoMode = !!templateId;
+    const isDemoMode = persona !== null;
 
-    // React to URL changes immediately
+    // React to URL changes immediately (`?simulatedProfileId=<persona>`).
+    // Unknown keys are treated as "no demo" so a bad link can't wedge the app.
     useEffect(() => {
         const simId = searchParams.get('simulatedProfileId');
-        setTemplateId(simId); // If null, this exits demo mode
+        setPersona(isDemoPersonaKey(simId) ? simId : null);
     }, [searchParams]);
 
-    // Load data whenever templateId changes
+    // Keep the `demo_persona` cookie in sync with the active persona. Declared
+    // BEFORE the refresh effect so every data fetch below (and every hook
+    // fetch that follows) already carries the cookie to the API routes.
+    useEffect(() => {
+        setDemoPersonaCookie(persona);
+    }, [persona]);
+
+    // Load data whenever the persona changes
     useEffect(() => {
         refreshData();
-    }, [templateId]);
+    }, [persona]);
 
     const refreshData = async () => {
         setIsLoading(true);
-
         try {
-            if (templateId && process.env.NEXT_PUBLIC_SUPABASE_URL) {
-                // Remote template view if explicitly configured
-                await loadFromSupabase(templateId);
-            } else {
-                // Direct Instant Local Vault Mode (100% Private, On-Device)
-                loadFromLocalStorage();
-            }
-        } catch {
-            // Safe fallback to local storage mode
-            loadFromLocalStorage();
+            // Direct Instant Local Vault Mode (100% Private, On-Device).
+            // Demo personas are served by the API routes via the persona cookie —
+            // there is no separate remote template source anymore (Phase 2.7).
+            await loadLocalProfile();
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleMigration = async (userId: string) => {
-        if (typeof window === 'undefined') return;
-
-        const migrationRequested = localStorage.getItem('clearworth_migration_requested') === 'true';
-
-        if (migrationRequested) {
-            try {
-                // Dynamically import to avoid server-side issues
-                const { MigrationService } = await import('@/features/migration/migrationService');
-
-                // Double check if profile is empty? 
-                // For now, we assume if the flag is set, we want to overwrite/seed.
-                // Or we can check if the user has < 1 asset to avoid destroying real data?
-                // Let's trust the flag for this version.
-
-                await MigrationService.migrateToCloud(userId);
-                MigrationService.clearLocalData();
-
-                // Refresh to ensure we see the new data
-                window.location.reload();
-            } catch (e) {
-                console.error("ProfileContext: Migration failed", e);
-                // Clear flag to avoid infinite loops
-                localStorage.removeItem('clearworth_migration_requested');
-            }
+    const loadLocalProfile = async () => {
+        // Private on-device profile for OpenNetWorth.
+        // Settings always come from the SQLite settings kv via /api/settings;
+        // with the demo cookie set that read transparently targets the persona
+        // vault, so persona currency/theme render without any localStorage.
+        let storedSettings: { baseCurrency: CurrencyCode };
+        try {
+            storedSettings = await LocalStorage.loadSettingsFromVault();
+        } catch {
+            // Explicit defaults — never resurrect stale localStorage.
+            storedSettings = { baseCurrency: 'USD' };
         }
-    };
 
-    const loadFromSupabase = async (id: string) => {
-        // Migration Check BEFORE loading (or concurrent?)
-        // If we migrate, we need to reload anyway.
-        // Let's check first.
-        await handleMigration(id);
-
-        // Fetch Profile
-        console.log("ProfileContext: Loading profile from Supabase...", id);
-        const { data: prof, error } = await supabase.from('profiles').select('*').eq('id', id).single();
-
-        if (error) {
-            console.error("ProfileContext: FAILED to load profile:", error);
-        } else if (prof) {
-            console.log("ProfileContext: Loaded profile:", prof);
-            setProfile(prof as UserProfile);
-        }
-    };
-
-    const loadFromLocalStorage = () => {
-        // Private on-device profile for OpenNetWorth
-        const storedSettings = LocalStorage.loadSettings();
         let customName = 'Local Vault Owner';
-        if (typeof window !== 'undefined') {
+        if (persona) {
+            customName = demoPersonaLabel(persona);
+        } else if (typeof window !== 'undefined') {
             const raw = localStorage.getItem('opennetworth_profile');
             if (raw) {
                 try {
@@ -127,7 +98,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
             email: 'local@device',
             full_name: customName,
             privacy_mode: true,
-            is_template: false,
+            is_template: isDemoMode,
             role: 'user',
             currency_code: storedSettings.baseCurrency,
             created_at: new Date().toISOString()
@@ -136,7 +107,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     // Actions
     const switchProfile = (id: string | null) => {
-        setTemplateId(id);
+        setPersona(isDemoPersonaKey(id) ? id : null);
     };
 
     const updateCurrency = async (code: CurrencyCode) => {
@@ -147,30 +118,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
             setProfile({ ...profile, currency_code: code });
         }
 
-        // 2. Persist
-        if (profile?.id && profile.id !== 'local_user' && !isDemoMode) {
-            // Auth User -> Supabase
-            // Use "as never" to bypass strict "never" expectation in generated types for now.
-            const { error } = await supabase.from('profiles').update({ currency_code: code } as unknown as never).eq('id', profile.id);
-            if (error) {
-                console.error("Failed to update currency in Supabase:", error);
-                // Revert if needed, but for now just log
-                refreshData(); // Re-fetch true state
-            }
-        } else {
-            // Guest or Demo -> LocalStorage + SQLite
-            const settings = LocalStorage.loadSettings();
-            settings.baseCurrency = code;
-            await LocalStorage.saveSettings(settings);
-
-            // If strictly Guest, we are done (optimistic update holds).
-            // If Demo, we probably shouldn't be here (Demo is read-only usually, or local override)
-        }
+        // 2. Persist — demo personas are read-only, so skip the write entirely
+        // (the API would refuse it with 403 anyway).
+        if (isDemoMode) return;
+        const settings = await LocalStorage.loadSettingsFromVault()
+            .catch((): UserSettings => ({ baseCurrency: code, theme: 'system', checkInFrequency: 'monthly' }));
+        settings.baseCurrency = code;
+        await LocalStorage.saveSettings(settings);
     };
 
     return (
         <ProfileContext.Provider value={{
-            profile, isLoading, isDemoMode, canEdit: true,
+            profile, isLoading, isDemoMode, demoPersona: persona, canEdit: !isDemoMode,
             refreshData, switchProfile, updateCurrency
         }}>
             {children}

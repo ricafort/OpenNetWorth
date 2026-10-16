@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { POST } from './route';
 import { setTestDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { recordBalanceObservation } from '@/lib/domain/accounting/balanceObservationService';
 import { NextRequest } from 'next/server';
@@ -16,7 +16,7 @@ describe('Balance Reconciliation API - Modes & Validation', () => {
     beforeEach(() => {
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initAccountingSchema(db);
+        runMigrations(db);
         setTestDb(db);
 
         const household = createEntity(db, { name: 'Household', type: 'household', currency: 'USD' });
@@ -44,7 +44,7 @@ describe('Balance Reconciliation API - Modes & Validation', () => {
         });
         
         // Manually update to 'accepted' so it can be reconciled against
-        db.prepare("UPDATE m1_balance_observations SET review_status = 'accepted' WHERE id = ?").run(obs.id);
+        db.prepare("UPDATE balance_observations SET review_status = 'accepted' WHERE id = ?").run(obs.id);
         observationId = obs.id;
     });
 

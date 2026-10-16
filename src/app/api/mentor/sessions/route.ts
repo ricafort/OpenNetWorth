@@ -13,15 +13,13 @@
  * origin / DNS rebinding) and answers via secureJson (no-store headers) — the
  * same local-isolation contract as /api/mentor and /api/vault.
  *
- * Schema note: like every other m1_ route, the handler calls
- * initMentorChatSchema(db) itself so a fresh vault gets the tables on first use
- * without a global migration step. The calls are idempotent.
+ * Schema note: the mentor chat tables are guaranteed by the migration runner
+ * that runs once when the database is opened (getDb()).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
 import { applySensitiveHeaders, validateLocalSecurity } from '@/lib/api/localSecurity';
-import { initMentorChatSchema } from '@/lib/domain/mentor/schema';
 import {
     MentorSessionValidationError,
     deleteSession,
@@ -49,7 +47,6 @@ export async function GET(req: NextRequest) {
 
     try {
         const db = getDb();
-        initMentorChatSchema(db);
 
         const sessionId = req.nextUrl.searchParams.get('id');
         if (sessionId) {
@@ -75,7 +72,6 @@ export async function POST(req: NextRequest) {
 
     try {
         const db = getDb();
-        initMentorChatSchema(db);
 
         const body = await req.json().catch(() => null);
         if (!body || typeof body !== 'object') {
@@ -110,7 +106,6 @@ export async function DELETE(req: NextRequest) {
 
     try {
         const db = getDb();
-        initMentorChatSchema(db);
 
         const sessionId = req.nextUrl.searchParams.get('id');
         if (!sessionId) {

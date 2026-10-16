@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { DashboardConfig } from '@/types';
-import { loadDashboardLayout, saveDashboardLayout } from '@/infrastructure/local_driver';
+import { loadDashboardLayoutFromVault, saveDashboardLayout } from '@/infrastructure/local_driver';
 import { getDefaultLayout } from '@/lib/registry/widgetRegistry';
 
 interface DashboardContextType {
@@ -30,25 +30,36 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const [layout, setLayout] = useState<DashboardConfig>(getDefaultLayout());
 
     useEffect(() => {
-        // Ensure consistent hydration - only load from storage on client mount.
+        // Ensure consistent hydration - only load saved layout on client mount.
         // Why the version check: when the shipped default grid changes (version bump in
         // widgetRegistry), stale saved grids would keep the old cramped layout forever.
         // A mismatch falls back to the new default; users can re-customize via Customize.
+        // The layout lives in the SQLite settings kv; in demo mode the
+        // `demo_persona` cookie makes that read target the persona vault (Phase 2.7).
+        let cancelled = false;
         const def = getDefaultLayout();
-        const saved = loadDashboardLayout();
-        if (saved && saved.version === def.version) {
-            // Saved configs from before the collapse feature lack collapsedWidgets;
-            // normalize so every consumer can rely on the field.
-            setLayout({ ...saved, collapsedWidgets: saved.collapsedWidgets ?? [] });
-        } else {
-            setLayout(def);
-        }
+        const apply = (saved: DashboardConfig | null) => {
+            if (cancelled) return;
+            if (saved && saved.version === def.version) {
+                // Saved configs from before the collapse feature lack collapsedWidgets;
+                // normalize so every consumer can rely on the field.
+                setLayout({ ...saved, collapsedWidgets: saved.collapsedWidgets ?? [] });
+            } else {
+                setLayout(def);
+            }
+        };
+        loadDashboardLayoutFromVault()
+            .then(apply)
+            .catch(() => apply(null));
+        return () => { cancelled = true; };
     }, []);
 
     const updateLayout = (newLayout: DashboardConfig) => {
         setLayout(prev => {
             const updated = typeof newLayout === 'function' ? (newLayout as any)(prev) : newLayout;
-            saveDashboardLayout(updated);
+            // In demo mode the settings route refuses this with 403 — the
+            // customization stays local to this view only.
+            saveDashboardLayout(updated).catch(() => { });
             return updated;
         });
     };

@@ -1,13 +1,13 @@
 /**
- * Milestone 1 Non-Destructive Legacy Migration Mapping
- * 
+ * Non-destructive legacy → ledger migration mapping
+ *
  * Why this file exists:
- * Provides deterministic, pure mapping functions that transform legacy Milestone 0 records
- * (assets, liabilities, settings, snapshots) into Milestone 1 double-entry accounts,
- * entities, and balanced opening equity transactions.
- * 
+ * Provides deterministic, pure mapping functions that transform legacy metadata records
+ * (assets, liabilities, settings, snapshots) into double-entry accounts, entities,
+ * and balanced opening equity transactions.
+ *
  * Tricky logic:
- * - In accordance with M1-MIG-01 and M1-MIG-02:
+ * - In accordance with the legacy-migration requirements (archived M1-MIG-01/02 specs):
  *   - Legacy asset and liability balances map to dated opening balances with an explicit
  *     `Opening Balance Equity` counterpart.
  *   - Monthly cash flow summaries and recurring commitments are preserved as metadata
@@ -110,9 +110,9 @@ function mapLiabilitySubType(legacyType: string): AccountSubType {
 }
 
 /**
- * Deterministically maps legacy data into Milestone 1 entities, accounts, and opening balance transactions.
+ * Deterministically maps legacy data into ledger entities, accounts, and opening balance transactions.
  */
-export function mapLegacyDataToMilestone1(
+export function mapLegacyDataToLedger(
     legacy: LegacyDataPayload,
     asOfDate: string = new Date().toISOString().split('T')[0]
 ): MappedAccountingState {
@@ -167,7 +167,10 @@ export function mapLegacyDataToMilestone1(
             opening_balance_cents: valueCents,
             revision: 1,
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            // Terms carried verbatim (investment_details is already JSON text on legacy rows).
+            interest_rate: asset.interest_rate ?? null,
+            investment_details: asset.investment_details ?? null
         };
         accounts.push(account);
 
@@ -228,7 +231,12 @@ export function mapLegacyDataToMilestone1(
             opening_balance_cents: balanceCents,
             revision: 1,
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            // Terms converted to ledger conventions (minimum payment in cents).
+            interest_rate: liability.interest_rate ?? null,
+            minimum_payment_cents: liability.minimum_payment !== undefined && liability.minimum_payment !== null
+                ? parseToCents(liability.minimum_payment, currency)
+                : null
         };
         accounts.push(account);
 

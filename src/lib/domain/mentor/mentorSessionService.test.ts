@@ -6,8 +6,8 @@
  * cascade delete. A regression here silently corrupts restored conversations.
  *
  * Tricky logic:
- * - createTestDb() only runs the core schema, so this test initializes the mentor
- *   tables explicitly via initMentorChatSchema (same as every route handler does).
+ * - The full migration list (runMigrations) creates the mentor chat tables, exactly
+ *   as production boot does — no separate mentor init is needed.
  * - saveSession must converge the DB to exactly the sent array — deleted bubbles
  *   disappear and seq values are reassigned from 0.
  *
@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initMentorChatSchema } from './schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import {
     MentorSessionValidationError,
     appendMessage,
@@ -36,7 +36,7 @@ describe('mentorSessionService', () => {
     beforeEach(() => {
         db = new Database(':memory:');
         db.pragma('foreign_keys = ON');
-        initMentorChatSchema(db);
+        runMigrations(db);
     });
 
     afterEach(() => {
@@ -159,7 +159,7 @@ describe('mentorSessionService', () => {
             const s = createSession(db, `Session ${i}`);
             appendMessage(db, s.id, { id: `u-${i}`, role: 'user', content: 'hello' });
             // Stagger updated_at so ordering is deterministic
-            db.prepare('UPDATE m1_mentor_sessions SET updated_at = ? WHERE id = ?')
+            db.prepare('UPDATE mentor_sessions SET updated_at = ? WHERE id = ?')
                 .run(new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(), s.id);
         }
 
@@ -179,14 +179,14 @@ describe('mentorSessionService', () => {
         expect(deleteSession(db, session.id)).toBe(true);
         expect(deleteSession(db, session.id)).toBe(false);
         expect(getSession(db, session.id)).toBeNull();
-        const orphanCount = (db.prepare('SELECT COUNT(*) AS cnt FROM m1_mentor_messages').get() as any).cnt;
+        const orphanCount = (db.prepare('SELECT COUNT(*) AS cnt FROM mentor_messages').get() as any).cnt;
         expect(orphanCount).toBe(0);
     });
 
     it('toClientMessage degrades corrupt JSON columns to undefined instead of throwing', () => {
         const session = createSession(db, 'Corrupt');
         db.prepare(`
-            INSERT INTO m1_mentor_messages (id, session_id, seq, role, content, facts_json, created_at)
+            INSERT INTO mentor_messages (id, session_id, seq, role, content, facts_json, created_at)
             VALUES ('c1', @sid, 0, 'mentor', 'ok', '{not json', @now)
         `).run({ sid: session.id, now: new Date().toISOString() });
 

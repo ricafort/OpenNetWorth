@@ -1,21 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from './route';
-import { getDb, initSchema } from '@/infrastructure/sqlite/db';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
+import { getDb } from '@/infrastructure/sqlite/db';
 import Database from 'better-sqlite3';
 
 describe('Raw Document API Route', () => {
     let db: Database.Database;
 
     beforeEach(() => {
+        // Under Vitest, getDb() returns an isolated in-memory database that has
+        // already run the full migration list (documents table included).
         db = getDb();
-        initSchema(db);
-        initDocumentSchema(db);
     });
 
     afterEach(() => {
-        db.prepare('DELETE FROM m1_documents').run();
+        db.prepare('DELETE FROM documents').run();
     });
 
     it('returns 400 if id is missing', async () => {
@@ -41,7 +40,7 @@ describe('Raw Document API Route', () => {
     it('returns base64-decoded bytes for PDFs', async () => {
         const id = 'doc_pdf_123';
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, raw_content, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, raw_content, mime_type, byte_size, created_at)
             VALUES (?, 'test.pdf', 'hash1', 'SGVsbG8gUERGLg==', 'application/pdf', 10, '2026-01-01')
         `).run(id);
 
@@ -59,7 +58,7 @@ describe('Raw Document API Route', () => {
     it('returns raw UTF-8 bytes for CSVs', async () => {
         const id = 'doc_csv_123';
         db.prepare(`
-            INSERT INTO m1_documents (id, filename, content_hash, raw_content, mime_type, byte_size, created_at)
+            INSERT INTO documents (id, filename, content_hash, raw_content, mime_type, byte_size, created_at)
             VALUES (?, 'test.csv', 'hash2', 'Header\\nValue', 'text/csv', 12, '2026-01-01')
         `).run(id);
 

@@ -9,6 +9,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { runMigrations } from './migrations';
 
 // Path to SQLite database file
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -86,7 +87,7 @@ export function setTestDb(db: Database.Database | null): void {
 export function createTestDb(): Database.Database {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
-    initSchema(db);
+    runMigrations(db);
     return db;
 }
 
@@ -119,6 +120,16 @@ export function closeDb(): void {
         }
         dbInstance = null;
     }
+    // Read-only demo vault connections (Phase 2.7) — Windows file locks make
+    // closing these on teardown mandatory.
+    for (const [, demoDb] of demoDbCache) {
+        try {
+            demoDb.close();
+        } catch {
+            // Already closed or detached
+        }
+    }
+    demoDbCache.clear();
 }
 
 /**
@@ -174,147 +185,115 @@ export function getDb(): Database.Database {
     dbInstance.pragma('synchronous = NORMAL');
     dbInstance.pragma('foreign_keys = ON');
 
-    // Run initial schema creation
-    initSchema(dbInstance);
+    // Apply the ordered migration list exactly once per database file
+    runMigrations(dbInstance);
 
     return dbInstance;
 }
 
+/* ------------------------------------------------------------------ */
+/* Demo vaults (Phase 2.7 — read-only sample personas)                 */
+/* ------------------------------------------------------------------ */
+
 /**
- * Creates core tables if they do not already exist.
- * 
- * Why this exists:
- * Exports the initial schema DDL so both the production vault and in-memory test databases
- * can initialize their table structure idempotently.
- * 
- * Tricky logic:
- * Always inserts a default 'local_user' profile if one does not exist so initial foreign key
- * checks and single-user local queries immediately succeed without manual seeding.
- * 
- * TODO: Add automated migration runner for schema versioning in Milestone 1.
+ * Allowlist of demo persona keys. Doubles as the path-traversal guard:
+ * only these keys may ever be interpolated into a file path.
+ * Keys match `ProfileConfig.id` in `src/features/demo/demoConfigs.ts`.
  */
-export function initSchema(db: Database.Database) {
-    const schema = `
-        -- Profiles
-        CREATE TABLE IF NOT EXISTS profiles (
-            id TEXT PRIMARY KEY,
-            email TEXT,
-            full_name TEXT,
-            avatar_url TEXT,
-            privacy_mode INTEGER DEFAULT 1,
-            currency_code TEXT DEFAULT 'USD',
-            created_at TEXT NOT NULL
-        );
+export const DEMO_PERSONAS = ['start', 'stab', 'build', 'fam', 'grow'] as const;
+export type DemoPersona = (typeof DEMO_PERSONAS)[number];
 
-        -- Assets
-        CREATE TABLE IF NOT EXISTS assets (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            value REAL NOT NULL DEFAULT 0,
-            is_liquid INTEGER DEFAULT 1,
-            currency TEXT DEFAULT 'USD',
-            interest_rate REAL DEFAULT 0,
-            investment_details TEXT,
-            last_updated TEXT NOT NULL
-        );
+export function isDemoPersona(value: string): value is DemoPersona {
+    return (DEMO_PERSONAS as readonly string[]).includes(value);
+}
 
-        -- Liabilities
-        CREATE TABLE IF NOT EXISTS liabilities (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            balance REAL NOT NULL DEFAULT 0,
-            interest_rate REAL DEFAULT 0,
-            minimum_payment REAL DEFAULT 0,
-            is_good_debt INTEGER DEFAULT 0,
-            currency TEXT DEFAULT 'USD',
-            last_updated TEXT NOT NULL
-        );
+/** Directory holding the per-persona demo vault files (gitignored under data/). */
+export function demoVaultDir(): string {
+    return path.resolve(process.cwd(), process.env.OPENNETWORTH_DEMO_DIR || path.join('data', 'demo_vaults'));
+}
 
-        -- Goals
-        CREATE TABLE IF NOT EXISTS goals (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            target_amount REAL NOT NULL,
-            current_amount REAL DEFAULT 0,
-            start_amount REAL DEFAULT 0,
-            currency TEXT DEFAULT 'USD',
-            category TEXT NOT NULL,
-            deadline TEXT,
-            created_at TEXT NOT NULL
-        );
-
-        -- Recurring Transactions
-        CREATE TABLE IF NOT EXISTS recurring_transactions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            amount REAL NOT NULL,
-            type TEXT NOT NULL,
-            frequency TEXT NOT NULL,
-            category TEXT NOT NULL,
-            start_date TEXT NOT NULL,
-            end_date TEXT,
-            is_active INTEGER DEFAULT 1,
-            currency TEXT DEFAULT 'USD',
-            created_at TEXT NOT NULL
-        );
-
-        -- Net Worth History
-        CREATE TABLE IF NOT EXISTS net_worth_history (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            date TEXT NOT NULL,
-            total_assets REAL NOT NULL,
-            total_liabilities REAL NOT NULL,
-            net_worth REAL NOT NULL,
-            currency TEXT,
-            UNIQUE(user_id, date)
-        );
-
-        -- Cash Flow History
-        CREATE TABLE IF NOT EXISTS cash_flow_history (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            month TEXT NOT NULL,
-            income REAL DEFAULT 0,
-            expenses REAL DEFAULT 0,
-            currency TEXT DEFAULT 'USD',
-            UNIQUE(user_id, month)
-        );
-
-        -- Key-value settings
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        -- Insert default local user profile if not present
-        INSERT OR IGNORE INTO profiles (id, email, full_name, privacy_mode, currency_code, created_at)
-        VALUES ('local_user', 'local@device', 'Local Vault Owner', 1, 'USD', datetime('now'));
-    `;
-
-    db.exec(schema);
-
-    // Why this exists:
-    // Resolves Finding 2 & Clarification 4: Net worth history snapshots must durably retain currency
-    // so historical snapshots recorded in USD/EUR are never masqueraded as AUD.
-    // Tricky logic:
-    // Existing SQLite databases already have net_worth_history created without currency.
-    // We safely query PRAGMA table_info and execute ALTER TABLE ADD COLUMN if missing.
-    // TODO: In Milestone 2, support retroactive batch currency attribution for legacy snapshots.
-    try {
-        const tableInfo = db.prepare("PRAGMA table_info(net_worth_history)").all() as { name: string }[];
-        if (tableInfo.length > 0 && !tableInfo.some(c => c.name === 'currency')) {
-            db.prepare("ALTER TABLE net_worth_history ADD COLUMN currency TEXT").run();
-        }
-    } catch {
-        // Ignored if table doesn't exist yet or already altered
+/**
+ * Raised when a request carries a `demo_persona` cookie that cannot be served:
+ * either the key is not on the allowlist, or the vault file has not been seeded.
+ * Routes translate it via `demoErrorResponse` (400 / 503).
+ */
+export class DemoVaultUnavailableError extends Error {
+    constructor(public persona: string, public reason: 'unknown_persona' | 'not_seeded') {
+        super(reason === 'unknown_persona'
+            ? `Unknown demo persona "${persona}".`
+            : `Demo vault for persona "${persona}" is not seeded. Run: npm run seed:demo`);
+        this.name = 'DemoVaultUnavailableError';
     }
+}
+
+const demoDbCache = new Map<string, Database.Database>();
+
+/**
+ * Opens (and caches) a persona's demo vault READ-ONLY.
+ *
+ * Tricky logic:
+ * - `readonly: true` + `fileMustExist: true` guarantee demo traffic can never
+ *   create, migrate, or mutate any database file.
+ * - The seed script closes files with `journal_mode = DELETE`, so read-only
+ *   connections never need WAL sidecar files.
+ */
+export function getDemoDb(persona: string): Database.Database | null {
+    if (!isDemoPersona(persona)) return null;
+    const cached = demoDbCache.get(persona);
+    if (cached) return cached;
+    const dbPath = path.join(demoVaultDir(), `${persona}.sqlite`);
+    if (!fs.existsSync(dbPath)) return null;
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    db.pragma('foreign_keys = ON');
+    demoDbCache.set(persona, db);
+    return db;
+}
+
+/** Reads the `demo_persona` cookie from a request (null when absent). */
+export function readDemoPersona(request: Request): string | null {
+    const cookie = request.headers.get('cookie');
+    if (!cookie) return null;
+    const match = cookie.match(/(?:^|;\s*)demo_persona=([A-Za-z0-9_-]+)/);
+    return match ? match[1] : null;
+}
+
+/**
+ * Request-aware DB resolution: demo cookie present → read-only persona vault;
+ * absent → the live vault via getDb().
+ *
+ * Why this exists:
+ * Demo mode must serve the SAME API surface as the real vault without ever
+ * touching `opennetworth.sqlite`. Routes call this instead of getDb(); the
+ * client sets the cookie from `?simulatedProfileId=` in ProfileContext.
+ */
+export function getDbForRequest(request: Request): Database.Database {
+    const persona = readDemoPersona(request);
+    if (persona === null) return getDb();
+    if (!isDemoPersona(persona)) throw new DemoVaultUnavailableError(persona, 'unknown_persona');
+    const demo = getDemoDb(persona);
+    if (!demo) throw new DemoVaultUnavailableError(persona, 'not_seeded');
+    return demo;
+}
+
+/** Maps a thrown error to a JSON Response when it is demo-vault related (null otherwise). */
+export function demoErrorResponse(err: unknown): Response | null {
+    if (err instanceof DemoVaultUnavailableError) {
+        const status = err.reason === 'unknown_persona' ? 400 : 503;
+        return new Response(JSON.stringify({ success: false, error: err.message, demo_persona: err.persona }), {
+            status,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+    return null;
+}
+
+/** 403 response when a mutating request carries the demo cookie (demo is read-only). */
+export function demoReadOnlyResponse(request: Request): Response | null {
+    if (readDemoPersona(request) === null) return null;
+    return new Response(JSON.stringify({ success: false, error: 'Demo mode is read-only. Exit sample data to make changes.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+    });
 }
 
 export default getDb;

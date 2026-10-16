@@ -61,11 +61,7 @@ export default function PortfolioPage() {
             let modernValuations: any[] = [];
             let unlinkedAssets: Asset[] = [];
 
-            if (sourceState.mode === 'legacy') {
-                investmentAssets = sourceState.assets.filter(a =>
-                    a.type === 'investment' || a.type === 'crypto' || (a.investment_details && a.investment_details.ticker)
-                );
-            } else if (sourceState.mode === 'modern_usable' || sourceState.mode === 'modern_missing_balances') {
+            if (sourceState.mode === 'modern_usable' || sourceState.mode === 'modern_missing_balances') {
                 const investmentSubTypes = ['investment', 'brokerage', 'crypto', 'retirement', 'superannuation', 'pension'];
                 
                 const modernAssetAccounts = (sourceState.summary?.accounts || []).filter(a => 
@@ -245,7 +241,7 @@ export default function PortfolioPage() {
                         privacyBlur={isPrivacyBlur} 
                         currencyCode={baseCurrency} 
                         accountValuations={accountValuations} 
-                        isAuthoritativeMode={sourceState.mode !== 'legacy'} 
+                        isAuthoritativeMode
                     />
 
                     {/* Concentration Warnings */}

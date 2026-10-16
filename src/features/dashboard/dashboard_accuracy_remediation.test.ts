@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
+import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { getSharedFinancialSummary } from '@/lib/domain/accounting/sharedFinancialSummaryService';
 import { calculatePayoff } from '@/lib/domain/debtCalculator';
@@ -26,10 +26,11 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
 
     beforeEach(() => {
         db = new Database(':memory:');
-        initAccountingSchema(db);
+        db.pragma('foreign_keys = ON');
+        runMigrations(db);
 
         db.exec(`
-            CREATE TABLE IF NOT EXISTS net_worth_history (
+            CREATE TABLE IF NOT EXISTS net_worth_snapshots (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 date TEXT NOT NULL,
@@ -71,7 +72,7 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
         });
 
         db.prepare(`
-            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            INSERT INTO balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
             VALUES ('obs-1', ?, 2500000, 'USD', 'current_balance', '2026-09-20', datetime('now'), 'manual', 'accepted', datetime('now'))
         `).run(acc.account.id);
 
@@ -103,13 +104,13 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
         });
 
         db.prepare(`
-            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            INSERT INTO balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
             VALUES ('obs-1', ?, 2500000, 'USD', 'current_balance', '2026-09-20', datetime('now'), 'manual', 'accepted', datetime('now'))
         `).run(acc.account.id);
 
         // Add verified dated exchange rate: 1 USD = 1.50 AUD
         db.prepare(`
-            INSERT INTO m1_exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
+            INSERT INTO exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
             VALUES ('fx-1', 'USD', 'AUD', 1.50, '2026-09-20', 'manual', datetime('now'))
         `).run();
 
@@ -152,24 +153,24 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
         expect(summary.coverage_notes.length).toBeGreaterThan(0);
     });
 
-    // Case 4: Historical currency retention in net_worth_history
+    // Case 4: Historical currency retention in net_worth_snapshots
     it('Case 4: Net worth history durably persists snapshot currency and preserves unrecorded status', () => {
         // Snapshot with currency
         db.prepare(`
-            INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+            INSERT INTO net_worth_snapshots (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
             VALUES ('snap-1', 'local_user', '2026-08-01', 50000, 10000, 40000, 'AUD')
         `).run();
 
         // Legacy snapshot without currency
         db.prepare(`
-            INSERT INTO net_worth_history (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
+            INSERT INTO net_worth_snapshots (id, user_id, date, total_assets, total_liabilities, net_worth, currency)
             VALUES ('snap-legacy', 'local_user', '2025-01-01', 30000, 5000, 25000, NULL)
         `).run();
 
-        const row1 = db.prepare("SELECT * FROM net_worth_history WHERE id = 'snap-1'").get() as any;
+        const row1 = db.prepare("SELECT * FROM net_worth_snapshots WHERE id = 'snap-1'").get() as any;
         expect(row1.currency).toBe('AUD');
 
-        const row2 = db.prepare("SELECT * FROM net_worth_history WHERE id = 'snap-legacy'").get() as any;
+        const row2 = db.prepare("SELECT * FROM net_worth_snapshots WHERE id = 'snap-legacy'").get() as any;
         expect(row2.currency).toBeNull();
     });
 
@@ -261,17 +262,17 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
 
         // 1 cent USD in each
         db.prepare(`
-            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            INSERT INTO balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
             VALUES ('obs-m1', ?, 1, 'USD', 'current_balance', '2026-09-20', datetime('now'), 'manual', 'accepted', datetime('now'))
         `).run(acc1.account.id);
         db.prepare(`
-            INSERT INTO m1_balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
+            INSERT INTO balance_observations (id, account_id, amount_cents, currency, balance_kind, effective_date, imported_at, source_type, review_status, created_at)
             VALUES ('obs-m2', ?, 1, 'USD', 'current_balance', '2026-09-20', datetime('now'), 'manual', 'accepted', datetime('now'))
         `).run(acc2.account.id);
 
         // Dated rate: 1 USD = 1.50 AUD
         db.prepare(`
-            INSERT INTO m1_exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
+            INSERT INTO exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
             VALUES ('fx-micro', 'USD', 'AUD', 1.50, '2026-09-20', 'manual', datetime('now'))
         `).run();
 
@@ -372,11 +373,11 @@ describe('Dashboard Accuracy Remediation Acceptance Tests', () => {
         // If an account was added or closed since, the headline percentage change is non-comparable.
         // The truthful remediation is to suppress the headline percentage change unless account coverage is verified."
         // Tricky logic:
-        // net_worth_history only stores (id, user_id, date, total_assets, total_liabilities, net_worth, currency).
+        // net_worth_snapshots only stores (id, user_id, date, total_assets, total_liabilities, net_worth, currency).
         // It has no record of which accounts comprised that historical total. Comparing current balance against history
         // without proof of identical account coverage yields misleading performance percentages.
-        // TODO: In a future milestone, store snapshot account UUID sets in net_worth_history to enable verified historical deltas.
-        const snapshotColumns = db.prepare("PRAGMA table_info(net_worth_history)").all() as Array<{ name: string }>;
+        // TODO: In a future milestone, store snapshot account UUID sets in net_worth_snapshots to enable verified historical deltas.
+        const snapshotColumns = db.prepare("PRAGMA table_info(net_worth_snapshots)").all() as Array<{ name: string }>;
         const columnNames = snapshotColumns.map(c => c.name);
 
         expect(columnNames).toContain('net_worth');

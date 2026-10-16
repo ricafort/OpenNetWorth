@@ -103,7 +103,7 @@ export function getAccountBalance(
     accountId: string,
     asOfDate?: string
 ): AccountBalanceResult {
-    const account = db.prepare('SELECT * FROM m1_accounts WHERE id = ?').get(accountId) as any;
+    const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as any;
     if (!account) {
         throw new Error(`Account not found with ID: ${accountId}`);
     }
@@ -113,8 +113,8 @@ export function getAccountBalance(
     // Query all journal postings up to asOfDate via join to transactions
     const rows = db.prepare(`
         SELECT j.amount_cents, j.currency, t.date
-        FROM m1_journal_entries j
-        JOIN m1_transactions t ON j.transaction_id = t.id
+        FROM journal_entries j
+        JOIN transactions t ON j.transaction_id = t.id
         WHERE j.account_id = ? AND t.date <= ? AND t.status = 'posted'
         ORDER BY t.date ASC
     `).all(accountId, effectiveDate) as { amount_cents: number; currency: string; date: string }[];
@@ -158,7 +158,7 @@ export function getAccountBalance(
  * using the exact same wealth basis.
  * 
  * Tricky logic:
- * Querying m1_balance_observations directly avoids circular dependencies with balanceObservationService.
+ * Querying balance_observations directly avoids circular dependencies with balanceObservationService.
  * Strictly uses VALUATION_BALANCE_KINDS so credit limits or buying power never affect net worth.
  * 
  * TODO: Support automated cross-rate currency conversion in report drilldowns in Slice 2.
@@ -192,11 +192,11 @@ export function resolveAccountBalanceInfo(
     const currency = (acc.currency || 'USD').toUpperCase() as CurrencyCode;
     if (acc.tracking_mode === 'balance') {
         const targetDate = effectiveDate || getLocalTodayCalendarDate();
-        const tableExists = (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_balance_observations'").get() as any)?.cnt > 0;
+        const tableExists = (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'balance_observations'").get() as any)?.cnt > 0;
         if (tableExists) {
             const placeholders = VALUATION_BALANCE_KINDS.map(() => '?').join(', ');
             const row = db.prepare(`
-                SELECT amount_cents, effective_date FROM m1_balance_observations
+                SELECT amount_cents, effective_date FROM balance_observations
                 WHERE account_id = ?
                   AND review_status = 'accepted'
                   AND effective_date <= ?
@@ -249,12 +249,12 @@ export function resolveAccountBalanceInfo(
     let hasOpeningTx = false;
     if (!hasExplicitOpening) {
         const tx = db.prepare(`
-            SELECT 1 FROM m1_transactions t
-            JOIN m1_journal_entries j ON j.transaction_id = t.id
+            SELECT 1 FROM transactions t
+            JOIN journal_entries j ON j.transaction_id = t.id
             WHERE j.account_id = ? AND t.status = 'posted'
               AND (t.origin = 'opening_balance' OR EXISTS (
-                  SELECT 1 FROM m1_journal_entries j2
-                  JOIN m1_accounts a2 ON j2.account_id = a2.id
+                  SELECT 1 FROM journal_entries j2
+                  JOIN accounts a2 ON j2.account_id = a2.id
                   WHERE j2.transaction_id = t.id AND a2.type = 'equity'
               ))
             LIMIT 1
@@ -265,7 +265,7 @@ export function resolveAccountBalanceInfo(
     let isClearing = false;
     try {
         const clearingRow = db.prepare(`
-            SELECT 1 FROM m1_reimbursement_workflows
+            SELECT 1 FROM reimbursement_workflows
             WHERE due_from_account_id = ? OR due_to_account_id = ?
             LIMIT 1
         `).get(acc.id, acc.id);
@@ -285,11 +285,11 @@ export function resolveAccountBalanceInfo(
     }
 
     const targetDate = effectiveDate || getLocalTodayCalendarDate();
-    const tableExists = (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'm1_balance_observations'").get() as any)?.cnt > 0;
+    const tableExists = (db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'balance_observations'").get() as any)?.cnt > 0;
     if (tableExists) {
         const placeholders = VALUATION_BALANCE_KINDS.map(() => '?').join(', ');
         const row = db.prepare(`
-            SELECT amount_cents, effective_date FROM m1_balance_observations
+            SELECT amount_cents, effective_date FROM balance_observations
             WHERE account_id = ?
               AND review_status = 'accepted'
               AND effective_date <= ?
@@ -300,13 +300,13 @@ export function resolveAccountBalanceInfo(
         `).get(acc.id, targetDate, ...VALUATION_BALANCE_KINDS) as any;
 
         if (row && row.amount_cents !== undefined && row.amount_cents !== null) {
-            const accountRow = db.prepare('SELECT type FROM m1_accounts WHERE id = ?').get(acc.id) as any;
+            const accountRow = db.prepare('SELECT type FROM accounts WHERE id = ?').get(acc.id) as any;
             const accountType = accountRow?.type || 'asset';
             const isDebitNormal = accountType === 'asset' || accountType === 'expense';
 
             const subRows = db.prepare(`
-                SELECT j.amount_cents FROM m1_journal_entries j
-                JOIN m1_transactions t ON j.transaction_id = t.id
+                SELECT j.amount_cents FROM journal_entries j
+                JOIN transactions t ON j.transaction_id = t.id
                 WHERE j.account_id = ? AND t.date > ? AND t.date <= ? AND t.status = 'posted'
             `).all(acc.id, row.effective_date, targetDate) as { amount_cents: number }[];
 
@@ -374,7 +374,7 @@ export function getEntityNetWorth(
     // Fetch all active accounts for entity
     const accounts = db.prepare(`
         SELECT id, name, type, currency, tracking_mode, opening_balance_cents
-        FROM m1_accounts
+        FROM accounts
         WHERE entity_id = ? AND is_active = 1
     `).all(entityId) as { id: string; name: string; type: string; currency: string; tracking_mode?: string; opening_balance_cents?: number | null }[];
 
@@ -462,9 +462,9 @@ export function getPeriodIncomeAndExpenses(
             a.sub_type,
             t.id as transaction_id,
             t.date
-        FROM m1_journal_entries j
-        JOIN m1_accounts a ON j.account_id = a.id
-        JOIN m1_transactions t ON j.transaction_id = t.id
+        FROM journal_entries j
+        JOIN accounts a ON j.account_id = a.id
+        JOIN transactions t ON j.transaction_id = t.id
         ${entityId === 'all' ? 'WHERE a.type IN (\'income\', \'expense\') AND t.status = \'posted\'' : 'WHERE a.entity_id = ? AND a.type IN (\'income\', \'expense\') AND t.status = \'posted\''}
     `;
     const params: any[] = [];
@@ -618,7 +618,7 @@ export function setExchangeRate(
     const now = new Date().toISOString();
 
     db.prepare(`
-        INSERT INTO m1_exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
+        INSERT INTO exchange_rates (id, from_currency, to_currency, rate, effective_date, source, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(from_currency, to_currency, effective_date) DO UPDATE SET
             rate = excluded.rate,
@@ -658,7 +658,7 @@ export function getExchangeRate(
 
     // Check direct rate (most recent on or before date)
     const direct = db.prepare(`
-        SELECT rate FROM m1_exchange_rates
+        SELECT rate FROM exchange_rates
         WHERE from_currency = ? AND to_currency = ? AND effective_date <= ?
         ORDER BY effective_date DESC LIMIT 1
     `).get(from, to, date) as any;
@@ -667,7 +667,7 @@ export function getExchangeRate(
 
     // Check inverse rate
     const inverse = db.prepare(`
-        SELECT rate FROM m1_exchange_rates
+        SELECT rate FROM exchange_rates
         WHERE from_currency = ? AND to_currency = ? AND effective_date <= ?
         ORDER BY effective_date DESC LIMIT 1
     `).get(to, from, date) as any;
@@ -891,7 +891,7 @@ export interface GetScopeNetWorthInput {
  * Tricky logic:
  * - For individual scope:
  *   * Looks up accounts where entity_id = target_entity_id.
- *   * Also looks up accounts where m1_account_ownership has entity_id = target_entity_id.
+ *   * Also looks up accounts where account_ownership has entity_id = target_entity_id.
  *   * If account has ownership allocations:
  *     - If this entity is an allocated owner, uses alloc.share_percentage.
  *     - If this entity is the primary entity but has allocated 100% to others, share is 0%.
@@ -950,7 +950,7 @@ export function getScopeNetWorth(
     const scopeType = input.scope_type || 'individual';
     const effectiveDate = input.as_of_date || getLocalTodayCalendarDate();
 
-    const targetEntity = db.prepare('SELECT id, name, type, currency FROM m1_entities WHERE id = ?').get(input.target_entity_id) as any;
+    const targetEntity = db.prepare('SELECT id, name, type, currency FROM entities WHERE id = ?').get(input.target_entity_id) as any;
     if (!targetEntity) {
         throw new Error(`Entity not found: ${input.target_entity_id}`);
     }
@@ -962,11 +962,11 @@ export function getScopeNetWorth(
     if (scopeType === 'individual') {
         // Find all candidate accounts:
         // 1. Accounts where entity_id = targetEntity.id
-        // 2. Accounts where m1_account_ownership has entity_id = targetEntity.id
+        // 2. Accounts where account_ownership has entity_id = targetEntity.id
         const candidateAccounts = db.prepare(`
             SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency, a.tracking_mode, a.opening_balance_cents
-            FROM m1_accounts a
-            LEFT JOIN m1_account_ownership o ON a.id = o.account_id
+            FROM accounts a
+            LEFT JOIN account_ownership o ON a.id = o.account_id
             WHERE (a.entity_id = ? OR o.entity_id = ?) AND a.is_active = 1
               AND a.type IN ('asset', 'liability')
             ORDER BY a.type ASC, a.name ASC
@@ -979,7 +979,7 @@ export function getScopeNetWorth(
 
             // Check ownership allocations using unified policy (Resubmission Item 6)
             const ownerships = db.prepare(`
-                SELECT entity_id, share_percentage FROM m1_account_ownership WHERE account_id = ?
+                SELECT entity_id, share_percentage FROM account_ownership WHERE account_id = ?
             `).all(acc.id) as Array<{ entity_id: string; share_percentage: number }>;
 
             const sharePercentage = getAttributedEntityShare(ownerships, acc.entity_id, targetEntity.id);
@@ -1080,8 +1080,8 @@ export function getScopeNetWorth(
         const placeholders = memberIds.map(() => '?').join(',');
         const accounts = db.prepare(`
             SELECT DISTINCT a.id, a.entity_id, a.name, a.type, a.sub_type, a.currency, a.tracking_mode, a.opening_balance_cents
-            FROM m1_accounts a
-            LEFT JOIN m1_account_ownership o ON a.id = o.account_id
+            FROM accounts a
+            LEFT JOIN account_ownership o ON a.id = o.account_id
             WHERE (a.entity_id IN (${placeholders}) OR o.entity_id IN (${placeholders}))
               AND a.is_active = 1 AND a.type IN ('asset', 'liability')
             ORDER BY a.type ASC, a.name ASC
@@ -1099,7 +1099,7 @@ export function getScopeNetWorth(
             // Resubmission Item 6: Household share is strictly the sum of the attributed shares
             // of its members using the unified policy.
             const ownerships = db.prepare(`
-                SELECT entity_id, share_percentage FROM m1_account_ownership WHERE account_id = ?
+                SELECT entity_id, share_percentage FROM account_ownership WHERE account_id = ?
             `).all(acc.id) as Array<{ entity_id: string; share_percentage: number }>;
 
             let householdShare = 0;
@@ -1251,7 +1251,7 @@ export function getActualCashFlowStatement(
     // 1. Identify all liquid cash/bank accounts for the entity
     const cashAccounts = db.prepare(`
         SELECT id, name, currency, tracking_mode, opening_balance_cents
-        FROM m1_accounts
+        FROM accounts
         WHERE entity_id = ? AND type = 'asset' AND sub_type IN ('cash', 'checking', 'savings')
     `).all(entityId) as Array<{
         id: string;
@@ -1313,7 +1313,7 @@ export function getActualCashFlowStatement(
 
             // Check if account has posted journal entries
             const hasJournalEntries = (db.prepare(`
-                SELECT COUNT(*) as cnt FROM m1_journal_entries WHERE account_id = ?
+                SELECT COUNT(*) as cnt FROM journal_entries WHERE account_id = ?
             `).get(acc.id) as any)?.cnt > 0;
 
             let basis: 'ledger' | 'observation' | 'unknown';
@@ -1422,8 +1422,8 @@ export function getActualCashFlowStatement(
             const curr = acc.currency.toUpperCase();
             const prevRows = db.prepare(`
                 SELECT j.amount_cents
-                FROM m1_journal_entries j
-                JOIN m1_transactions t ON j.transaction_id = t.id
+                FROM journal_entries j
+                JOIN transactions t ON j.transaction_id = t.id
                 WHERE j.account_id = ? AND t.status = 'posted'
                   AND (t.date < ? OR (t.date = ? AND t.origin = 'opening_balance'))
                   AND t.date <= ?
@@ -1436,8 +1436,8 @@ export function getActualCashFlowStatement(
             const curr = acc.currency.toUpperCase();
             const prevRows = db.prepare(`
                 SELECT j.amount_cents
-                FROM m1_journal_entries j
-                JOIN m1_transactions t ON j.transaction_id = t.id
+                FROM journal_entries j
+                JOIN transactions t ON j.transaction_id = t.id
                 WHERE j.account_id = ? AND t.status = 'posted' AND t.origin = 'opening_balance'
                   AND t.date <= ?
             `).all(acc.id, resolvedEndDate) as Array<{ amount_cents: number }>;
@@ -1494,8 +1494,8 @@ export function getActualCashFlowStatement(
             t.description,
             t.payee_or_payer,
             t.origin
-        FROM m1_journal_entries j
-        JOIN m1_transactions t ON j.transaction_id = t.id
+        FROM journal_entries j
+        JOIN transactions t ON j.transaction_id = t.id
         WHERE j.account_id IN (${placeholders}) AND t.status = 'posted' AND t.origin != 'opening_balance'
     `;
     const params: any[] = cashAccounts.map(a => a.id);
@@ -1551,8 +1551,8 @@ export function getActualCashFlowStatement(
 
     const counterpartStmt = db.prepare(`
         SELECT j.account_id, j.amount_cents, j.currency, a.type as account_type, a.sub_type
-        FROM m1_journal_entries j
-        JOIN m1_accounts a ON j.account_id = a.id
+        FROM journal_entries j
+        JOIN accounts a ON j.account_id = a.id
         WHERE j.transaction_id = ?
     `);
 
@@ -1901,7 +1901,7 @@ export function getAccountLedgerDrilldown(
     db: Database.Database,
     input: GetLedgerDrilldownInput
 ): AccountLedgerDrilldownResult {
-    const account = db.prepare('SELECT id, name, type, currency FROM m1_accounts WHERE id = ?').get(input.account_id) as any;
+    const account = db.prepare('SELECT id, name, type, currency FROM accounts WHERE id = ?').get(input.account_id) as any;
     if (!account) {
         throw new Error(`Account not found: ${input.account_id}`);
     }
@@ -1914,8 +1914,8 @@ export function getAccountLedgerDrilldown(
     if (input.start_date) {
         const priorRows = db.prepare(`
             SELECT j.amount_cents
-            FROM m1_journal_entries j
-            JOIN m1_transactions t ON j.transaction_id = t.id
+            FROM journal_entries j
+            JOIN transactions t ON j.transaction_id = t.id
             WHERE j.account_id = ? AND t.date < ? AND t.status = 'posted'
         `).all(account.id, input.start_date) as Array<{ amount_cents: number }>;
 
@@ -1936,8 +1936,8 @@ export function getAccountLedgerDrilldown(
             t.payee_or_payer,
             t.origin,
             t.evidence_refs
-        FROM m1_journal_entries j
-        JOIN m1_transactions t ON j.transaction_id = t.id
+        FROM journal_entries j
+        JOIN transactions t ON j.transaction_id = t.id
         WHERE j.account_id = ? AND t.status = 'posted'
     `;
     const params: any[] = [account.id];

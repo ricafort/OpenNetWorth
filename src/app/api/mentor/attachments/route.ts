@@ -1,11 +1,11 @@
 /**
  * Why this file exists:
  * Ingests files attached to a mentor chat message (text/CSV, images, PDFs) into
- * the existing m1_documents table so they reuse the vault's dedup, storage, and
+ * the existing documents table so they reuse the vault's dedup, storage, and
  * GET /api/documents/raw serving — no parallel attachment blob store.
  *
  * Tricky logic:
- * - content_hash is UNIQUE on m1_documents: an identical file re-attached under a
+ * - content_hash is UNIQUE on documents: an identical file re-attached under a
  *   different name reuses the existing row instead of failing or duplicating.
  *   A reused row missing extracted_text gets backfilled (e.g. first attach was
  *   before the PDF extractor existed).
@@ -19,7 +19,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
 import { extractPdfText } from '@/lib/domain/document/pdfTextExtractor';
 import { validateLocalSecurity, applySensitiveHeaders } from '@/lib/api/localSecurity';
 
@@ -54,7 +53,6 @@ export async function POST(req: NextRequest) {
         }
 
         const db = getDb();
-        initDocumentSchema(db);
 
         const attachments: { id: string; filename: string; mimeType: string; byteSize: number }[] = [];
         const disclosures: string[] = [];
@@ -94,11 +92,11 @@ export async function POST(req: NextRequest) {
                 disclosures.push(`${filename}: image attached — vision is off, so the model was not shown its content.`);
             }
 
-            const existing = db.prepare('SELECT id, extracted_text FROM m1_documents WHERE content_hash = ?').get(contentHash) as any;
+            const existing = db.prepare('SELECT id, extracted_text FROM documents WHERE content_hash = ?').get(contentHash) as any;
             if (existing) {
                 // Backfill extraction for rows stored before text extraction existed.
                 if (!existing.extracted_text && extractedText) {
-                    db.prepare('UPDATE m1_documents SET extracted_text = ? WHERE id = ?').run(extractedText, existing.id);
+                    db.prepare('UPDATE documents SET extracted_text = ? WHERE id = ?').run(extractedText, existing.id);
                 }
                 attachments.push({ id: existing.id, filename, mimeType, byteSize: buffer.byteLength });
                 continue;
@@ -106,7 +104,7 @@ export async function POST(req: NextRequest) {
 
             const id = crypto.randomUUID();
             db.prepare(`
-                INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, raw_content, extracted_text, created_at)
+                INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, raw_content, extracted_text, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `).run(id, filename, contentHash, mimeType, buffer.byteLength, rawContent, extractedText, new Date().toISOString());
             attachments.push({ id, filename, mimeType, byteSize: buffer.byteLength });

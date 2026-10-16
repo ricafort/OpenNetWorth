@@ -258,6 +258,12 @@ export interface Account {
     revision?: number;
     created_at: string;
     updated_at: string;
+    /** Annual interest rate as a percentage (e.g. 18.5). Liability/loan terms. */
+    interest_rate?: number | null;
+    /** Minimum periodic payment in cents. Liability terms. */
+    minimum_payment_cents?: number | null;
+    /** JSON-encoded investment metadata (ticker, shares, cost basis, …). Asset terms. */
+    investment_details?: string | null;
 }
 
 // --- BALANCE OBSERVATIONS & RECONCILIATION ---
@@ -314,7 +320,7 @@ export interface BalanceObservation {
     is_component_of_total?: boolean;
     parent_observation_id?: string | null;
     /**
-     * Delivery 2B: Evidence reference to originating statement document in m1_documents.
+     * Delivery 2B: Evidence reference to originating statement document in documents.
      * Allows opening the exact original PDF via /api/documents/raw?id=...
      */
     document_id?: string | null;
@@ -446,7 +452,7 @@ export interface BalanceExtractionProposal {
      */
     explicit_classification_correction?: boolean;
     /**
-     * Delivery 2B: Document ID in m1_documents when proposal originates from an uploaded statement PDF.
+     * Delivery 2B: Document ID in documents when proposal originates from an uploaded statement PDF.
      */
     document_id?: string | null;
     /**

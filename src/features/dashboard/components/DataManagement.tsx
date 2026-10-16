@@ -139,21 +139,6 @@ export default function DataManagement() {
                     <Trash2 size={16} />
                     Erase All Data
                 </button>
-
-                <div className="text-center">
-                    <button
-                        onClick={() => {
-                            if (confirm('This will overwrite current data. Proceed?')) {
-                                const { generateMockData } = require('@/infrastructure/local_driver');
-                                generateMockData();
-                                window.location.reload();
-                            }
-                        }}
-                        className="text-xs text-slate-400 hover:text-slate-600 font-medium underline"
-                    >
-                        Load Demo Data (For Testing)
-                    </button>
-                </div>
             </div>
         </div>
     );

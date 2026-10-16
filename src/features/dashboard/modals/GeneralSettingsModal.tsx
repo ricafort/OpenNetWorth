@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Save, Bell, Globe, TrendingUp, Cpu } from 'lucide-react';
-import { loadSettings, saveSettings, loadFreedomSettings, saveFreedomSettings } from '@/infrastructure/local_driver'; // Updated import
+import { saveSettings, saveFreedomSettings, loadSettingsFromVault, loadFreedomSettingsFromVault } from '@/infrastructure/local_driver'; // Updated import
 import { UserSettings, CurrencyCode } from '@/types'; // Updated import
 import { formatCurrency } from '@/lib/utils/currencyService';
 import { FreedomSettings } from '@/features/liabilities/types';
@@ -36,11 +36,19 @@ export default function GeneralSettingsModal({ isOpen, onClose, onSave }: Genera
     const [isLocalAiModalOpen, setIsLocalAiModalOpen] = useState(false);
 
     useEffect(() => {
-        if (isOpen) {
-            setSaveError(null);
-            setSettings(loadSettings());
-            setFreedomSettings(loadFreedomSettings());
-        }
+        if (!isOpen) return;
+        setSaveError(null);
+        // Settings and freedom settings are read from the SQLite settings kv; in
+        // demo mode the `demo_persona` cookie makes these reads target the
+        // persona vault (Phase 2.7).
+        let cancelled = false;
+        loadSettingsFromVault()
+            .then(s => { if (!cancelled) setSettings(s); })
+            .catch(() => { /* keep the visible defaults if the vault is unreachable */ });
+        loadFreedomSettingsFromVault()
+            .then(f => { if (!cancelled) setFreedomSettings(f); })
+            .catch(() => { /* keep the visible defaults if the vault is unreachable */ });
+        return () => { cancelled = true; };
     }, [isOpen]);
 
     /**

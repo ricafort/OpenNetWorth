@@ -47,15 +47,15 @@ export const MentorsPage = () => {
     // copied, deleted, regenerated, and persisted/restored without index keys.
     const [chat, setChat] = useState<MentorChatMessage[]>([]);
 
-    // Session persistence — conversations live in SQLite (m1_mentor_sessions /
-    // m1_mentor_messages) via /api/mentor/sessions. `hydrated` gates the persist
+    // Session persistence — conversations live in SQLite (mentor_sessions /
+    // mentor_messages) via /api/mentor/sessions. `hydrated` gates the persist
     // effect until the initial restore finishes so we never overwrite the latest
     // stored session with the empty startup state.
     const [sessions, setSessions] = useState<MentorSessionSummary[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
     const [hydrated, setHydrated] = useState(false);
 
-    // Attachments chosen but not yet sent — uploaded to m1_documents immediately via
+    // Attachments chosen but not yet sent — uploaded to documents immediately via
     // /api/mentor/attachments, then attached to the next user message.
     const [pendingAttachments, setPendingAttachments] = useState<MentorChatAttachment[]>([]);
     const [isUploading, setIsUploading] = useState(false);
@@ -436,7 +436,7 @@ export const MentorsPage = () => {
                 localConfig,
                 // Additive optional field: prior turns so the persona can hold a conversation.
                 ...(history.length ? { history } : {}),
-                // Additive optional field: m1_documents ids whose extracted text grounds this turn.
+                // Additive optional field: documents ids whose extracted text grounds this turn.
                 ...(attachments && attachments.length ? { attachments } : {})
             })
         });

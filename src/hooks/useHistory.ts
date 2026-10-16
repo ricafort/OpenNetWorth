@@ -1,40 +1,77 @@
 /**
  * useHistory Hook
- * 
- * Domain hook for net worth history.
- * Uses DataService abstraction for storage.
+ *
+ * Domain hook for the net worth snapshot series.
+ *
+ * Why this exists:
+ * The series lives in the embedded SQLite vault (`net_worth_snapshots`, renamed
+ * to `net_worth_snapshots` by the schema-collapse migration). Reads and writes
+ * go through `/api/vault` so the chart widget, the stat widgets, and the
+ * HistoryEditor all observe the exact same series — no localStorage-first
+ * reads disagreeing with SQLite writes.
+ *
+ * Tricky logic:
+ * - Demo mode (Phase 2.7) needs no special branch: the `demo_persona` cookie
+ *   makes `/api/vault` serve the persona vault's snapshots, and the route
+ *   refuses writes with 403.
+ * - The entity-scoped vault GET returns raw snake_case rows; we map them to
+ *   the camelCase NetWorthSnapshot shape the UI consumes and sort by date.
+ * - `scoped_save` upserts on (user_id, date), so the local list replaces by
+ *   date instead of blindly appending (a same-date re-record must not
+ *   duplicate the point on the chart).
  */
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { NetWorthSnapshot } from '@/types';
-import { getDataService } from '@/infrastructure/dataFactory';
 import { useProfile } from '@/contexts/ProfileContext';
 
+/** Raw `net_worth_snapshots` row shape returned by the entity-scoped vault GET. */
+interface HistoryRow {
+    id: string;
+    date: string;
+    total_assets: number;
+    total_liabilities: number;
+    net_worth: number;
+    currency: string | null;
+}
+
+function rowToSnapshot(row: HistoryRow): NetWorthSnapshot {
+    return {
+        id: row.id,
+        date: row.date,
+        totalAssets: row.total_assets,
+        totalLiabilities: row.total_liabilities,
+        netWorth: row.net_worth,
+        currency: (row.currency ?? undefined) as NetWorthSnapshot['currency']
+    };
+}
+
+const byDateAsc = (a: NetWorthSnapshot, b: NetWorthSnapshot) => a.date.localeCompare(b.date);
+
 export function useHistory() {
-    const { isDemoMode, profile } = useProfile();
-    const templateId = isDemoMode ? profile?.id : null;
+    const { profile } = useProfile();
 
     const [history, setHistory] = useState<NetWorthSnapshot[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const service = useMemo(
-        () => getDataService<NetWorthSnapshot>('history', isDemoMode, templateId),
-        [isDemoMode, templateId]
-    );
-
     const loadHistory = useCallback(async () => {
         setIsLoading(true);
         try {
-            const data = await service.getAll();
-            setHistory(data);
+            const res = await fetch('/api/vault?entity=history');
+            if (!res.ok) {
+                throw new Error(`Failed to load net worth history: HTTP ${res.status}`);
+            }
+            const json = await res.json();
+            const rows = (json.data ?? []) as HistoryRow[];
+            setHistory(rows.map(rowToSnapshot).sort(byDateAsc));
         } catch (error) {
             console.error('Failed to load history:', error);
         } finally {
             setIsLoading(false);
         }
-    }, [service]);
+    }, []);
 
     useEffect(() => {
         loadHistory();
@@ -51,8 +88,17 @@ export function useHistory() {
                 ...item,
                 currency: item.currency || (profile?.currency_code as any) || 'USD'
             };
-            await service.create(snapshotWithCurrency);
-            setHistory(prev => [...prev, snapshotWithCurrency]);
+            // In demo mode the route refuses this with 403 ("read-only").
+            const res = await fetch('/api/vault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'scoped_save', entity: 'history', item: snapshotWithCurrency })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `Failed to add snapshot: HTTP ${res.status}`);
+            }
+            setHistory(prev => [...prev.filter(h => h.date !== snapshotWithCurrency.date), snapshotWithCurrency].sort(byDateAsc));
         } catch (error) {
             console.error('Failed to add snapshot:', error);
             throw error;

@@ -9,11 +9,3 @@ export interface IRepository<T> {
     update(item: T): Promise<T>;
     delete(id: string): Promise<void>;
 }
-
-/**
- * Common configuration for Repository Factory
- */
-export interface RepositoryConfig {
-    isDemoMode: boolean;
-    templateId?: string | null;
-}

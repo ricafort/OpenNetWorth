@@ -19,7 +19,6 @@ if (typeof (globalThis as any).ResizeObserver === 'undefined') {
 }
 
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { getAccountBalance } from '@/lib/domain/accounting/balanceService';
 import { createEntity, createAccount, getAccount } from '@/lib/domain/accounting/accountService';
 import { 
@@ -29,7 +28,6 @@ import {
     approveProposals,
     linkProposalToTransaction
 } from '@/lib/domain/document/documentInboxService';
-import { initDocumentSchema } from '@/lib/domain/document/schema';
 import { 
     processPersonallyPaidBusinessExpense, 
     matchReimbursement, 
@@ -49,8 +47,6 @@ describe('E1 End-to-End Acceptance Journey', () => {
     beforeEach(() => {
         db = createTestDb();
         setTestDb(db);
-        initAccountingSchema(db);
-        initDocumentSchema(db);
         
         container = document.createElement('div');
         document.body.appendChild(container);
@@ -158,9 +154,9 @@ describe('E1 End-to-End Acceptance Journey', () => {
 
         // Step 4: Attach its receipt without another bank debit.
         const receiptDocId = crypto.randomUUID();
-        db.prepare(`INSERT INTO m1_documents (id, filename, content_hash, mime_type, byte_size, created_at) VALUES (?, 'receipt.pdf', 'hash123', 'application/pdf', 1024, datetime('now'))`).run(receiptDocId);
+        db.prepare(`INSERT INTO documents (id, filename, content_hash, mime_type, byte_size, created_at) VALUES (?, 'receipt.pdf', 'hash123', 'application/pdf', 1024, datetime('now'))`).run(receiptDocId);
         const receiptProposalId = crypto.randomUUID();
-        db.prepare(`INSERT INTO m1_proposals (id, document_id, event_date, original_currency, amount_cents, description, event_type, evidence_json, extraction_version, review_status, created_at, updated_at) VALUES (?, ?, '2026-09-12', 'AUD', -11000, 'Receipt', 'expense', '{}', '1.0', 'unreviewed', datetime('now'), datetime('now'))`).run(receiptProposalId, receiptDocId);
+        db.prepare(`INSERT INTO proposals (id, document_id, event_date, original_currency, amount_cents, description, event_type, evidence_json, extraction_version, review_status, created_at, updated_at) VALUES (?, ?, '2026-09-12', 'AUD', -11000, 'Receipt', 'expense', '{}', '1.0', 'unreviewed', datetime('now'), datetime('now'))`).run(receiptProposalId, receiptDocId);
         linkProposalToTransaction(db, { proposal_id: receiptProposalId, transaction_id: personalTxId });
 
         // Step 5: Classify it as business spending.
@@ -246,8 +242,8 @@ describe('E1 End-to-End Acceptance Journey', () => {
         expect(recon.diff_cents).toBe(0);
 
         // Step 9: Exercise D4 undo/replacement matching
-        const persTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(matchedWf.personal_reimbursement_tx_id) as any;
-        const busTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(matchedWf.business_reimbursement_tx_id) as any;
+        const persTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(matchedWf.personal_reimbursement_tx_id) as any;
+        const busTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(matchedWf.business_reimbursement_tx_id) as any;
         const undoneWf = undoReimbursementMatch(db, {
             workflowId: matchedWf.id,
             expectedPersonalTxId: persTx.id,
@@ -266,30 +262,28 @@ describe('E1 End-to-End Acceptance Journey', () => {
             currency: 'AUD'
         }).account;
         
-        const origPersTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(undoneWf.personal_transaction_id) as any;
-        const origBusTx = db.prepare('SELECT * FROM m1_transactions WHERE id = ?').get(undoneWf.business_transaction_id) as any;
+        const origPersTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(undoneWf.personal_transaction_id) as any;
+        const origBusTx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(undoneWf.business_transaction_id) as any;
 
         undoPersonallyPaidBusinessExpense(db, {
             workflowId: undoneWf.id,
             personalExpenseAccountId: personalExpenseAcc.id,
-            expectedPersonalTxId: origPersTx.id,
-            expectedBusinessTxId: origBusTx.id,
             expectedPersonalRevision: origPersTx.revision,
             expectedBusinessRevision: origBusTx.revision,
             performedBy: 'TestUser'
         });
-        const finalWfCheck = db.prepare('SELECT status FROM m1_reimbursement_workflows WHERE id = ?').get(undoneWf.id) as any;
+        const finalWfCheck = db.prepare('SELECT status FROM reimbursement_workflows WHERE id = ?').get(undoneWf.id) as any;
         expect(finalWfCheck.status).toBe('cancelled');
 
         // Step 10: After reimport, assert unchanged bank balances, transaction counts, evidence links and reviewed proposal state.
-        const bankTxCountPre = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE status = 'posted'").get() as any).c;
+        const bankTxCountPre = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE status = 'posted'").get() as any).c;
         const reimportResult = ingestCsvDocument(db, {
             filename: 'statement.csv',
             raw_content: csvContent,
             mapping,
             target_account_id: businessBank.id
         });
-        const bankTxCountPost = (db.prepare("SELECT COUNT(*) as c FROM m1_transactions WHERE status = 'posted'").get() as any).c;
+        const bankTxCountPost = (db.prepare("SELECT COUNT(*) as c FROM transactions WHERE status = 'posted'").get() as any).c;
         
         expect(bankTxCountPre).toBe(bankTxCountPost);
         expect(reimportResult.proposals[0].review_status).toBe('approved');
@@ -326,7 +320,7 @@ describe('E1 End-to-End Acceptance Journey', () => {
         });
 
         // Assert the changed category persists
-        const updatedProp = db.prepare('SELECT suggested_category FROM m1_proposals WHERE id = ?').get(unapprovedPropId) as any;
+        const updatedProp = db.prepare('SELECT suggested_category FROM proposals WHERE id = ?').get(unapprovedPropId) as any;
         expect(updatedProp.suggested_category).toBe('entertainment');
 
         expect(container.innerHTML).toContain('Target Bank Account');

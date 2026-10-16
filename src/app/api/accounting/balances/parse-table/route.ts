@@ -3,7 +3,7 @@
  * 
  * Why this file exists:
  * Implements Delivery 1 deterministic structured parsing for pasted CSVs, TSVs, or tables.
- * Returns parsed balance proposals alongside match suggestions against existing `m1_accounts`.
+ * Returns parsed balance proposals alongside match suggestions against existing `accounts`.
  * 
  * Tricky logic:
  * - Match suggestions: Matches candidate accounts by name similarity or previous source mappings.
@@ -14,7 +14,6 @@
 
 import { NextResponse } from 'next/server';
 import { getDb } from '@/infrastructure/sqlite/db';
-import { initAccountingSchema } from '@/lib/domain/accounting/schema';
 import { parseStructuredTable } from '@/lib/domain/accounting/structuredBalanceParser';
 import { listAccounts } from '@/lib/domain/accounting/accountService';
 import { getLatestObservation } from '@/lib/domain/accounting/balanceObservationService';
@@ -22,7 +21,6 @@ import { getLatestObservation } from '@/lib/domain/accounting/balanceObservation
 export async function POST(request: Request) {
     try {
         const db = getDb();
-        initAccountingSchema(db);
 
         const body = await request.json();
         const { text, defaultCurrency = 'AUD', defaultDate } = body;
