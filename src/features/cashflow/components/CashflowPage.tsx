@@ -38,7 +38,8 @@ import {
     CheckCircle2,
     Info,
     Layers,
-    FileText
+    FileText,
+    Zap
 } from 'lucide-react';
 import { RecurringTransaction, CashFlowEntry } from '@/features/cashflow/types';
 import RecurringList from '@/features/cashflow/components/RecurringList';
@@ -50,6 +51,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { ContentCard } from '@/components/common/ContentCard';
 import { persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 import { readDemoPersona } from '@/features/demo/demoMode';
+import { applyRecurringToMonth, AutopilotGenerationResult } from '@/features/cashflow/data/autopilotGenerator';
 import { Entity, CashFlowStatementResult, CashFlowItem, CurrencyCode, formatMoney } from '@/lib/domain/accounting/types';
 import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
 import Link from 'next/link';
@@ -69,6 +71,14 @@ function rowToEntry(row: CashFlowRow): CashFlowEntry {
 }
 
 const byMonthAsc = (a: CashFlowEntry, b: CashFlowEntry) => a.month.localeCompare(b.month);
+
+/** Liquid account option for the Autopilot funding-account selector. */
+interface FundingAccountOption {
+    id: string;
+    name: string;
+    currency: string;
+    formatted_balance: string;
+}
 
 export const CashflowPage = () => {
     const { baseCurrency } = useNetWorth();
@@ -105,6 +115,18 @@ export const CashflowPage = () => {
     } = useCashflowQuery();
     const [isAddingRecurring, setIsAddingRecurring] = useState(false);
     const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null);
+
+    // --- AUTOPILOT GENERATION STATE ---
+    // The generator never guesses where money moves: the panel pins an explicit
+    // funding account (liquid, same currency) before schedules become real
+    // ledger postings with origin='recurring'.
+    const isDemoMode = Boolean(readDemoPersona());
+    const [autopilotMonth, setAutopilotMonth] = useState<string>(today.slice(0, 7));
+    const [fundingAccounts, setFundingAccounts] = useState<FundingAccountOption[]>([]);
+    const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('');
+    const [isGenerating, setIsGenerating] = useState<boolean>(false);
+    const [generationResult, setGenerationResult] = useState<AutopilotGenerationResult | null>(null);
+    const [generationError, setGenerationError] = useState<string | null>(null);
 
     // --- LEGACY MANUAL LOGS STATE ---
     const [entries, setEntries] = useState<CashFlowEntry[]>([]);
@@ -247,6 +269,48 @@ export const CashflowPage = () => {
         return () => { cancelled = true; };
     }, []);
 
+    // Load the liquid accounts that can fund Autopilot generation for the
+    // selected entity. The ledger API returns every account with balances;
+    // only cash/checking/savings assets can receive or pay a schedule.
+    useEffect(() => {
+        if (!selectedEntityId) {
+            setFundingAccounts([]);
+            setSelectedBankAccountId('');
+            return;
+        }
+        let cancelled = false;
+        const loadFundingAccounts = async () => {
+            try {
+                const res = await fetch(`/api/accounting?entity_id=${encodeURIComponent(selectedEntityId)}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const liquid = ((data.accounts ?? []) as any[])
+                    .filter(a => a.type === 'asset'
+                        && ['cash', 'checking', 'savings'].includes(a.sub_type)
+                        && a.is_active !== false)
+                    .map(a => ({
+                        id: a.id,
+                        name: a.name,
+                        currency: a.currency,
+                        formatted_balance: a.formatted_balance
+                    }));
+                if (!cancelled) {
+                    setFundingAccounts(liquid);
+                    setSelectedBankAccountId(prev =>
+                        liquid.some(a => a.id === prev) ? prev : (liquid[0]?.id ?? ''));
+                }
+            } catch (e) {
+                console.error('Failed to load liquid accounts for Autopilot:', e);
+                if (!cancelled) {
+                    setFundingAccounts([]);
+                    setSelectedBankAccountId('');
+                }
+            }
+        };
+        loadFundingAccounts();
+        return () => { cancelled = true; };
+    }, [selectedEntityId]);
+
     // Preset Period Handlers
     const handleSetPeriod = (preset: 'this_month' | 'last_month' | 'ytd') => {
         setPeriodPreset(preset);
@@ -359,6 +423,40 @@ export const CashflowPage = () => {
         const item = recurring.find(r => r.id === id);
         if (item) {
             await updateRecurringContext({ ...item, is_active: !item.is_active });
+        }
+    };
+
+    // Materialize the month's active schedules as real ledger postings.
+    // Tricky logic:
+    // - Re-running the same month is safe: each posting carries the idempotency
+    //   key `recurring:<schedule id>:<month>` and the ledger returns the
+    //   existing transaction instead of duplicating it.
+    // - The funding account's currency is passed to the generator so
+    //   different-currency schedules are skipped, never converted at a fake 1:1.
+    // - Postings move cash, so the Actual tab (and every other listener) is
+    //   refreshed via the shared balances-updated event.
+    const handleGenerateAutopilot = async () => {
+        setGenerationError(null);
+        setGenerationResult(null);
+        const account = fundingAccounts.find(a => a.id === selectedBankAccountId);
+        if (!selectedEntityId || !account) {
+            setGenerationError('Select an entity and a liquid funding account before generating.');
+            return;
+        }
+        setIsGenerating(true);
+        try {
+            const result = await applyRecurringToMonth(recurring, autopilotMonth, {
+                entityId: selectedEntityId,
+                bankAccountId: account.id,
+                bankAccountCurrency: account.currency
+            });
+            setGenerationResult(result);
+            window.dispatchEvent(new Event('opennetworth_balances_updated'));
+        } catch (err: any) {
+            console.error('Autopilot generation failed:', err);
+            setGenerationError(err?.message || 'Autopilot generation failed.');
+        } finally {
+            setIsGenerating(false);
         }
     };
 
@@ -1038,7 +1136,8 @@ export const CashflowPage = () => {
                         <div>
                             <h3 className="font-bold text-blue-900 dark:text-blue-200 text-lg">Autopilot Scheduled Inflows & Outflows</h3>
                             <p className="text-blue-700 dark:text-blue-300 text-sm mt-1 leading-relaxed">
-                                Define recurring income and expense commitments. These budgets are kept strictly separate from your actual double-entry postings.
+                                Define recurring income and expense commitments. Schedules stay separate from your actual
+                                postings until you generate a month — then they become real double-entry transactions.
                             </p>
                         </div>
                         <div className="ml-auto">
@@ -1051,6 +1150,99 @@ export const CashflowPage = () => {
                             </button>
                         </div>
                     </div>
+
+                    {/* Generate Scheduled Activity: turns active schedules into real
+                        double-entry postings (origin "recurring") in the funding account. */}
+                    <ContentCard className="p-5 border border-border">
+                        <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+                            <div className="flex-1">
+                                <h4 className="font-bold text-foreground text-sm flex items-center gap-2">
+                                    <Zap size={16} className="text-blue-600" />
+                                    Generate Scheduled Activity
+                                </h4>
+                                <p className="text-xs text-muted-foreground mt-1 max-w-xl leading-relaxed">
+                                    Posts every active schedule for the chosen month as real double-entry
+                                    transactions funded by the account below. Re-running the same month is
+                                    safe — already-posted schedules are never duplicated.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-end gap-3">
+                                <div className="space-y-1">
+                                    <label htmlFor="autopilot-month" className="text-xs font-bold text-muted-foreground">Month</label>
+                                    <input
+                                        id="autopilot-month"
+                                        type="month"
+                                        value={autopilotMonth}
+                                        onChange={(e) => setAutopilotMonth(e.target.value)}
+                                        className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label htmlFor="autopilot-account" className="text-xs font-bold text-muted-foreground">Funding account</label>
+                                    <select
+                                        id="autopilot-account"
+                                        value={selectedBankAccountId}
+                                        onChange={(e) => setSelectedBankAccountId(e.target.value)}
+                                        className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 max-w-[260px]"
+                                    >
+                                        {fundingAccounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>
+                                                {acc.name} ({acc.currency}) — {acc.formatted_balance}
+                                            </option>
+                                        ))}
+                                        {fundingAccounts.length === 0 && (
+                                            <option value="">No liquid accounts found</option>
+                                        )}
+                                    </select>
+                                </div>
+                                <button
+                                    onClick={handleGenerateAutopilot}
+                                    disabled={isGenerating || isDemoMode || !selectedBankAccountId}
+                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-colors text-xs"
+                                >
+                                    <Repeat size={15} className={isGenerating ? 'animate-spin' : ''} />
+                                    {isGenerating ? 'Generating…' : 'Generate Month'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {isDemoMode && (
+                            <p className="mt-3 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                                Demo mode is read-only — generation is disabled. Schedules stay visible for planning.
+                            </p>
+                        )}
+
+                        {generationError && (
+                            <div role="alert" className="mt-3 p-3 bg-destructive/15 border border-destructive/30 text-destructive rounded-xl text-xs font-semibold flex items-center gap-2">
+                                <AlertTriangle size={15} className="shrink-0" />
+                                <span>{generationError}</span>
+                            </div>
+                        )}
+
+                        {generationResult && (
+                            <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold ${
+                                generationResult.errors.length > 0
+                                    ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                                    : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                            }`}>
+                                <div className="flex items-center gap-2">
+                                    {generationResult.errors.length > 0
+                                        ? <AlertTriangle size={15} className="shrink-0" />
+                                        : <CheckCircle2 size={15} className="shrink-0" />}
+                                    <span>
+                                        {generationResult.month}: {generationResult.posted} posted, {generationResult.skipped} skipped.
+                                    </span>
+                                </div>
+                                {generationResult.errors.length > 0 && (
+                                    <ul className="mt-2 ml-5 list-disc space-y-0.5 font-medium">
+                                        {generationResult.errors.map((err, i) => (
+                                            <li key={i}>{err}</li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        )}
+                    </ContentCard>
 
                     <RecurringList
                         transactions={recurring}
