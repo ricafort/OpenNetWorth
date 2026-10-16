@@ -1847,7 +1847,7 @@ export const CashflowPage = () => {
                 </div>
             )}
 
-            {/* TAB 5: FORECAST — forward projection from today (schedules + budgets) */}
+            {/* TAB 5: FORECAST — forward projection from today (schedules + budgets + debt payments) */}
             {activeTab === 'forecast' && (
                 <div className="space-y-6">
                     <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-100 dark:border-sky-900 p-6 rounded-2xl flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -1857,10 +1857,12 @@ export const CashflowPage = () => {
                         <div>
                             <h3 className="font-bold text-sky-900 dark:text-sky-200 text-lg">Cash Flow Forecast</h3>
                             <p className="text-sky-700 dark:text-sky-300 text-sm mt-1 leading-relaxed max-w-2xl">
-                                Projects your liquid balance forward from today using Autopilot schedules and monthly
-                                budgets. It starts from your actual ledger balance, so months whose schedule wires are
-                                already posted are never counted twice. Schedules are vault-wide; budgets belong to the
-                                selected entity. Currencies are never converted or combined.
+                                Projects your liquid balance forward from today using Autopilot schedules, monthly
+                                budgets, and debt minimum payments. It starts from your actual ledger balance, so months
+                                whose schedule wires or debt payments are already posted are never counted twice.
+                                Debts without explicit minimum-payment terms are estimated and flagged "est.".
+                                Schedules are vault-wide; budgets and debts belong to the selected entity. Currencies
+                                are never converted or combined.
                             </p>
                         </div>
                         <div className="ml-auto flex items-center gap-2 shrink-0">
@@ -1998,7 +2000,7 @@ export const CashflowPage = () => {
                                     </h4>
                                     {fc.events.length === 0 ? (
                                         <p className="text-xs text-muted-foreground italic">
-                                            No schedules or budgets project into this window.
+                                            No schedules, budgets, or debt payments project into this window.
                                         </p>
                                     ) : (
                                         <ul className="divide-y divide-border border border-border rounded-xl overflow-hidden">
@@ -2010,9 +2012,12 @@ export const CashflowPage = () => {
                                                     <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wide shrink-0 ${
                                                         ev.kind === 'schedule'
                                                             ? 'bg-blue-500/10 text-blue-600'
-                                                            : 'bg-violet-500/10 text-violet-600'
+                                                            : ev.kind === 'debt_payment'
+                                                                ? 'bg-amber-500/10 text-amber-600'
+                                                                : 'bg-violet-500/10 text-violet-600'
                                                     }`}>
-                                                        {ev.kind}
+                                                        {ev.kind === 'debt_payment' ? 'debt' : ev.kind}
+                                                        {ev.estimated ? ' est.' : ''}
                                                     </span>
                                                     <span className="font-bold text-foreground truncate">{ev.label}</span>
                                                     <span className={`ml-auto font-mono font-black shrink-0 ${
@@ -2029,7 +2034,7 @@ export const CashflowPage = () => {
                         ))
                     )}
 
-                    {forecastReport && (forecastReport.excluded_schedules.length > 0 || forecastReport.excluded_budget_categories.length > 0) && (
+                    {forecastReport && (forecastReport.excluded_schedules.length > 0 || forecastReport.excluded_budget_categories.length > 0 || forecastReport.excluded_debt_accounts.length > 0) && (
                         <div className="p-4 bg-muted/40 border border-border rounded-2xl text-xs space-y-2">
                             <p className="font-bold text-foreground flex items-center gap-2">
                                 <Info size={14} className="text-muted-foreground" />
@@ -2049,6 +2054,17 @@ export const CashflowPage = () => {
                                     <span className="font-bold text-foreground capitalize">{b.category.replaceAll('_', ' ')}</span>
                                     <span className="font-mono"> ({b.currency})</span> budget &mdash; already covered by a
                                     recurring schedule in the same category, so it is counted once.
+                                </p>
+                            ))}
+                            {forecastReport.excluded_debt_accounts.map(d => (
+                                <p key={d.id} className="text-muted-foreground">
+                                    <span className="font-bold text-foreground">{d.name}</span>
+                                    <span className="font-mono"> ({d.currency})</span> debt &mdash;{' '}
+                                    {d.reason === 'no_liquid_accounts'
+                                        ? 'no liquid account in this currency for the selected entity.'
+                                        : d.reason === 'balance_unknown'
+                                            ? 'the balance owed is unknown and no minimum payment is set, so there is nothing to estimate from.'
+                                            : 'a recurring schedule already covers debt repayments, so it is counted once.'}
                                 </p>
                             ))}
                         </div>
