@@ -106,7 +106,7 @@ export async function GET(request: Request) {
         const db = getDbForRequest(request);
 
         if (entity) {
-            const allowed = ['goals', 'recurring_schedules', 'net_worth_snapshots', 'cash_flow_summaries', 'profiles', 'settings'];
+            const allowed = ['goals', 'recurring_schedules', 'net_worth_snapshots', 'cash_flow_summaries', 'profiles', 'settings', 'budgets'];
             const table = entity === 'recurring' ? 'recurring_schedules' :
                 entity === 'history' ? 'net_worth_snapshots' :
                     entity === 'cashFlow' ? 'cash_flow_summaries' : entity;
@@ -215,6 +215,9 @@ export async function GET(request: Request) {
             const mentor_sessions = tableExists('mentor_sessions') ? db.prepare('SELECT * FROM mentor_sessions').all() : [];
             const mentor_messages = tableExists('mentor_messages') ? db.prepare('SELECT * FROM mentor_messages ORDER BY session_id, seq ASC').all() : [];
 
+            // Budgets (migration 0010) — optional collection, same rationale as mentor chats
+            const budgets = tableExists('budgets') ? db.prepare('SELECT * FROM budgets ORDER BY category ASC, currency ASC').all() : [];
+
             const snapshot: any = {
                 goals,
                 recurring,
@@ -262,6 +265,11 @@ export async function GET(request: Request) {
             if (mentor_messages.length > 0) {
                 snapshot.mentor_messages = mentor_messages;
             }
+            // Budgets travel with backups only when they exist — v2 archives predate
+            // them, so omitting empty arrays keeps restores backward-compatible.
+            if (budgets.length > 0) {
+                snapshot.budgets = budgets;
+            }
 
             return snapshot;
         })();
@@ -288,7 +296,8 @@ export async function GET(request: Request) {
                     drafts: snapshot.drafts.length,
                     documents: snapshot.documents.length,
                     proposals: snapshot.proposals.length,
-                    categorization_rules: snapshot.categorization_rules?.length || 0
+                    categorization_rules: snapshot.categorization_rules?.length || 0,
+                    budgets: snapshot.budgets?.length || 0
                 }
             },
             vault: {
@@ -569,6 +578,7 @@ export async function POST(request: Request) {
                 db.prepare("DELETE FROM net_worth_snapshots WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM cash_flow_summaries WHERE user_id = 'local_user'").run();
                 db.prepare("DELETE FROM settings").run();
+                db.prepare("DELETE FROM budgets WHERE user_id = 'local_user'").run();
             });
             clearTx();
             return secureJson({ success: true, message: 'Vault wiped successfully' });
@@ -1463,6 +1473,38 @@ export async function POST(request: Request) {
                                 : null,
                             attachments_json: typeof m.attachments_json === 'string' ? m.attachments_json : null,
                             created_at: typeof m.created_at === 'string' ? m.created_at : new Date().toISOString()
+                        });
+                    }
+                }
+
+                // Insert budgets (OPTIONAL collection — v2 archives predate migration 0010,
+                // so older backups restore untouched. Budgets are also absent from the
+                // global wipe above: existing limits survive restores of backups that carry
+                // no budget data, and are replaced only when the backup has any.)
+                if (Array.isArray(rawVault.budgets)) {
+                    db.prepare('DELETE FROM budgets').run();
+
+                    const insertBudget = db.prepare(`
+                        INSERT INTO budgets (id, user_id, entity_id, category, limit_cents, currency, created_at, updated_at)
+                        VALUES (@id, @user_id, @entity_id, @category, @limit_cents, @currency, @created_at, @updated_at)
+                    `);
+                    for (const b of rawVault.budgets) {
+                        if (!b || typeof b !== 'object') continue;
+                        if (typeof b.entity_id !== 'string' || !b.entity_id) continue;
+                        if (typeof b.category !== 'string' || !b.category.trim()) continue;
+                        // Skip malformed money rows rather than aborting the whole restore.
+                        if (!Number.isSafeInteger(b.limit_cents) || (b.limit_cents as number) <= 0) continue;
+                        const budgetCurrency = typeof b.currency === 'string' ? b.currency.trim().toUpperCase() : '';
+                        if (!/^[A-Z]{3}$/.test(budgetCurrency)) continue;
+                        insertBudget.run({
+                            id: typeof b.id === 'string' && b.id ? b.id : crypto.randomUUID(),
+                            user_id: typeof b.user_id === 'string' && b.user_id ? b.user_id : 'local_user',
+                            entity_id: b.entity_id,
+                            category: b.category.trim(),
+                            limit_cents: b.limit_cents,
+                            currency: budgetCurrency,
+                            created_at: typeof b.created_at === 'string' ? b.created_at : new Date().toISOString(),
+                            updated_at: typeof b.updated_at === 'string' ? b.updated_at : new Date().toISOString()
                         });
                     }
                 }

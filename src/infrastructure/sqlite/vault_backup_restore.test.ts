@@ -9,6 +9,9 @@
  * 4. Version 2 restores distinguish missing required collections (invalid archive) from explicitly empty collections (valid empty data).
  * 5. Deep domain validation: balanced postings per currency, safe integer amounts, supported currencies, and evidence/source references.
  * 6. Full round-trip consistent snapshot export and restore.
+ * 7. Budgets (migration 0010) are an OPTIONAL collection: they round-trip through v3
+ *    snapshots, survive restores of archives that carry no budget data, and malformed
+ *    rows are skipped rather than failing the archive.
  * 
  * Tricky logic:
  * Every test runs in an isolated in-memory SQLite database (:memory:) via `createTestDb()` and `setTestDb()`.
@@ -23,6 +26,7 @@ import path from 'path';
 import { POST as vaultPost, GET as vaultGet } from '@/app/api/vault/route';
 import { createTestDb, setTestDb, closeDb } from '@/infrastructure/sqlite/db';
 import { appendMessage, createSession } from '@/lib/domain/mentor/mentorSessionService';
+import { upsertBudget } from '@/lib/domain/accounting/budgetService';
 import Database from 'better-sqlite3';
 
 describe('Vault Backup & Restore Safety (Batch A2)', () => {
@@ -599,5 +603,95 @@ describe('Vault Backup & Restore Safety (Batch A2)', () => {
         // Restore stores string settings verbatim (only non-strings get JSON-wrapped).
         expect((testDb.prepare("SELECT value FROM settings WHERE key = 'baseCurrency'").get() as any).value)
             .toBe('AUD');
+
+        // v2 archives predate budgets — the restore must not touch the budgets table.
+        expect((testDb.prepare('SELECT COUNT(*) AS cnt FROM budgets').get() as any).cnt).toBe(0);
+    });
+
+    // Budgets (migration 0010) follow the mentor-chat precedent: OPTIONAL
+    // collections — omitted from snapshots when empty, absent from v2 archives,
+    // and never part of the global restore wipe.
+    it('Test 11: Budgets round-trip through snapshot export and v3 restore', async () => {
+        // Empty vault → snapshot omits the budgets key entirely (v2-compatible shape).
+        const emptySnapshot = await (await vaultGet(new Request('http://localhost:4000/api/vault'))).json();
+        expect(emptySnapshot.vault.budgets).toBeUndefined();
+
+        upsertBudget(testDb, { entity_id: 'ent-person', category: 'groceries', currency: 'AUD', limit_cents: 40000 });
+        upsertBudget(testDb, { entity_id: 'ent-person', category: 'utilities', currency: 'AUD', limit_cents: 18000 });
+
+        const getRes = await vaultGet(new Request('http://localhost:4000/api/vault'));
+        expect(getRes.status).toBe(200);
+        const snapshot = await getRes.json();
+        expect(snapshot.vault.budgets.length).toBe(2);
+        expect(snapshot.manifest.recordCounts.budgets).toBe(2);
+
+        // Wipe and restore from the snapshot — limits come back exactly.
+        testDb.prepare('DELETE FROM budgets').run();
+
+        const restoreRes = await vaultPost(new Request('http://localhost:4000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'bulk_restore',
+                schemaVersion: 3,
+                manifest: snapshot.manifest,
+                vault: snapshot.vault
+            })
+        }));
+        expect(restoreRes.status).toBe(200);
+
+        const rows = testDb.prepare('SELECT * FROM budgets ORDER BY category ASC').all() as any[];
+        expect(rows.length).toBe(2);
+        expect(rows[0].category).toBe('groceries');
+        expect(rows[0].limit_cents).toBe(40000);
+        expect(rows[0].currency).toBe('AUD');
+        expect(rows[0].entity_id).toBe('ent-person');
+        expect(rows[1].category).toBe('utilities');
+    });
+
+    it('Test 12: restore of an archive without budget data preserves existing budgets', async () => {
+        upsertBudget(testDb, { entity_id: 'ent-person', category: 'groceries', currency: 'AUD', limit_cents: 40000 });
+
+        // v2-era archive knows nothing about budgets — budgets must survive untouched.
+        const res = await vaultPost(new Request('http://localhost:4000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(validV2Payload())
+        }));
+        expect(res.status).toBe(200);
+
+        const rows = testDb.prepare('SELECT * FROM budgets').all() as any[];
+        expect(rows.length).toBe(1);
+        expect(rows[0].category).toBe('groceries');
+        expect(rows[0].limit_cents).toBe(40000);
+    });
+
+    it('Test 13: restore skips malformed budget rows instead of failing the archive', async () => {
+        const snapshot = await (await vaultGet(new Request('http://localhost:4000/api/vault'))).json();
+        snapshot.vault.budgets = [
+            { entity_id: 'ent-person', category: 'groceries', currency: 'AUD', limit_cents: 40000 },
+            { entity_id: '', category: 'utilities', currency: 'AUD', limit_cents: 18000 },
+            { entity_id: 'ent-person', category: '   ', currency: 'AUD', limit_cents: 9000 },
+            { entity_id: 'ent-person', category: 'fun', currency: 'AUD', limit_cents: 0 },
+            { entity_id: 'ent-person', category: 'fees', currency: 'toolong', limit_cents: 5000 },
+            { entity_id: 'ent-person', category: 'bank_fee', currency: 'AUD', limit_cents: 12.5 }
+        ];
+
+        const restoreRes = await vaultPost(new Request('http://localhost:4000/api/vault', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'bulk_restore',
+                schemaVersion: 3,
+                manifest: snapshot.manifest,
+                vault: snapshot.vault
+            })
+        }));
+        expect(restoreRes.status).toBe(200);
+
+        // Only the fully valid row lands; the archive itself is accepted.
+        const rows = testDb.prepare('SELECT * FROM budgets').all() as any[];
+        expect(rows.length).toBe(1);
+        expect(rows[0].category).toBe('groceries');
     });
 });
