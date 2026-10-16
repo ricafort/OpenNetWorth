@@ -4,8 +4,9 @@
  * that it predicts what the ledger WILL book without double-counting what it
  * already booked — so the tests pin the mirror-autopilot model: monthly-
  * normalized schedule amounts, the idempotency-key skip for already-generated
- * months, integer-exact budget daily accrual, and the budget×schedule overlap
- * exclusion.
+ * months, integer-exact budget daily accrual, the budget×schedule overlap
+ * exclusion, and the debt-payment model (month-start timing, posted-debit
+ * skip, estimate flagging, schedule-wins suppression).
  *
  * Tricky logic exercised here:
  * - `recurring_schedules.amount` is REAL major units → cents after normalization.
@@ -22,7 +23,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '@/infrastructure/sqlite/migrations';
 import { createEntity, createAccount } from './accountService';
-import { ensureExpenseAccount, recordExpense } from './transactionService';
+import { ensureExpenseAccount, recordExpense, recordCreditCardRepayment } from './transactionService';
 import { upsertBudget } from './budgetService';
 import { getCashFlowForecast, clampHorizonDays } from './forecastService';
 import { CALCULATION_ENGINE_VERSION } from './balanceService';
@@ -220,6 +221,126 @@ describe('forecastService', () => {
             ]);
             // Deducted once: only schedule events, no budget events.
             expect(usd(report).events.every(e => e.kind === 'schedule')).toBe(true);
+        });
+    });
+
+    describe('debt minimum payments', () => {
+        function makeLiability(opts: {
+            name: string;
+            sub_type?: string;
+            currency?: string;
+            opening_balance_cents?: number | null;
+            minimum_payment_cents?: number | null;
+            interest_rate?: number | null;
+            tracking_mode?: 'balance' | 'transactions';
+        }) {
+            return createAccount(db, {
+                entity_id: entityId,
+                name: opts.name,
+                type: 'liability',
+                sub_type: (opts.sub_type ?? 'credit_card') as any,
+                currency: (opts.currency ?? 'USD') as any,
+                opening_balance_cents: opts.opening_balance_cents === undefined ? 100000 : opts.opening_balance_cents,
+                opening_date: '2026-01-01',
+                minimum_payment_cents: opts.minimum_payment_cents ?? null,
+                interest_rate: opts.interest_rate ?? null,
+                tracking_mode: opts.tracking_mode
+            }).account;
+        }
+
+        it('projects explicit minimum_payment_cents once per calendar month', () => {
+            makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500 });
+            const usdForecast = usd(forecast(30));
+            const debtEvents = usdForecast.events.filter(e => e.kind === 'debt_payment');
+            expect(debtEvents.length).toBeGreaterThanOrEqual(1);
+            expect(debtEvents.every(e =>
+                e.signed_amount_cents === -3500 && e.direction === 'outflow' && !e.estimated
+            )).toBe(true);
+            // Exactly the calendar months the horizon touches.
+            const expectedMonths = new Set<string>();
+            for (let d = 0; d <= 30; d++) expectedMonths.add(monthKey(addDays(today, d)));
+            expect(new Set(debtEvents.map(e => monthKey(e.date)))).toEqual(expectedMonths);
+            // Current month clamps to today; later months land on the 1st.
+            const current = debtEvents.find(e => monthKey(e.date) === monthKey(today))!;
+            expect(current.date).toBe(today);
+            expect(current.label).toBe('Visa Card');
+            expect(current.category).toBe('credit_card');
+        });
+
+        it('skips a month whose repayment is already posted to the liability', () => {
+            const card = makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500 });
+            recordCreditCardRepayment(db, {
+                bank_account_id: checkingId, card_account_id: card.id,
+                amount_cents: 3500, date: today, description: 'Card payment'
+            });
+            const usdForecast = usd(forecast(30));
+            // The repayment already left the cash…
+            expect(usdForecast.starting_balance_cents).toBe(996500);
+            // …so this month must not be projected again; later months still are.
+            const debtEvents = usdForecast.events.filter(e => e.kind === 'debt_payment');
+            expect(debtEvents.some(e => monthKey(e.date) === monthKey(today))).toBe(false);
+            const expectedMonths = new Set<string>();
+            for (let d = 0; d <= 30; d++) expectedMonths.add(monthKey(addDays(today, d)));
+            expectedMonths.delete(monthKey(today));
+            expect(new Set(debtEvents.map(e => monthKey(e.date)))).toEqual(expectedMonths);
+        });
+
+        it('estimates the minimum payment when terms are absent and flags it', () => {
+            makeLiability({ name: 'Store Card' }); // $1,000 owed, no terms
+            const debtEvents = usd(forecast(30)).events.filter(e => e.kind === 'debt_payment');
+            expect(debtEvents.length).toBeGreaterThanOrEqual(1);
+            // debtCalculator heuristic: max($25, 1% of $1,000 + $0 interest) = $25.
+            expect(debtEvents.every(e => e.signed_amount_cents === -2500 && e.estimated === true)).toBe(true);
+        });
+
+        it('suppresses debt payments when a Debt Repayment schedule projects', () => {
+            makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500 });
+            insertSchedule(db, {
+                id: 'accel', name: 'Debt Freedom Accelerator', amount: 200, type: 'expense',
+                frequency: 'monthly', category: 'Debt Repayment', start_date: today
+            });
+            const report = forecast(30);
+            // Counted once: only the schedule's concrete wire.
+            expect(usd(report).events.every(e => e.kind === 'schedule')).toBe(true);
+            expect(report.excluded_debt_accounts).toEqual([
+                { id: expect.any(String), name: 'Visa Card', currency: 'USD', reason: 'covered_by_recurring_schedule' }
+            ]);
+        });
+
+        it('excludes a debt whose currency has no liquid account for the entity', () => {
+            makeLiability({ name: 'JPY Loan', sub_type: 'personal_loan', currency: 'JPY', minimum_payment_cents: 3500 });
+            const report = forecast(30);
+            expect(usd(report).events.filter(e => e.kind === 'debt_payment')).toHaveLength(0);
+            expect(report.excluded_debt_accounts).toEqual([
+                { id: expect.any(String), name: 'JPY Loan', currency: 'JPY', reason: 'no_liquid_accounts' }
+            ]);
+        });
+
+        it('discloses balance_unknown when a debt has no terms and no resolvable balance', () => {
+            makeLiability({ name: 'Mystery Card', opening_balance_cents: null, tracking_mode: 'balance' });
+            const report = forecast(30);
+            expect(usd(report).events.filter(e => e.kind === 'debt_payment')).toHaveLength(0);
+            expect(report.excluded_debt_accounts).toEqual([
+                { id: expect.any(String), name: 'Mystery Card', currency: 'USD', reason: 'balance_unknown' }
+            ]);
+        });
+
+        it('ignores inactive liabilities', () => {
+            const card = makeLiability({ name: 'Closed Card', minimum_payment_cents: 3500 });
+            db.prepare('UPDATE accounts SET is_active = 0 WHERE id = ?').run(card.id);
+            const report = forecast(30);
+            expect(usd(report).events.filter(e => e.kind === 'debt_payment')).toHaveLength(0);
+            expect(report.excluded_debt_accounts).toHaveLength(0);
+        });
+
+        it('keeps points and events consistent with debt payments present', () => {
+            makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500 });
+            insertSchedule(db, { id: 'sch-a', amount: 200, type: 'expense', frequency: 'monthly', start_date: today });
+            upsertBudget(db, { entity_id: entityId, category: 'utilities', currency: 'USD', limit_cents: 15000 });
+            const usdForecast = usd(forecast(60));
+            expect(usdForecast.events.some(e => e.kind === 'debt_payment')).toBe(true);
+            const eventSum = usdForecast.events.reduce((sum, e) => sum + e.signed_amount_cents, 0);
+            expect(usdForecast.net_change_cents).toBe(eventSum);
         });
     });
 

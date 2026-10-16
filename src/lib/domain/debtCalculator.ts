@@ -4,7 +4,7 @@ import { PayoffStrategy, DebtPayoffResult, PayoffScheduleEntry, FreedomDateSumma
 import { CurrencyCode } from '@/types';
 
 // Helper to estimate minimum payments if not provided
-const estimateMinPayment = (balance: number, annualRate: number): number => {
+export const estimateMinPayment = (balance: number, annualRate: number): number => {
     // Typical minimum: 1% of balance + monthly interest, or $25, whichever is greater
     const safeRate = isNaN(annualRate) ? 0 : annualRate;
     const safeBalance = isNaN(balance) ? 0 : balance;

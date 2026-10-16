@@ -1,9 +1,10 @@
 /**
  * Why this file exists:
  * Cash-flow forecast: projects the entity's liquid balance per currency forward
- * from today over a horizon (default 90 days) using the two forward-looking
- * inputs the vault already has — recurring schedules (Autopilot) and monthly
- * budgets. No new table: the forecast is a pure derived report.
+ * from today over a horizon (default 90 days) using the three forward-looking
+ * inputs the vault already has — recurring schedules (Autopilot), monthly
+ * budgets, and debt minimum payments on active liability accounts. No new
+ * table: the forecast is a pure derived report.
  *
  * The anti-double-count model (the whole point of this design):
  * The projection starts from the ACTUAL ledger balance, which already contains
@@ -30,6 +31,15 @@
  *   book); the budget is excluded and disclosed.
  * - No proration of schedule amounts for the partial final month — autopilot
  *   books the full monthly amount on the 1st of every touched month.
+ * - Debt minimum payments: one projection per active liability per month.
+ *   Amount = explicit `minimum_payment_cents` when set, else the
+ *   debtCalculator estimate (event flagged `estimated`). No due-day data
+ *   exists in the schema, so timing follows the autopilot convention (month
+ *   start, clamped to today). A month with a posted debit to the liability
+ *   (`journal_entries.amount_cents > 0`, positive = Debit) is already paid —
+ *   skipped, the debt analogue of the schedule key check. An active
+ *   'Debt Repayment'/sub_type schedule suppresses the debt entirely: schedule
+ *   wins, same rule as budgets.
  * - Unknown starting balance (currency has liquid accounts but none with a
  *   known balance) → is_unknown with empty points; never fabricate 0.
  * - All date math is integer (year, month) iteration + UTC-parsed calendar
@@ -38,11 +48,12 @@
  */
 
 import Database from 'better-sqlite3';
-import { getActualCashFlowStatement, CALCULATION_ENGINE_VERSION } from './balanceService';
+import { getActualCashFlowStatement, resolveAccountBalanceInfo, CALCULATION_ENGINE_VERSION } from './balanceService';
 import { listBudgets } from './budgetService';
 import { toMonthlyAmount } from './recurringNormalization';
 import { formatMoney, type CurrencyCode } from './types';
 import { getLocalTodayCalendarDate, getDaysInMonth, formatCalendarDate } from '../calendarDate';
+import { estimateMinPayment } from '../debtCalculator';
 
 export const FORECAST_DEFAULT_HORIZON_DAYS = 90;
 export const FORECAST_MIN_HORIZON_DAYS = 30;
@@ -65,8 +76,8 @@ export function clampHorizonDays(raw: ForecastHorizonInput): number {
 export interface ForecastEvent {
     /** YYYY-MM-DD the projected movement lands on (month start, or today for the current month). */
     date: string;
-    kind: 'schedule' | 'budget';
-    /** Schedule name / budget category. */
+    kind: 'schedule' | 'budget' | 'debt_payment';
+    /** Schedule name / budget category / liability account name. */
     label: string;
     category: string | null;
     direction: 'inflow' | 'outflow';
@@ -74,6 +85,8 @@ export interface ForecastEvent {
     signed_amount_cents: number;
     currency: CurrencyCode;
     schedule_id?: string;
+    /** Debt payment amount is the debtCalculator estimate, not explicit terms. */
+    estimated?: boolean;
     formatted_signed_amount: string;
 }
 
@@ -114,6 +127,13 @@ export interface ExcludedBudgetCategory {
     reason: 'covered_by_recurring_schedule';
 }
 
+export interface ExcludedDebtAccount {
+    id: string;
+    name: string;
+    currency: string;
+    reason: 'no_liquid_accounts' | 'balance_unknown' | 'covered_by_recurring_schedule';
+}
+
 export interface CashFlowForecastResult {
     entity_id: string;
     /** Today — the forecast is always anchored at the current local calendar date. */
@@ -124,6 +144,7 @@ export interface CashFlowForecastResult {
     currencies: CurrencyForecast[];
     excluded_schedules: ExcludedSchedule[];
     excluded_budget_categories: ExcludedBudgetCategory[];
+    excluded_debt_accounts: ExcludedDebtAccount[];
     calculation_version: string;
 }
 
@@ -138,6 +159,17 @@ interface ScheduleRow {
     end_date: string | null;
     is_active: number;
     currency: string;
+}
+
+interface DebtRow {
+    id: string;
+    name: string;
+    sub_type: string;
+    currency: string;
+    minimum_payment_cents: number | null; // 0009 column, nullable
+    interest_rate: number | null; // 0009 column, nullable
+    tracking_mode: string;
+    opening_balance_cents: number | null;
 }
 
 /** Autopilot snake_cases schedule categories; budgets are free text — compare normalized. */
@@ -193,9 +225,22 @@ export function getCashFlowForecast(
         'SELECT id, name, amount, type, frequency, category, start_date, end_date, is_active, currency ' +
         'FROM recurring_schedules WHERE is_active = 1 ORDER BY start_date ASC, name ASC'
     ).all() as ScheduleRow[];
+    const debts = db.prepare(
+        'SELECT id, name, sub_type, currency, minimum_payment_cents, interest_rate, tracking_mode, opening_balance_cents ' +
+        "FROM accounts WHERE entity_id = ? AND type = 'liability' AND is_active = 1 ORDER BY name ASC"
+    ).all(entityId) as DebtRow[];
+    // Posted repayment debits to the liability (positive = Debit, schema.ts:85):
+    // a debit inside the month means that month's payment is already in the
+    // starting balance — the debt analogue of the schedule key check.
+    const debtPaidInMonth = db.prepare(
+        'SELECT 1 FROM journal_entries j ' +
+        'JOIN transactions t ON t.id = j.transaction_id ' +
+        "WHERE j.account_id = ? AND j.amount_cents > 0 AND t.status = 'posted' AND t.date >= ? AND t.date <= ? LIMIT 1"
+    );
 
     const excludedSchedules: ExcludedSchedule[] = [];
     const excludedBudgetCategories: ExcludedBudgetCategory[] = [];
+    const excludedDebtAccounts: ExcludedDebtAccount[] = [];
     const eventsByCurrency = new Map<CurrencyCode, ForecastEvent[]>();
     // Daily deltas drive the chart; events are the display list. Both agree in
     // total: schedule events carry the full monthly amount, budget events the
@@ -261,6 +306,66 @@ export function getCashFlowForecast(
                 formatted_signed_amount: formatMoney({ amount_cents: sign * amountCents, currency })
             });
             addDailyDelta(currency, eventDate, sign * amountCents);
+        }
+    }
+
+    // --- Debt minimum payments: entity-scoped active liabilities. ---
+    // Runs after the schedules loop so projectedScheduleCategories is fully
+    // populated for the schedule-wins check.
+    for (const debt of debts) {
+        const currency = debt.currency as CurrencyCode;
+        if (!(currency in startingByCurrency)) {
+            // The payment has no cash account to leave from.
+            excludedDebtAccounts.push({ id: debt.id, name: debt.name, currency: debt.currency, reason: 'no_liquid_accounts' });
+            continue;
+        }
+        // Schedule wins (same rule as budgets): a projected 'Debt Repayment'
+        // (the Debt Freedom Accelerator) or sub_type-matching schedule already
+        // deducts this money; projecting the debt too would double-count.
+        if (projectedScheduleCategories.get('debt_repayment') === currency ||
+            projectedScheduleCategories.get(normalizeCategory(debt.sub_type)) === currency) {
+            excludedDebtAccounts.push({ id: debt.id, name: debt.name, currency: debt.currency, reason: 'covered_by_recurring_schedule' });
+            continue;
+        }
+        // Liability balances are credit-normal: positive = owed.
+        const balanceInfo = resolveAccountBalanceInfo(db, debt, today);
+        if (!balanceInfo.is_unknown && balanceInfo.balance_cents !== null && balanceInfo.balance_cents <= 0) {
+            continue; // nothing owed — no minimum payment to project
+        }
+        const explicit = debt.minimum_payment_cents;
+        const hasExplicit = typeof explicit === 'number' && Number.isFinite(explicit) && explicit > 0;
+        if (!hasExplicit && balanceInfo.is_unknown) {
+            // Can't estimate from nothing; explicit terms alone would still
+            // project (they don't depend on the balance).
+            excludedDebtAccounts.push({ id: debt.id, name: debt.name, currency: debt.currency, reason: 'balance_unknown' });
+            continue;
+        }
+        let amountCents: number;
+        let estimated = false;
+        if (hasExplicit) {
+            amountCents = Math.round(explicit);
+        } else {
+            // debtCalculator heuristic (major units): max($25, 1% + monthly interest).
+            amountCents = Math.round(estimateMinPayment((balanceInfo.balance_cents ?? 0) / 100, debt.interest_rate ?? 0) * 100);
+            estimated = true;
+        }
+        for (const { key } of eachMonth(todayParts.year, todayParts.month, endParts.year, endParts.month)) {
+            const monthStart = `${key}-01`;
+            const monthEnd = `${key}-31`; // lexicographic upper bound, as for schedules
+            if (debtPaidInMonth.get(debt.id, monthStart, monthEnd)) continue; // already paid this month
+            const eventDate = monthStart < today ? today : monthStart;
+            pushEvent(currency, {
+                date: eventDate,
+                kind: 'debt_payment',
+                label: debt.name,
+                category: debt.sub_type,
+                direction: 'outflow',
+                signed_amount_cents: -amountCents,
+                currency,
+                ...(estimated ? { estimated: true } : {}),
+                formatted_signed_amount: formatMoney({ amount_cents: -amountCents, currency })
+            });
+            addDailyDelta(currency, eventDate, -amountCents);
         }
     }
 
@@ -375,6 +480,7 @@ export function getCashFlowForecast(
         currencies,
         excluded_schedules: excludedSchedules,
         excluded_budget_categories: excludedBudgetCategories,
+        excluded_debt_accounts: excludedDebtAccounts,
         calculation_version: CALCULATION_ENGINE_VERSION
     };
 }
