@@ -56,7 +56,14 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { ContentCard } from '@/components/common/ContentCard';
 import { persistScopedRecord, deleteScopedRecord } from '@/infrastructure/local_driver';
 import { readDemoPersona } from '@/features/demo/demoMode';
-import { applyRecurringToMonth, AutopilotGenerationResult } from '@/features/cashflow/data/autopilotGenerator';
+import {
+    applyRecurringToMonth,
+    applyDebtPaymentsToMonth,
+    AutopilotGenerationResult,
+    AutopilotDebt,
+    DebtAutopilotGenerationResult,
+    DebtAutopilotSkipReason
+} from '@/features/cashflow/data/autopilotGenerator';
 import { Entity, CashFlowStatementResult, CashFlowItem, CurrencyCode, formatMoney } from '@/lib/domain/accounting/types';
 import { getLocalTodayCalendarDate } from '@/lib/domain/calendarDate';
 import Link from 'next/link';
@@ -97,6 +104,16 @@ interface FundingAccountOption {
     currency: string;
     formatted_balance: string;
 }
+
+/** Human copy for each debt autopilot skip reason (result-card disclosure). */
+const DEBT_SKIP_REASON_COPY: Record<DebtAutopilotSkipReason, string> = {
+    inactive: 'The account is inactive.',
+    no_explicit_minimum: 'Set a minimum payment on the account to autopay it.',
+    currency_mismatch: 'Different currency than the funding account.',
+    covered_by_recurring_schedule: 'A Debt Repayment schedule already covers this month.',
+    nothing_owed: 'The balance is zero or paid off.',
+    already_paid: 'A payment was already posted this month.'
+};
 
 export const CashflowPage = () => {
     const { baseCurrency } = useNetWorth();
@@ -141,9 +158,13 @@ export const CashflowPage = () => {
     const isDemoMode = Boolean(readDemoPersona());
     const [autopilotMonth, setAutopilotMonth] = useState<string>(today.slice(0, 7));
     const [fundingAccounts, setFundingAccounts] = useState<FundingAccountOption[]>([]);
+    // Liability accounts for the debt autopilot — derived from the same
+    // GET /api/accounting response as the funding accounts above.
+    const [debtAccounts, setDebtAccounts] = useState<AutopilotDebt[]>([]);
     const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('');
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [generationResult, setGenerationResult] = useState<AutopilotGenerationResult | null>(null);
+    const [debtGenerationResult, setDebtGenerationResult] = useState<DebtAutopilotGenerationResult | null>(null);
     const [generationError, setGenerationError] = useState<string | null>(null);
 
     // --- BUDGETS STATE ---
@@ -382,9 +403,12 @@ export const CashflowPage = () => {
     // Load the liquid accounts that can fund Autopilot generation for the
     // selected entity. The ledger API returns every account with balances;
     // only cash/checking/savings assets can receive or pay a schedule.
+    // The same response carries the liabilities for the debt autopilot — one
+    // fetch feeds both selectors, so funding and debt state never disagree.
     useEffect(() => {
         if (!selectedEntityId) {
             setFundingAccounts([]);
+            setDebtAccounts([]);
             setSelectedBankAccountId('');
             return;
         }
@@ -394,7 +418,8 @@ export const CashflowPage = () => {
                 const res = await fetch(`/api/accounting?entity_id=${encodeURIComponent(selectedEntityId)}`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
-                const liquid = ((data.accounts ?? []) as any[])
+                const accounts = (data.accounts ?? []) as any[];
+                const liquid = accounts
                     .filter(a => a.type === 'asset'
                         && ['cash', 'checking', 'savings'].includes(a.sub_type)
                         && a.is_active !== false)
@@ -404,8 +429,22 @@ export const CashflowPage = () => {
                         currency: a.currency,
                         formatted_balance: a.formatted_balance
                     }));
+                // is_active arrives as a boolean from the GET route; keep
+                // inactive liabilities out of the attempt list entirely.
+                const debts: AutopilotDebt[] = accounts
+                    .filter(a => a.type === 'liability' && a.is_active !== false)
+                    .map(a => ({
+                        id: a.id,
+                        name: a.name,
+                        sub_type: a.sub_type ?? '',
+                        currency: a.currency,
+                        minimum_payment_cents: a.minimum_payment_cents ?? null,
+                        balance_cents: a.balance_cents ?? null,
+                        is_active: a.is_active !== false
+                    }));
                 if (!cancelled) {
                     setFundingAccounts(liquid);
+                    setDebtAccounts(debts);
                     setSelectedBankAccountId(prev =>
                         liquid.some(a => a.id === prev) ? prev : (liquid[0]?.id ?? ''));
                 }
@@ -413,6 +452,7 @@ export const CashflowPage = () => {
                 console.error('Failed to load liquid accounts for Autopilot:', e);
                 if (!cancelled) {
                     setFundingAccounts([]);
+                    setDebtAccounts([]);
                     setSelectedBankAccountId('');
                 }
             }
@@ -602,18 +642,23 @@ export const CashflowPage = () => {
         }
     };
 
-    // Materialize the month's active schedules as real ledger postings.
+    // Materialize the month's active schedules AND debt minimum payments as
+    // real ledger postings.
     // Tricky logic:
-    // - Re-running the same month is safe: each posting carries the idempotency
-    //   key `recurring:<schedule id>:<month>` and the ledger returns the
-    //   existing transaction instead of duplicating it.
-    // - The funding account's currency is passed to the generator so
-    //   different-currency schedules are skipped, never converted at a fake 1:1.
+    // - Re-running the same month is safe: schedule postings carry the
+    //   idempotency key `recurring:<schedule id>:<month>`, debt postings carry
+    //   `debt:<account id>:<month>`, and the server's already_paid guard skips
+    //   any liability with a posted debit this month (manual or prior run).
+    // - The funding account's currency is passed to both generators so
+    //   different-currency schedules/debts are skipped, never converted at a
+    //   fake 1:1. Debt amounts are derived server-side from the stored
+    //   minimum_payment_cents — the client never sends an amount.
     // - Postings move cash, so the Actual tab (and every other listener) is
     //   refreshed via the shared balances-updated event.
     const handleGenerateAutopilot = async () => {
         setGenerationError(null);
         setGenerationResult(null);
+        setDebtGenerationResult(null);
         const account = fundingAccounts.find(a => a.id === selectedBankAccountId);
         if (!selectedEntityId || !account) {
             setGenerationError('Select an entity and a liquid funding account before generating.');
@@ -621,12 +666,15 @@ export const CashflowPage = () => {
         }
         setIsGenerating(true);
         try {
-            const result = await applyRecurringToMonth(recurring, autopilotMonth, {
+            const target = {
                 entityId: selectedEntityId,
                 bankAccountId: account.id,
                 bankAccountCurrency: account.currency
-            });
+            };
+            const result = await applyRecurringToMonth(recurring, autopilotMonth, target);
+            const debtResult = await applyDebtPaymentsToMonth(debtAccounts, autopilotMonth, target, recurring);
             setGenerationResult(result);
+            setDebtGenerationResult(debtResult);
             window.dispatchEvent(new Event('opennetworth_balances_updated'));
         } catch (err: any) {
             console.error('Autopilot generation failed:', err);
@@ -1433,8 +1481,9 @@ export const CashflowPage = () => {
                                 </h4>
                                 <p className="text-xs text-muted-foreground mt-1 max-w-xl leading-relaxed">
                                     Posts every active schedule for the chosen month as real double-entry
-                                    transactions funded by the account below. Re-running the same month is
-                                    safe — already-posted schedules are never duplicated.
+                                    transactions funded by the account below — plus the exact minimum
+                                    payment for every liability that has one set. Re-running the same
+                                    month is safe: posted schedules and debts are never duplicated.
                                 </p>
                             </div>
                             <div className="flex flex-wrap items-end gap-3">
@@ -1491,22 +1540,46 @@ export const CashflowPage = () => {
                         )}
 
                         {generationResult && (
-                            <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold ${
-                                generationResult.errors.length > 0
+                            <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold space-y-1.5 ${
+                                generationResult.errors.length > 0 || (debtGenerationResult?.errors.length ?? 0) > 0
                                     ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
                                     : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
                             }`}>
                                 <div className="flex items-center gap-2">
-                                    {generationResult.errors.length > 0
+                                    {generationResult.errors.length > 0 || (debtGenerationResult?.errors.length ?? 0) > 0
                                         ? <AlertTriangle size={15} className="shrink-0" />
                                         : <CheckCircle2 size={15} className="shrink-0" />}
                                     <span>
                                         {generationResult.month}: {generationResult.posted} posted, {generationResult.skipped} skipped.
                                     </span>
                                 </div>
+                                {debtGenerationResult && (
+                                    <div className="ml-7">
+                                        <span>
+                                            Debts: {debtGenerationResult.posted} minimum payments posted, {debtGenerationResult.skipped} skipped.
+                                        </span>
+                                        {debtGenerationResult.skipped_details.length > 0 && (
+                                            <details className="mt-1">
+                                                <summary className="cursor-pointer font-medium">Skipped debts</summary>
+                                                <ul className="mt-1 ml-5 list-disc space-y-0.5 font-medium">
+                                                    {debtGenerationResult.skipped_details.map(d => (
+                                                        <li key={d.id}>{d.name} — {DEBT_SKIP_REASON_COPY[d.reason] ?? d.reason}</li>
+                                                    ))}
+                                                </ul>
+                                            </details>
+                                        )}
+                                    </div>
+                                )}
                                 {generationResult.errors.length > 0 && (
-                                    <ul className="mt-2 ml-5 list-disc space-y-0.5 font-medium">
+                                    <ul className="mt-1 ml-5 list-disc space-y-0.5 font-medium">
                                         {generationResult.errors.map((err, i) => (
+                                            <li key={i}>{err}</li>
+                                        ))}
+                                    </ul>
+                                )}
+                                {debtGenerationResult && debtGenerationResult.errors.length > 0 && (
+                                    <ul className="mt-1 ml-5 list-disc space-y-0.5 font-medium">
+                                        {debtGenerationResult.errors.map((err, i) => (
                                             <li key={i}>{err}</li>
                                         ))}
                                     </ul>
