@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, setTestDb } from '@/infrastructure/sqlite/db';
-import { GET } from './route';
+import { GET, POST } from './route';
 import { createEntity, createAccount } from '@/lib/domain/accounting/accountService';
 import { ensureExpenseAccount, recordExpense } from '@/lib/domain/accounting/transactionService';
 import { upsertBudget } from '@/lib/domain/accounting/budgetService';
@@ -159,5 +159,73 @@ describe('/api/accounting?view=reports&report_type=cash_flow_forecast', () => {
             `/?view=reports&report_type=cash_flow_forecast&entity_id=${entityId}&horizon_days=banana`
         ));
         expect((await garbage.json()).report.horizon_days).toBe(90);
+    });
+});
+
+describe('/api/accounting POST action=autopay_debt', () => {
+    let db: Database.Database;
+    let entityId: string;
+    let checkingId: string;
+    let cardId: string;
+
+    beforeEach(() => {
+        db = createTestDb();
+        setTestDb(db);
+        const entity = createEntity(db, { name: 'Autopay Route', type: 'person', currency: 'USD' });
+        entityId = entity.id;
+        checkingId = createAccount(db, {
+            entity_id: entityId, name: 'Checking', type: 'asset', sub_type: 'checking',
+            currency: 'USD', opening_balance_cents: 250000, opening_date: '2026-01-01'
+        }).account.id;
+        cardId = createAccount(db, {
+            entity_id: entityId, name: 'Visa Card', type: 'liability', sub_type: 'credit_card',
+            currency: 'USD', opening_balance_cents: 100000, opening_date: '2026-01-01',
+            minimum_payment_cents: 3500
+        }).account.id;
+    });
+
+    afterEach(() => {
+        setTestDb(null);
+        try {
+            db.close();
+        } catch {
+            // Already closed
+        }
+    });
+
+    function post(body: unknown): Request {
+        return new Request('http://localhost:3000/api/accounting', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+    }
+
+    it('posts the stored minimum on the first call (201) and skips on the second (200 already_paid)', async () => {
+        const payload = {
+            entity_id: entityId,
+            bank_account_id: checkingId,
+            debt_account_id: cardId,
+            month: '2026-10'
+        };
+
+        const first = await POST(post({ action: 'autopay_debt', payload }));
+        expect(first.status).toBe(201);
+        const firstJson = await first.json();
+        expect(firstJson.success).toBe(true);
+        expect(firstJson.skipped).toBe(false);
+        expect(firstJson.transaction.idempotency_key).toBe(`debt:${cardId}:2026-10`);
+
+        // The already_paid guard answers before postTransaction's key check —
+        // a regeneration is a clean 200 skip, never a 409.
+        const second = await POST(post({ action: 'autopay_debt', payload }));
+        expect(second.status).toBe(200);
+        expect(await second.json()).toMatchObject({ success: true, skipped: true, reason: 'already_paid' });
+    });
+
+    it('rejects a missing payload with 400', async () => {
+        const res = await POST(post({ action: 'autopay_debt' }));
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toContain('autopay_debt');
     });
 });

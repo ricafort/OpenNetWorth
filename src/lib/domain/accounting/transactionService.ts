@@ -114,6 +114,8 @@ export interface RecordTransferInput {
     description?: string;
     idempotency_key?: string | null;
     evidence_refs?: any[] | null;
+    /** Defaults to 'manual'; the debt autopilot passes 'recurring'. */
+    origin?: TransactionOrigin;
 }
 
 export interface RecordCreditCardRepaymentInput {
@@ -124,6 +126,8 @@ export interface RecordCreditCardRepaymentInput {
     description?: string;
     idempotency_key?: string | null;
     evidence_refs?: any[] | null;
+    /** Defaults to 'manual'; the debt autopilot passes 'recurring'. */
+    origin?: TransactionOrigin;
 }
 
 export interface RecordLoanRepaymentInput {
@@ -844,7 +848,7 @@ export function recordTransfer(db: Database.Database, input: RecordTransferInput
         return postTransaction(db, {
             date: input.date,
             description: desc,
-            origin: 'manual',
+            origin: input.origin || 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,
             postings: [
@@ -917,7 +921,7 @@ export function recordCreditCardRepayment(db: Database.Database, input: RecordCr
         return postTransaction(db, {
             date: input.date,
             description: desc,
-            origin: 'manual',
+            origin: input.origin || 'manual',
             idempotency_key: input.idempotency_key,
             evidence_refs: input.evidence_refs,
             postings: [
