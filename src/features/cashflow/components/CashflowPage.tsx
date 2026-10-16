@@ -39,12 +39,15 @@ import {
     Info,
     Layers,
     FileText,
-    Zap
+    Zap,
+    Target
 } from 'lucide-react';
 import { RecurringTransaction, CashFlowEntry } from '@/features/cashflow/types';
 import RecurringList from '@/features/cashflow/components/RecurringList';
 import RecurringTransactionForm from '@/features/cashflow/components/RecurringTransactionForm';
 import { useCashflowQuery } from '@/features/cashflow/hooks/useCashflowQuery';
+import { useBudgetsQuery } from '@/features/cashflow/hooks/useBudgetsQuery';
+import { BudgetVsActualReport, type Budget } from '@/features/cashflow/data/budgetRepository';
 import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -72,6 +75,15 @@ function rowToEntry(row: CashFlowRow): CashFlowEntry {
 
 const byMonthAsc = (a: CashFlowEntry, b: CashFlowEntry) => a.month.localeCompare(b.month);
 
+/** Canonical expense sub_types offered as budget category suggestions (free text allowed — Autopilot postings create their own). */
+const CANONICAL_EXPENSE_CATEGORIES = [
+    'living_expense', 'groceries', 'utilities', 'loan_interest',
+    'bank_fee', 'repairs_maintenance', 'property_management'
+];
+
+/** Currency choices for the budget form — the ledger never converts between them. */
+const BUDGET_CURRENCY_OPTIONS = ['USD', 'AUD', 'EUR', 'GBP', 'CAD', 'NZD', 'CHF', 'JPY', 'SGD', 'HKD'];
+
 /** Liquid account option for the Autopilot funding-account selector. */
 interface FundingAccountOption {
     id: string;
@@ -83,8 +95,8 @@ interface FundingAccountOption {
 export const CashflowPage = () => {
     const { baseCurrency } = useNetWorth();
 
-    // Tab view: actual (default) | autopilot | history
-    const [activeTab, setActiveTab] = useState<'actual' | 'autopilot' | 'history'>('actual');
+    // Tab view: actual (default) | autopilot | history | budgets
+    const [activeTab, setActiveTab] = useState<'actual' | 'autopilot' | 'history' | 'budgets'>('actual');
 
     // --- ACTUAL CASH FLOW STATE ---
     const [entities, setEntities] = useState<Entity[]>([]);
@@ -127,6 +139,21 @@ export const CashflowPage = () => {
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [generationResult, setGenerationResult] = useState<AutopilotGenerationResult | null>(null);
     const [generationError, setGenerationError] = useState<string | null>(null);
+
+    // --- BUDGETS STATE ---
+    // Monthly per-category spending limits (entity-scoped `budgets` table).
+    // The Actual tab comparison card renders `budgetReport`, fetched alongside
+    // the cash flow statement so both always share one explicit period.
+    const {
+        budgets,
+        addBudget,
+        updateBudget,
+        deleteBudget,
+    } = useBudgetsQuery(selectedEntityId);
+    const [budgetReport, setBudgetReport] = useState<BudgetVsActualReport | null>(null);
+    const [isAddingBudget, setIsAddingBudget] = useState(false);
+    const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+    const [budgetError, setBudgetError] = useState<string | null>(null);
 
     // --- LEGACY MANUAL LOGS STATE ---
     const [entries, setEntries] = useState<CashFlowEntry[]>([]);
@@ -174,6 +201,7 @@ export const CashflowPage = () => {
     const fetchActualCashFlow = useCallback(async () => {
         if (!selectedEntityId) {
             setIsReportLoading(false);
+            setBudgetReport(null);
             return;
         }
         setIsReportLoading(true);
@@ -197,10 +225,28 @@ export const CashflowPage = () => {
             } else {
                 setCashFlowReport(null);
             }
+
+            // Budget vs actual rides the same explicit period params. It has its
+            // own guard so a comparison failure never breaks the statement itself.
+            try {
+                const budgetParams = new URLSearchParams({
+                    view: 'reports',
+                    report_type: 'budget_vs_actual',
+                    entity_id: selectedEntityId,
+                    start_date: startDate,
+                    end_date: endDate
+                });
+                const budgetRes = await fetch(`/api/accounting?${budgetParams.toString()}`);
+                const budgetJson = budgetRes.ok ? await budgetRes.json() : null;
+                setBudgetReport(budgetJson?.success && budgetJson.report ? budgetJson.report : null);
+            } catch {
+                setBudgetReport(null);
+            }
         } catch (err: any) {
             console.error('Failed to fetch actual cash flow statement:', err);
             setReportError(err.message || 'Failed to load cash flow statement');
             setCashFlowReport(null);
+            setBudgetReport(null);
         } finally {
             setIsReportLoading(false);
         }
@@ -426,6 +472,72 @@ export const CashflowPage = () => {
         }
     };
 
+    // Budget handlers
+    const handleSaveBudget = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setBudgetError(null);
+        if (!selectedEntityId) {
+            setBudgetError('Select an entity before saving a budget.');
+            return;
+        }
+        const formData = new FormData(e.currentTarget);
+        const category = String(formData.get('category') ?? '').trim();
+        const currency = String(formData.get('currency') ?? baseCurrency).trim().toUpperCase();
+        const amount = parseFloat(String(formData.get('limit') ?? ''));
+        if (!category) {
+            setBudgetError('Category is required.');
+            return;
+        }
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setBudgetError('Monthly limit must be a positive amount.');
+            return;
+        }
+        // Major units → ledger minor units once, at the boundary (like the
+        // Autopilot generator); the API and DB stay in cents.
+        const limitCents = Math.round(amount * 100);
+        if (!Number.isSafeInteger(limitCents)) {
+            setBudgetError('Monthly limit is too large.');
+            return;
+        }
+        const payload: Budget = {
+            id: editingBudget?.id ?? '',
+            user_id: 'local_user',
+            entity_id: selectedEntityId,
+            category,
+            limit_cents: limitCents,
+            currency,
+            created_at: editingBudget?.created_at ?? '',
+            updated_at: ''
+        };
+        try {
+            // Upsert is keyed by (entity, category, currency): saving an
+            // existing category updates its limit instead of duplicating it.
+            if (editingBudget) {
+                await updateBudget(payload);
+                setEditingBudget(null);
+            } else {
+                await addBudget(payload);
+                setIsAddingBudget(false);
+            }
+            // Limits feed the Actual-tab comparison card.
+            window.dispatchEvent(new Event('opennetworth_balances_updated'));
+        } catch (err: any) {
+            setBudgetError(err?.message || 'Failed to save budget.');
+        }
+    };
+
+    const handleDeleteBudget = async (id: string) => {
+        if (!confirm('Delete this budget?')) return;
+        try {
+            // In demo mode the route refuses this with 403 → error banner below.
+            await deleteBudget(id);
+            if (editingBudget?.id === id) setEditingBudget(null);
+            window.dispatchEvent(new Event('opennetworth_balances_updated'));
+        } catch (err: any) {
+            setBudgetError(err?.message || 'Failed to delete budget.');
+        }
+    };
+
     // Materialize the month's active schedules as real ledger postings.
     // Tricky logic:
     // - Re-running the same month is safe: each posting carries the idempotency
@@ -517,7 +629,7 @@ export const CashflowPage = () => {
                             }`}
                         >
                             <Repeat size={15} />
-                            Autopilot Budgets
+                            Autopilot Schedules
                         </button>
                         <button
                             onClick={() => setActiveTab('history')}
@@ -527,6 +639,15 @@ export const CashflowPage = () => {
                         >
                             <History size={15} />
                             Manual Logs
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('budgets')}
+                            className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${
+                                activeTab === 'budgets' ? 'bg-card shadow text-violet-600 font-black' : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            <Target size={15} />
+                            Budgets
                         </button>
                     </div>
                 }
@@ -935,6 +1056,83 @@ export const CashflowPage = () => {
                                             </ContentCard>
                                         </div>
 
+                                        {/* Budget vs Actual comparison — same explicit period as the statement;
+                                            limits are monthly defaults prorated by the service at read time. */}
+                                        {budgetReport && budgetReport.rows.some(r => r.currency === curr) && (
+                                            <ContentCard className="overflow-hidden p-0 border border-border shadow-sm">
+                                                <div className="px-6 py-4 bg-muted/40 border-b border-border flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                                    <div>
+                                                        <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">
+                                                            Budget vs Actual ({curr})
+                                                        </h4>
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            Monthly limits prorated over {budgetReport.period_months} month{budgetReport.period_months === 1 ? '' : 's'} in this period.
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setActiveTab('budgets')}
+                                                        className="text-[11px] font-bold text-violet-600 hover:text-violet-700"
+                                                    >
+                                                        Edit budgets
+                                                    </button>
+                                                </div>
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-muted/60 text-muted-foreground uppercase font-black tracking-wider border-b border-border text-[10px]">
+                                                        <tr>
+                                                            <th className="px-6 py-2.5">Category</th>
+                                                            <th className="px-6 py-2.5 text-right">Budgeted</th>
+                                                            <th className="px-6 py-2.5 text-right">Actual</th>
+                                                            <th className="px-6 py-2.5">Usage</th>
+                                                            <th className="px-6 py-2.5 text-right">Difference</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-border font-medium">
+                                                        {budgetReport.rows.filter(r => r.currency === curr).map(row => (
+                                                            <tr key={`${row.currency}-${row.category}`} className="hover:bg-muted/30">
+                                                                <td className="px-6 py-2.5 font-bold text-foreground capitalize">
+                                                                    {row.category.replaceAll('_', ' ')}
+                                                                </td>
+                                                                <td className="px-6 py-2.5 text-right font-mono text-muted-foreground">
+                                                                    {row.formatted_budgeted ?? <span className="italic">unbudgeted</span>}
+                                                                </td>
+                                                                <td className="px-6 py-2.5 text-right font-mono font-bold text-foreground">
+                                                                    {row.formatted_actual}
+                                                                </td>
+                                                                <td className="px-6 py-2.5">
+                                                                    {row.percent_used === null ? (
+                                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                                                            No budget
+                                                                        </span>
+                                                                    ) : (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="h-1.5 w-24 bg-muted rounded-full overflow-hidden">
+                                                                                <div
+                                                                                    className={`h-full rounded-full ${row.status === 'over' ? 'bg-rose-500' : row.status === 'at_risk' ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                                                                    style={{ width: `${Math.min(100, row.percent_used)}%` }}
+                                                                                />
+                                                                            </div>
+                                                                            <span className={`text-[10px] font-bold ${row.status === 'over' ? 'text-rose-500' : row.status === 'at_risk' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                                                {row.percent_used}%
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-6 py-2.5 text-right font-mono">
+                                                                    {row.difference_cents === null ? (
+                                                                        <span className="text-muted-foreground italic">&mdash;</span>
+                                                                    ) : (
+                                                                        <span className={row.difference_cents > 0 ? 'text-rose-500 font-bold' : 'text-emerald-600'}>
+                                                                            {row.difference_cents > 0 ? '+' : ''}{row.formatted_difference}
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </ContentCard>
+                                        )}
+
                                         {/* Liquid Accounts Balance Breakdown Table */}
                                         {liquidAccounts.length > 0 && (
                                             <ContentCard className="overflow-hidden p-0 border border-border shadow-sm">
@@ -1126,7 +1324,7 @@ export const CashflowPage = () => {
                 </div>
             )}
 
-            {/* TAB 2: AUTOPILOT BUDGETS */}
+            {/* TAB 2: AUTOPILOT SCHEDULES */}
             {activeTab === 'autopilot' && (
                 <div className="space-y-6">
                     <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 p-6 rounded-2xl flex items-start gap-4">
@@ -1388,6 +1586,187 @@ export const CashflowPage = () => {
                                             </tr>
                                         );
                                     })
+                                )}
+                            </tbody>
+                        </table>
+                    </ContentCard>
+                </div>
+            )}
+
+            {/* TAB 4: BUDGETS (MONTHLY PER-CATEGORY LIMITS) */}
+            {activeTab === 'budgets' && (
+                <div className="space-y-6">
+                    <div className="bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900 p-6 rounded-2xl flex items-start gap-4">
+                        <div className="p-3 bg-white dark:bg-slate-900 rounded-xl shadow-sm text-violet-600">
+                            <Target size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-violet-900 dark:text-violet-200 text-lg">Monthly Category Budgets</h3>
+                            <p className="text-violet-700 dark:text-violet-300 text-sm mt-1 leading-relaxed">
+                                Set a monthly spending limit per expense category. The Actual Cash Flow tab compares each
+                                limit &mdash; prorated to the selected period &mdash; against posted ledger spending.
+                            </p>
+                        </div>
+                        <div className="ml-auto">
+                            <button
+                                onClick={() => { setEditingBudget(null); setIsAddingBudget(true); }}
+                                disabled={isDemoMode || !selectedEntityId}
+                                className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-colors shadow-sm text-sm"
+                            >
+                                <Plus size={18} />
+                                Add Budget
+                            </button>
+                        </div>
+                    </div>
+
+                    {isDemoMode && (
+                        <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                            Demo mode is read-only &mdash; sample-vault budgets are shown for comparison only.
+                        </p>
+                    )}
+
+                    {budgetError && (
+                        <div role="alert" className="p-4 bg-destructive/15 border border-destructive/30 text-destructive rounded-xl flex items-center gap-2 text-xs font-semibold">
+                            <AlertTriangle size={16} className="shrink-0" />
+                            <span>{budgetError}</span>
+                        </div>
+                    )}
+
+                    {/* Entity scope: budgets are entity-scoped because category-accounts are per entity */}
+                    <div className="flex items-center gap-2 p-4 bg-card border border-border rounded-2xl shadow-sm">
+                        <label htmlFor="budget-entity" className="text-xs font-bold text-muted-foreground whitespace-nowrap">Entity / Owner:</label>
+                        <select
+                            id="budget-entity"
+                            value={selectedEntityId}
+                            onChange={(e) => setSelectedEntityId(e.target.value)}
+                            disabled={isEntitiesLoading}
+                            className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                        >
+                            {entities.map(ent => (
+                                <option key={ent.id} value={ent.id}>
+                                    {ent.name} ({ent.type})
+                                </option>
+                            ))}
+                            {entities.length === 0 && (
+                                <option value="">No entities found</option>
+                            )}
+                        </select>
+                    </div>
+
+                    {(isAddingBudget || editingBudget) && (
+                        <ContentCard className="border-2 border-violet-100 mb-6">
+                            <h3 className="text-base font-bold text-violet-900 dark:text-violet-200 mb-3">
+                                {editingBudget ? 'Edit Budget' : 'Add Monthly Budget'}
+                            </h3>
+                            <form className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end" onSubmit={handleSaveBudget}>
+                                <div className="space-y-1">
+                                    <label htmlFor="budget-category" className="text-xs font-bold text-muted-foreground">Expense category</label>
+                                    <input
+                                        id="budget-category"
+                                        name="category"
+                                        list="budget-category-suggestions"
+                                        defaultValue={editingBudget?.category ?? ''}
+                                        placeholder="e.g. groceries"
+                                        className="w-full bg-muted border border-border rounded-lg p-2 outline-none text-xs"
+                                        required
+                                    />
+                                    <datalist id="budget-category-suggestions">
+                                        {CANONICAL_EXPENSE_CATEGORIES.map(c => (
+                                            <option key={c} value={c} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                                <div className="space-y-1">
+                                    <label htmlFor="budget-currency" className="text-xs font-bold text-muted-foreground">Currency</label>
+                                    <select
+                                        id="budget-currency"
+                                        name="currency"
+                                        defaultValue={editingBudget?.currency ?? baseCurrency}
+                                        className="w-full bg-muted border border-border rounded-lg p-2 outline-none text-xs font-bold"
+                                    >
+                                        {(BUDGET_CURRENCY_OPTIONS.includes(baseCurrency)
+                                            ? BUDGET_CURRENCY_OPTIONS
+                                            : [baseCurrency, ...BUDGET_CURRENCY_OPTIONS]
+                                        ).map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label htmlFor="budget-limit" className="text-xs font-bold text-muted-foreground">Monthly limit</label>
+                                    <input
+                                        id="budget-limit"
+                                        name="limit"
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        defaultValue={editingBudget ? (editingBudget.limit_cents / 100).toFixed(2) : ''}
+                                        placeholder="0.00"
+                                        className="w-full bg-muted border border-border rounded-lg p-2 outline-none text-xs font-mono"
+                                        required
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <button type="submit" className="flex-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg p-2 text-xs font-bold">Save</button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setIsAddingBudget(false); setEditingBudget(null); setBudgetError(null); }}
+                                        className="px-3 py-2 text-muted-foreground text-xs font-medium"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </ContentCard>
+                    )}
+
+                    <ContentCard className="overflow-hidden p-0 border border-border">
+                        <table className="w-full text-left text-xs">
+                            <thead className="bg-muted text-muted-foreground uppercase font-bold border-b border-border">
+                                <tr>
+                                    <th className="px-6 py-3">Category</th>
+                                    <th className="px-6 py-3">Currency</th>
+                                    <th className="px-6 py-3 text-right">Monthly Limit</th>
+                                    <th className="px-6 py-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                {budgets.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground italic">
+                                            No budgets set for this entity yet. Add a monthly limit to see budget vs actual on the Actual tab.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    budgets.map(b => (
+                                        <tr key={b.id} className="hover:bg-muted/30">
+                                            <td className="px-6 py-3 font-bold text-foreground capitalize">
+                                                {b.category.replaceAll('_', ' ')}
+                                            </td>
+                                            <td className="px-6 py-3 font-mono text-muted-foreground">{b.currency}</td>
+                                            <td className="px-6 py-3 text-right font-mono font-black text-foreground">
+                                                {formatMoney({ amount_cents: b.limit_cents, currency: b.currency })}
+                                            </td>
+                                            <td className="px-6 py-3 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => { setIsAddingBudget(true); setEditingBudget(b); setBudgetError(null); }}
+                                                        disabled={isDemoMode}
+                                                        className="text-muted-foreground hover:text-primary disabled:opacity-40"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteBudget(b.id)}
+                                                        disabled={isDemoMode}
+                                                        className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
                                 )}
                             </tbody>
                         </table>

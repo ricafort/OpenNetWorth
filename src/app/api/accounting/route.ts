@@ -45,6 +45,7 @@ import {
     setExchangeRate,
     resolveAccountBalanceInfo
 } from '@/lib/domain/accounting/balanceService';
+import { getBudgetVsActual } from '@/lib/domain/accounting/budgetService';
 import {
     postTransaction,
     recordIncome,
@@ -331,6 +332,17 @@ export async function GET(request: Request) {
                     return secureJson({ error: 'Missing required parameter: entity_id' }, { status: 400 });
                 }
                 const report = getActualCashFlowStatement(db, entityId, startDate, endDate);
+                return secureJson({ success: true, report });
+            }
+
+            if (reportType === 'budget_vs_actual') {
+                if (!entityId) {
+                    return secureJson({ error: 'Missing required parameter: entity_id' }, { status: 400 });
+                }
+                if (!startDate) {
+                    return secureJson({ error: 'Missing required parameter: start_date (budget limits are prorated over the period)' }, { status: 400 });
+                }
+                const report = getBudgetVsActual(db, entityId, startDate, endDate);
                 return secureJson({ success: true, report });
             }
 
