@@ -106,13 +106,15 @@ export class LocalCashflowRepository implements ICashflowRepository {
  */
 export interface ForecastEvent {
     date: string;
-    kind: 'schedule' | 'budget';
+    kind: 'schedule' | 'budget' | 'debt_payment';
     label: string;
     category: string | null;
     direction: 'inflow' | 'outflow';
     signed_amount_cents: number;
     currency: string;
     schedule_id?: string;
+    /** Debt payment amount is the debtCalculator estimate, not explicit terms. */
+    estimated?: boolean;
     formatted_signed_amount: string;
 }
 
@@ -145,5 +147,6 @@ export interface CashFlowForecastReport {
     currencies: CurrencyForecast[];
     excluded_schedules: Array<{ id: string; name: string; currency: string; reason: 'no_liquid_accounts' | 'invalid_amount' }>;
     excluded_budget_categories: Array<{ category: string; currency: string; reason: 'covered_by_recurring_schedule' }>;
+    excluded_debt_accounts: Array<{ id: string; name: string; currency: string; reason: 'no_liquid_accounts' | 'balance_unknown' | 'covered_by_recurring_schedule' }>;
     calculation_version: string;
 }
