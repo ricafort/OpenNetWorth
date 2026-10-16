@@ -48,6 +48,8 @@ import RecurringTransactionForm from '@/features/cashflow/components/RecurringTr
 import { useCashflowQuery } from '@/features/cashflow/hooks/useCashflowQuery';
 import { useBudgetsQuery } from '@/features/cashflow/hooks/useBudgetsQuery';
 import { BudgetVsActualReport, type Budget } from '@/features/cashflow/data/budgetRepository';
+import { CashFlowForecastReport } from '@/features/cashflow/data/repository';
+import ForecastChart from '@/features/cashflow/components/ForecastChart';
 import { formatCurrency, convertAmount } from '@/lib/utils/currencyService';
 import { useNetWorth } from '@/features/dashboard/hooks/useNetWorth';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -75,6 +77,10 @@ function rowToEntry(row: CashFlowRow): CashFlowEntry {
 
 const byMonthAsc = (a: CashFlowEntry, b: CashFlowEntry) => a.month.localeCompare(b.month);
 
+/** Human date for forecast event lists and balance cards (calendar strings are UTC-parsed). */
+const formatForecastDate = (dateStr: string) =>
+    new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
 /** Canonical expense sub_types offered as budget category suggestions (free text allowed — Autopilot postings create their own). */
 const CANONICAL_EXPENSE_CATEGORIES = [
     'living_expense', 'groceries', 'utilities', 'loan_interest',
@@ -95,8 +101,8 @@ interface FundingAccountOption {
 export const CashflowPage = () => {
     const { baseCurrency } = useNetWorth();
 
-    // Tab view: actual (default) | autopilot | history | budgets
-    const [activeTab, setActiveTab] = useState<'actual' | 'autopilot' | 'history' | 'budgets'>('actual');
+    // Tab view: actual (default) | autopilot | history | budgets | forecast
+    const [activeTab, setActiveTab] = useState<'actual' | 'autopilot' | 'history' | 'budgets' | 'forecast'>('actual');
 
     // --- ACTUAL CASH FLOW STATE ---
     const [entities, setEntities] = useState<Entity[]>([]);
@@ -154,6 +160,15 @@ export const CashflowPage = () => {
     const [isAddingBudget, setIsAddingBudget] = useState(false);
     const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
     const [budgetError, setBudgetError] = useState<string | null>(null);
+
+    // --- FORECAST STATE ---
+    // Forward-looking projection from today (recurring schedules + budgets).
+    // The horizon is clamped server-side to [30, 180]; the selector offers the
+    // three planning windows the service accepts without surprise rounding.
+    const [forecastReport, setForecastReport] = useState<CashFlowForecastReport | null>(null);
+    const [isForecastLoading, setIsForecastLoading] = useState<boolean>(false);
+    const [forecastError, setForecastError] = useState<string | null>(null);
+    const [forecastHorizonDays, setForecastHorizonDays] = useState<number>(90);
 
     // --- LEGACY MANUAL LOGS STATE ---
     const [entries, setEntries] = useState<CashFlowEntry[]>([]);
@@ -270,6 +285,55 @@ export const CashflowPage = () => {
             window.removeEventListener('opennetworth_balances_updated', handleBalancesUpdated);
         };
     }, [selectedEntityId, startDate, endDate, fetchActualCashFlow]);
+
+    // Fetch the forward projection. It is always anchored at today — no period
+    // params — and refetches whenever Autopilot postings or budgets change
+    // (both dispatch 'opennetworth_balances_updated'), so a generated month's
+    // wire disappears from the projection instead of double-counting.
+    const fetchForecast = useCallback(async () => {
+        if (!selectedEntityId) {
+            setForecastReport(null);
+            return;
+        }
+        setIsForecastLoading(true);
+        setForecastError(null);
+        try {
+            const params = new URLSearchParams({
+                view: 'reports',
+                report_type: 'cash_flow_forecast',
+                entity_id: selectedEntityId,
+                horizon_days: String(forecastHorizonDays)
+            });
+            const res = await fetch(`/api/accounting?${params.toString()}`);
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            setForecastReport(data.success && data.report ? data.report : null);
+        } catch (err: any) {
+            console.error('Failed to fetch cash flow forecast:', err);
+            setForecastError(err.message || 'Failed to load cash flow forecast');
+            setForecastReport(null);
+        } finally {
+            setIsForecastLoading(false);
+        }
+    }, [selectedEntityId, forecastHorizonDays]);
+
+    useEffect(() => {
+        if (selectedEntityId) {
+            fetchForecast();
+        }
+
+        const handleForecastBalancesUpdated = () => {
+            fetchForecast();
+        };
+
+        window.addEventListener('opennetworth_balances_updated', handleForecastBalancesUpdated);
+        return () => {
+            window.removeEventListener('opennetworth_balances_updated', handleForecastBalancesUpdated);
+        };
+    }, [selectedEntityId, forecastHorizonDays, fetchForecast]);
 
     // Load Manual Logs history from the SQLite vault.
     // Why this exists:
@@ -648,6 +712,15 @@ export const CashflowPage = () => {
                         >
                             <Target size={15} />
                             Budgets
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('forecast')}
+                            className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${
+                                activeTab === 'forecast' ? 'bg-card shadow text-sky-600 font-black' : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            <TrendingUp size={15} />
+                            Forecast
                         </button>
                     </div>
                 }
@@ -1771,6 +1844,215 @@ export const CashflowPage = () => {
                             </tbody>
                         </table>
                     </ContentCard>
+                </div>
+            )}
+
+            {/* TAB 5: FORECAST — forward projection from today (schedules + budgets) */}
+            {activeTab === 'forecast' && (
+                <div className="space-y-6">
+                    <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-100 dark:border-sky-900 p-6 rounded-2xl flex flex-col md:flex-row items-start md:items-center gap-4">
+                        <div className="p-3 bg-white dark:bg-slate-900 rounded-xl shadow-sm text-sky-600">
+                            <TrendingUp size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-sky-900 dark:text-sky-200 text-lg">Cash Flow Forecast</h3>
+                            <p className="text-sky-700 dark:text-sky-300 text-sm mt-1 leading-relaxed max-w-2xl">
+                                Projects your liquid balance forward from today using Autopilot schedules and monthly
+                                budgets. It starts from your actual ledger balance, so months whose schedule wires are
+                                already posted are never counted twice. Schedules are vault-wide; budgets belong to the
+                                selected entity. Currencies are never converted or combined.
+                            </p>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2 shrink-0">
+                            <span className="text-xs font-bold text-sky-700 dark:text-sky-300">Horizon:</span>
+                            <div className="flex bg-white dark:bg-slate-900 p-1 rounded-xl text-xs font-bold shadow-sm">
+                                {[30, 60, 90].map(days => (
+                                    <button
+                                        key={days}
+                                        onClick={() => setForecastHorizonDays(days)}
+                                        className={`px-3 py-1.5 rounded-lg transition ${
+                                            forecastHorizonDays === days
+                                                ? 'bg-sky-600 text-white shadow'
+                                                : 'text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/40'
+                                        }`}
+                                    >
+                                        {days}d
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-4 bg-card border border-border rounded-2xl shadow-sm">
+                        <label htmlFor="forecast-entity" className="text-xs font-bold text-muted-foreground whitespace-nowrap">Entity / Owner:</label>
+                        <select
+                            id="forecast-entity"
+                            value={selectedEntityId}
+                            onChange={(e) => setSelectedEntityId(e.target.value)}
+                            disabled={isEntitiesLoading}
+                            className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20"
+                        >
+                            {entities.map(ent => (
+                                <option key={ent.id} value={ent.id}>
+                                    {ent.name} ({ent.type})
+                                </option>
+                            ))}
+                            {entities.length === 0 && (
+                                <option value="">No entities found</option>
+                            )}
+                        </select>
+                        {forecastReport && (
+                            <span className="ml-auto text-[11px] font-semibold text-muted-foreground font-mono">
+                                {formatForecastDate(forecastReport.start_date)} &rarr; {formatForecastDate(forecastReport.end_date)}
+                            </span>
+                        )}
+                    </div>
+
+                    {forecastError && (
+                        <div role="alert" className="p-4 bg-destructive/15 border border-destructive/30 text-destructive rounded-xl flex items-center gap-2 text-xs font-semibold">
+                            <AlertTriangle size={16} className="shrink-0" />
+                            <span>{forecastError}</span>
+                        </div>
+                    )}
+
+                    {isForecastLoading && !forecastReport ? (
+                        <div className="h-64 w-full bg-slate-50/50 rounded-2xl animate-pulse" />
+                    ) : !forecastReport ? (
+                        <div className="p-8 text-center text-muted-foreground border border-dashed border-border rounded-2xl">
+                            <TrendingUp size={32} className="mx-auto mb-2 opacity-50" />
+                            <p className="font-semibold text-sm">No forecast available</p>
+                            <p className="text-xs mt-1">Select an entity with liquid accounts to project cash forward.</p>
+                        </div>
+                    ) : forecastReport.currencies.length === 0 ? (
+                        <div className="p-8 text-center text-muted-foreground border border-dashed border-border rounded-2xl">
+                            <Info size={32} className="mx-auto mb-2 opacity-50" />
+                            <p className="font-semibold text-sm">No liquid accounts for this entity</p>
+                            <p className="text-xs mt-1">
+                                The forecast projects cash, checking, and savings balances. Add one to see where the money is heading.
+                            </p>
+                        </div>
+                    ) : (
+                        forecastReport.currencies.map(fc => (
+                            <ContentCard key={fc.currency} className="p-6 space-y-5">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-base font-black text-foreground flex items-center gap-2">
+                                        <span className="font-mono">{fc.currency}</span>
+                                        <span className="text-xs font-semibold text-muted-foreground">
+                                            projected balance &middot; {forecastReport.horizon_days} days
+                                        </span>
+                                    </h3>
+                                </div>
+
+                                {fc.is_unknown ? (
+                                    <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-xl flex items-start gap-3">
+                                        <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                                        <p className="text-xs text-amber-800 dark:text-amber-300 font-semibold leading-relaxed">
+                                            The starting balance for {fc.currency} is unknown &mdash; this entity has
+                                            {fc.currency} liquid accounts but none with a recorded balance. The upcoming
+                                            movements below are still listed, but no balance line can be drawn without
+                                            fabricating a starting number.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <ForecastChart points={fc.points} currency={fc.currency} goesNegative={fc.goes_negative} />
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="p-4 bg-muted/40 rounded-xl">
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Projected End Balance</p>
+                                                <p className="text-lg font-black font-mono text-foreground mt-1">{fc.formatted_end_balance}</p>
+                                            </div>
+                                            <div className="p-4 bg-muted/40 rounded-xl">
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Net Change</p>
+                                                <p className={`text-lg font-black font-mono mt-1 ${fc.net_change_cents >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                                                    {formatMoney({ amount_cents: fc.net_change_cents, currency: fc.currency })}
+                                                </p>
+                                            </div>
+                                            <div className="p-4 bg-muted/40 rounded-xl">
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Lowest Point</p>
+                                                <p className={`text-lg font-black font-mono mt-1 ${fc.goes_negative ? 'text-destructive' : 'text-foreground'}`}>
+                                                    {fc.formatted_min_balance}
+                                                </p>
+                                                <p className="text-[10px] font-semibold text-muted-foreground mt-0.5">
+                                                    on {fc.min_balance_date ? formatForecastDate(fc.min_balance_date) : '—'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {fc.goes_negative && (
+                                            <div role="alert" className="p-4 bg-destructive/15 border border-destructive/30 text-destructive rounded-xl flex items-start gap-2 text-xs font-semibold">
+                                                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                                                <span>
+                                                    Warning: the projection goes below zero. On current schedules and
+                                                    budgets, cash runs out before {formatForecastDate(fc.min_balance_date || forecastReport.end_date)}
+                                                    &mdash; the trough is {fc.formatted_min_balance}.
+                                                </span>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                <div>
+                                    <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                                        Upcoming movements ({fc.events.length})
+                                    </h4>
+                                    {fc.events.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">
+                                            No schedules or budgets project into this window.
+                                        </p>
+                                    ) : (
+                                        <ul className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+                                            {fc.events.map((ev, idx) => (
+                                                <li key={`${ev.date}-${ev.kind}-${ev.label}-${idx}`} className="flex items-center gap-3 px-4 py-2.5 text-xs hover:bg-muted/30">
+                                                    <span className="font-mono text-muted-foreground w-20 shrink-0">
+                                                        {new Date(ev.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                    </span>
+                                                    <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wide shrink-0 ${
+                                                        ev.kind === 'schedule'
+                                                            ? 'bg-blue-500/10 text-blue-600'
+                                                            : 'bg-violet-500/10 text-violet-600'
+                                                    }`}>
+                                                        {ev.kind}
+                                                    </span>
+                                                    <span className="font-bold text-foreground truncate">{ev.label}</span>
+                                                    <span className={`ml-auto font-mono font-black shrink-0 ${
+                                                        ev.direction === 'inflow' ? 'text-emerald-600' : 'text-destructive'
+                                                    }`}>
+                                                        {ev.formatted_signed_amount}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </ContentCard>
+                        ))
+                    )}
+
+                    {forecastReport && (forecastReport.excluded_schedules.length > 0 || forecastReport.excluded_budget_categories.length > 0) && (
+                        <div className="p-4 bg-muted/40 border border-border rounded-2xl text-xs space-y-2">
+                            <p className="font-bold text-foreground flex items-center gap-2">
+                                <Info size={14} className="text-muted-foreground" />
+                                Not counted in the projection
+                            </p>
+                            {forecastReport.excluded_schedules.map(s => (
+                                <p key={s.id} className="text-muted-foreground">
+                                    <span className="font-bold text-foreground">{s.name}</span>
+                                    <span className="font-mono"> ({s.currency})</span> &mdash;{' '}
+                                    {s.reason === 'no_liquid_accounts'
+                                        ? 'no liquid account in this currency for the selected entity.'
+                                        : 'invalid or non-positive amount.'}
+                                </p>
+                            ))}
+                            {forecastReport.excluded_budget_categories.map(b => (
+                                <p key={`${b.category}-${b.currency}`} className="text-muted-foreground">
+                                    <span className="font-bold text-foreground capitalize">{b.category.replaceAll('_', ' ')}</span>
+                                    <span className="font-mono"> ({b.currency})</span> budget &mdash; already covered by a
+                                    recurring schedule in the same category, so it is counted once.
+                                </p>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

@@ -98,3 +98,52 @@ export class LocalCashflowRepository implements ICashflowRepository {
         await deleteScopedRecord('recurring', id);
     }
 }
+
+/**
+ * Client mirrors of the `cash_flow_forecast` report from /api/accounting
+ * (forecastService.ts) — snake_case end to end, following the
+ * BudgetVsActualReport precedent in budgetRepository.ts.
+ */
+export interface ForecastEvent {
+    date: string;
+    kind: 'schedule' | 'budget';
+    label: string;
+    category: string | null;
+    direction: 'inflow' | 'outflow';
+    signed_amount_cents: number;
+    currency: string;
+    schedule_id?: string;
+    formatted_signed_amount: string;
+}
+
+export interface ForecastPoint {
+    date: string;
+    balance_cents: number;
+}
+
+export interface CurrencyForecast {
+    currency: string;
+    starting_balance_cents: number | null;
+    is_unknown: boolean;
+    points: ForecastPoint[];
+    events: ForecastEvent[];
+    end_balance_cents: number | null;
+    net_change_cents: number;
+    min_balance_cents: number | null;
+    min_balance_date: string | null;
+    goes_negative: boolean;
+    formatted_starting_balance: string | null;
+    formatted_end_balance: string | null;
+    formatted_min_balance: string | null;
+}
+
+export interface CashFlowForecastReport {
+    entity_id: string;
+    start_date: string;
+    end_date: string;
+    horizon_days: number;
+    currencies: CurrencyForecast[];
+    excluded_schedules: Array<{ id: string; name: string; currency: string; reason: 'no_liquid_accounts' | 'invalid_amount' }>;
+    excluded_budget_categories: Array<{ category: string; currency: string; reason: 'covered_by_recurring_schedule' }>;
+    calculation_version: string;
+}
