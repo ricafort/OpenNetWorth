@@ -17,9 +17,9 @@ import { toMonthlyAmount } from '@/infrastructure/local_driver';
  *   generator never guesses which account funds a schedule; posting to an
  *   arbitrary account would fabricate where money actually moved.
  * - Amounts are monthly-normalized (weekly ×4.33, etc.), matching the Wealth
- *   Momentum semantics. A schedule whose currency differs from the bank
- *   account's currency will post in the bank account's currency — the caller
- *   (future Autopilot UI) must pick a same-currency account or skip the rule.
+ *   Momentum semantics. When the caller supplies `bankAccountCurrency`, a
+ *   schedule in any other currency is SKIPPED — posting it into a
+ *   different-currency account would fabricate a 1:1 conversion.
  * - Re-running for the same month is safe: each posting carries the
  *   idempotency key `recurring:<schedule id>:<month>`, and the ledger returns
  *   the existing transaction instead of duplicating it.
@@ -30,6 +30,11 @@ export interface AutopilotTarget {
     entityId: string;
     /** Liquid asset account (checking/savings/cash) that receives or funds the postings. */
     bankAccountId: string;
+    /**
+     * Currency of the funding account. When provided, schedules in any other
+     * currency are skipped — posting them would imply a fake 1:1 conversion.
+     */
+    bankAccountCurrency?: string;
 }
 
 export interface AutopilotGenerationResult {
@@ -61,6 +66,12 @@ export async function applyRecurringToMonth(
         if (!schedule.is_active) { result.skipped++; continue; }
         if (!schedule.start_date || schedule.start_date > monthEnd) { result.skipped++; continue; }
         if (schedule.end_date && schedule.end_date < monthStart) { result.skipped++; continue; }
+        // Currency honesty: never post a schedule into a different-currency account.
+        if (target.bankAccountCurrency && schedule.currency
+            && schedule.currency !== target.bankAccountCurrency) {
+            result.skipped++;
+            continue;
+        }
 
         const amount_cents = Math.round(toMonthlyAmount(schedule.amount, schedule.frequency) * 100);
         if (!Number.isFinite(amount_cents) || amount_cents <= 0) { result.skipped++; continue; }
