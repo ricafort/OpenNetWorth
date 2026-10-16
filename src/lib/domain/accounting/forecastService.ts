@@ -49,8 +49,9 @@
 
 import Database from 'better-sqlite3';
 import { getActualCashFlowStatement, resolveAccountBalanceInfo, CALCULATION_ENGINE_VERSION } from './balanceService';
+import { debtPaidInMonth } from './debtAutopayService';
 import { listBudgets } from './budgetService';
-import { toMonthlyAmount } from './recurringNormalization';
+import { toMonthlyAmount, normalizeCategory } from './recurringNormalization';
 import { formatMoney, type CurrencyCode } from './types';
 import { getLocalTodayCalendarDate, getDaysInMonth, formatCalendarDate } from '../calendarDate';
 import { estimateMinPayment } from '../debtCalculator';
@@ -172,10 +173,8 @@ interface DebtRow {
     opening_balance_cents: number | null;
 }
 
-/** Autopilot snake_cases schedule categories; budgets are free text — compare normalized. */
-function normalizeCategory(value: string | null | undefined): string {
-    return (value || '').trim().toLowerCase().replace(/\s+/g, '_');
-}
+// normalizeCategory lives in recurringNormalization.ts (shared with the debt
+// autopilot generator) — both sides must normalize identically.
 
 function parseCalendarDate(date: string): { year: number; month: number; day: number } {
     const [year, month, day] = date.split('-').map(Number);
@@ -232,11 +231,7 @@ export function getCashFlowForecast(
     // Posted repayment debits to the liability (positive = Debit, schema.ts:85):
     // a debit inside the month means that month's payment is already in the
     // starting balance — the debt analogue of the schedule key check.
-    const debtPaidInMonth = db.prepare(
-        'SELECT 1 FROM journal_entries j ' +
-        'JOIN transactions t ON t.id = j.transaction_id ' +
-        "WHERE j.account_id = ? AND j.amount_cents > 0 AND t.status = 'posted' AND t.date >= ? AND t.date <= ? LIMIT 1"
-    );
+    // Same predicate the debt autopilot guard uses (debtAutopayService.ts).
 
     const excludedSchedules: ExcludedSchedule[] = [];
     const excludedBudgetCategories: ExcludedBudgetCategory[] = [];
@@ -352,7 +347,7 @@ export function getCashFlowForecast(
         for (const { key } of eachMonth(todayParts.year, todayParts.month, endParts.year, endParts.month)) {
             const monthStart = `${key}-01`;
             const monthEnd = `${key}-31`; // lexicographic upper bound, as for schedules
-            if (debtPaidInMonth.get(debt.id, monthStart, monthEnd)) continue; // already paid this month
+            if (debtPaidInMonth(db, debt.id, monthStart, monthEnd)) continue; // already paid this month
             const eventDate = monthStart < today ? today : monthStart;
             pushEvent(currency, {
                 date: eventDate,

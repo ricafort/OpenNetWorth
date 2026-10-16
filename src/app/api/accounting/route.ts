@@ -47,6 +47,7 @@ import {
 } from '@/lib/domain/accounting/balanceService';
 import { getBudgetVsActual } from '@/lib/domain/accounting/budgetService';
 import { getCashFlowForecast, clampHorizonDays } from '@/lib/domain/accounting/forecastService';
+import { autopayDebtMinimum } from '@/lib/domain/accounting/debtAutopayService';
 import {
     postTransaction,
     recordIncome,
@@ -556,6 +557,15 @@ export async function POST(request: Request) {
             if (!payload) return secureJson({ error: 'Missing loan repayment payload' }, { status: 400 });
             const tx = recordLoanRepayment(db, payload);
             return secureJson({ success: true, transaction: tx }, { status: 201 });
+        }
+
+        // Autopilot debt minimum payment: the server derives the amount from the
+        // stored minimum_payment_cents and guards against double-posting.
+        if (action === 'autopay_debt') {
+            const { payload } = body;
+            if (!payload) return secureJson({ error: 'Missing autopay_debt payload' }, { status: 400 });
+            const result = autopayDebtMinimum(db, payload);
+            return secureJson({ success: true, ...result }, { status: result.skipped ? 200 : 201 });
         }
 
         // 5. Raw Balanced Transaction Commit
