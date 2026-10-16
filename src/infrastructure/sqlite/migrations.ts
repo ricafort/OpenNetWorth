@@ -34,6 +34,7 @@ import { up as migration0006BackfillLegacyLedger } from './migrations/0006_backf
 import { up as migration0007DropRetiredM0 } from './migrations/0007_drop_retired_m0';
 import { up as migration0008RenameM1Prefix } from './migrations/0008_rename_m1_prefix';
 import { up as migration0009AccountTerms } from './migrations/0009_account_terms';
+import { up as migration0010Budgets } from './migrations/0010_budgets';
 
 export interface SqliteMigration {
     /** Stable, ordered identifier, e.g. '0001_baseline'. Never reused. */
@@ -98,6 +99,11 @@ export const MIGRATIONS: SqliteMigration[] = [
         id: '0009_account_terms',
         description: 'Add account terms columns to accounts: interest_rate, minimum_payment_cents, investment_details',
         up: migration0009AccountTerms,
+    },
+    {
+        id: '0010_budgets',
+        description: 'Create budgets table: monthly per-category spending limits (entity, category, currency)',
+        up: migration0010Budgets,
     },
 ];
 
