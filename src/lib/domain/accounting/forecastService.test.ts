@@ -109,6 +109,29 @@ describe('forecastService', () => {
         return report.currencies.find(c => c.currency === 'USD')!;
     }
 
+    function makeLiability(opts: {
+        name: string;
+        sub_type?: string;
+        currency?: string;
+        opening_balance_cents?: number | null;
+        minimum_payment_cents?: number | null;
+        interest_rate?: number | null;
+        tracking_mode?: 'balance' | 'transactions';
+    }) {
+        return createAccount(db, {
+            entity_id: entityId,
+            name: opts.name,
+            type: 'liability',
+            sub_type: (opts.sub_type ?? 'credit_card') as any,
+            currency: (opts.currency ?? 'USD') as any,
+            opening_balance_cents: opts.opening_balance_cents === undefined ? 100000 : opts.opening_balance_cents,
+            opening_date: '2026-01-01',
+            minimum_payment_cents: opts.minimum_payment_cents ?? null,
+            interest_rate: opts.interest_rate ?? null,
+            tracking_mode: opts.tracking_mode
+        }).account;
+    }
+
     describe('clampHorizonDays', () => {
         it('defaults to 90 for absent or garbage input and clamps to [30, 180]', () => {
             expect(clampHorizonDays(null)).toBe(90);
@@ -225,29 +248,6 @@ describe('forecastService', () => {
     });
 
     describe('debt minimum payments', () => {
-        function makeLiability(opts: {
-            name: string;
-            sub_type?: string;
-            currency?: string;
-            opening_balance_cents?: number | null;
-            minimum_payment_cents?: number | null;
-            interest_rate?: number | null;
-            tracking_mode?: 'balance' | 'transactions';
-        }) {
-            return createAccount(db, {
-                entity_id: entityId,
-                name: opts.name,
-                type: 'liability',
-                sub_type: (opts.sub_type ?? 'credit_card') as any,
-                currency: (opts.currency ?? 'USD') as any,
-                opening_balance_cents: opts.opening_balance_cents === undefined ? 100000 : opts.opening_balance_cents,
-                opening_date: '2026-01-01',
-                minimum_payment_cents: opts.minimum_payment_cents ?? null,
-                interest_rate: opts.interest_rate ?? null,
-                tracking_mode: opts.tracking_mode
-            }).account;
-        }
-
         it('projects explicit minimum_payment_cents once per calendar month', () => {
             makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500 });
             const usdForecast = usd(forecast(30));
@@ -341,6 +341,186 @@ describe('forecastService', () => {
             expect(usdForecast.events.some(e => e.kind === 'debt_payment')).toBe(true);
             const eventSum = usdForecast.events.reduce((sum, e) => sum + e.signed_amount_cents, 0);
             expect(usdForecast.net_change_cents).toBe(eventSum);
+        });
+    });
+
+    describe('debt balance projection', () => {
+        // Projection-only amortization: interest at annual percent ÷ 12 then
+        // the payment, integer cents. Same gates as the events — these tests
+        // cross-check that the two series agree.
+        function touchedMonthKeys(horizon: number): string[] {
+            const keys = new Set<string>();
+            for (let d = 0; d <= horizon; d++) keys.add(monthKey(addDays(today, d)));
+            return [...keys].sort();
+        }
+
+        it('amortizes linearly with no rate and reports payoff within horizon', () => {
+            makeLiability({ name: 'Visa Card', minimum_payment_cents: 35000 });
+            const report = forecast(180);
+            const proj = report.debt_projections;
+            expect(proj).toHaveLength(1);
+            const card = proj[0];
+            expect(card.account_id).toBeTruthy();
+            expect(card.starting_balance_cents).toBe(100000);
+            expect(card.interest_rate).toBeNull();
+            expect(card.monthly_payment_cents).toBe(35000);
+            expect(card.estimated_payment).toBe(false);
+            expect(card.non_amortising).toBe(false);
+            // $1,000 at $350/month → paid off in the third projected month.
+            expect(card.months.map(m => m.balance_cents)).toEqual([65000, 30000, 0]);
+            expect(card.months.every(m => m.interest_cents === 0)).toBe(true);
+            // Final month's applied payment is capped at the remaining balance.
+            expect(card.months.map(m => m.payment_cents)).toEqual([35000, 35000, 30000]);
+            expect(card.paid_off_within_horizon).toBe(true);
+            // Third touched month is never the current one → lands on the 1st.
+            expect(card.payoff_date).toBe(`${touchedMonthKeys(180)[2]}-01`);
+            expect(card.balance_at_horizon_end_cents).toBe(0);
+            // The months series stops at payoff; events keep the contractual amount.
+            expect(card.months).toHaveLength(3);
+            const debtEvents = usd(report).events.filter(e => e.kind === 'debt_payment');
+            expect(debtEvents.every(e => e.signed_amount_cents === -35000)).toBe(true);
+        });
+
+        it('accrues one month of interest at the stored annual percent', () => {
+            makeLiability({ name: 'Rate Card', minimum_payment_cents: 3500, interest_rate: 12 });
+            const card = forecast(30).debt_projections[0];
+            // 100000 × 12 ÷ 1200 = 1000 cents; accrue-then-pay.
+            expect(card.months[0].interest_cents).toBe(1000);
+            expect(card.months[0].balance_cents).toBe(97500);
+            // Rounding: 1000 × 7 ÷ 1200 = 5.83 → 6.
+            makeLiability({ name: 'Round Card', minimum_payment_cents: 10, interest_rate: 7, opening_balance_cents: 1000 });
+            const round = forecast(30).debt_projections.find(p => p.name === 'Round Card')!;
+            expect(round.months[0].interest_cents).toBe(6);
+            expect(round.months[0].balance_cents).toBe(996);
+        });
+
+        it('keeps interest at zero when no rate is set', () => {
+            makeLiability({ name: 'Flat Card', minimum_payment_cents: 3500 });
+            const card = forecast(90).debt_projections[0];
+            expect(card.months.length).toBeGreaterThanOrEqual(1);
+            expect(card.months.every(m => m.interest_cents === 0)).toBe(true);
+        });
+
+        it('flags non-amortising debts and lets the balance grow', () => {
+            makeLiability({ name: 'Spiral Card', minimum_payment_cents: 1000, interest_rate: 24 });
+            const card = forecast(90).debt_projections[0];
+            expect(card.non_amortising).toBe(true);
+            expect(card.paid_off_within_horizon).toBe(false);
+            expect(card.payoff_date).toBeNull();
+            const balances = card.months.map(m => m.balance_cents);
+            expect(balances[0]).toBe(101000); // +2000 interest − 1000 payment
+            for (let i = 1; i < balances.length; i++) expect(balances[i]).toBeGreaterThan(balances[i - 1]);
+        });
+
+        it('treats a payment equal to monthly interest as non-amortising', () => {
+            makeLiability({ name: 'Flatline Card', minimum_payment_cents: 1200, interest_rate: 12, opening_balance_cents: 120000 });
+            const card = forecast(30).debt_projections[0];
+            expect(card.non_amortising).toBe(true);
+            expect(card.months.length).toBeGreaterThanOrEqual(1);
+            expect(card.months.every(m => m.balance_cents === 120000)).toBe(true);
+        });
+
+        it('caps the final payment at balance+interest while events keep the contractual amount', () => {
+            makeLiability({ name: 'Almost Paid Card', minimum_payment_cents: 3500, opening_balance_cents: 3000 });
+            const report = forecast(30);
+            const card = report.debt_projections[0];
+            expect(card.months[0].payment_cents).toBe(3000);
+            expect(card.months[0].balance_cents).toBe(0);
+            expect(card.months).toHaveLength(1);
+            expect(card.paid_off_within_horizon).toBe(true);
+            expect(card.payoff_date).toBe(today); // current month clamps to today
+            const debtEvents = usd(report).events.filter(e => e.kind === 'debt_payment');
+            expect(debtEvents.every(e => e.signed_amount_cents === -3500)).toBe(true);
+        });
+
+        it('skips an already-paid month in both the months series and the events', () => {
+            const card = makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500 });
+            recordCreditCardRepayment(db, {
+                bank_account_id: checkingId, card_account_id: card.id,
+                amount_cents: 3500, date: today, description: 'Card payment'
+            });
+            const report = forecast(30);
+            const proj = report.debt_projections[0];
+            // The posted debit is already in the starting liability balance.
+            expect(proj.starting_balance_cents).toBe(96500);
+            expect(proj.months.map(m => m.month)).toEqual(touchedMonthKeys(30).slice(1));
+            expect(
+                usd(report).events.filter(e => e.kind === 'debt_payment')
+                    .some(e => monthKey(e.date) === monthKey(today))
+            ).toBe(false);
+        });
+
+        it('omits debts with nothing owed', () => {
+            makeLiability({ name: 'Paid Off Card', opening_balance_cents: 0, minimum_payment_cents: 3500 });
+            makeLiability({ name: 'Overpaid Card', opening_balance_cents: -500, minimum_payment_cents: 3500 });
+            expect(forecast(30).debt_projections).toHaveLength(0);
+        });
+
+        it('omits excluded debts but keeps them in excluded_debt_accounts', () => {
+            makeLiability({ name: 'JPY Loan', sub_type: 'personal_loan', currency: 'JPY', minimum_payment_cents: 3500 });
+            makeLiability({ name: 'Covered Card', minimum_payment_cents: 3500 });
+            // sub_type-matching coverage ('Credit Card' → credit_card) so the
+            // personal_loan Mystery Card falls through to the balance_unknown gate.
+            insertSchedule(db, {
+                id: 'accel', name: 'Debt Freedom Accelerator', amount: 200, type: 'expense',
+                frequency: 'monthly', category: 'Credit Card', start_date: today
+            });
+            makeLiability({ name: 'Mystery Loan', sub_type: 'personal_loan', opening_balance_cents: null, tracking_mode: 'balance' });
+            const report = forecast(30);
+            expect(report.debt_projections).toHaveLength(0);
+            expect(report.excluded_debt_accounts.map(e => e.reason).sort()).toEqual([
+                'balance_unknown', 'covered_by_recurring_schedule', 'no_liquid_accounts'
+            ]);
+        });
+
+        it('includes an unknown-balance debt with explicit terms as an is_unknown row', () => {
+            makeLiability({ name: 'Tracked Card', opening_balance_cents: null, tracking_mode: 'balance', minimum_payment_cents: 3500 });
+            const report = forecast(30);
+            const card = report.debt_projections[0];
+            expect(card.is_unknown).toBe(true);
+            expect(card.starting_balance_cents).toBeNull();
+            expect(card.months).toEqual([]);
+            expect(card.balance_at_horizon_end_cents).toBeNull();
+            expect(card.payoff_date).toBeNull();
+            expect(card.formatted_starting_balance).toBeNull();
+            expect(card.monthly_payment_cents).toBe(3500);
+            // Its payment events still project.
+            expect(usd(report).events.some(e => e.kind === 'debt_payment')).toBe(true);
+        });
+
+        it('adds nothing to the cash-flow series (invariant guard)', () => {
+            makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500, interest_rate: 18 });
+            insertSchedule(db, { id: 'sch-a', amount: 200, type: 'expense', frequency: 'monthly', start_date: today });
+            upsertBudget(db, { entity_id: entityId, category: 'utilities', currency: 'USD', limit_cents: 15000 });
+            const usdForecast = usd(forecast(60));
+            const eventSum = usdForecast.events.reduce((sum, e) => sum + e.signed_amount_cents, 0);
+            expect(usdForecast.net_change_cents).toBe(eventSum);
+            expect(usdForecast.points).toHaveLength(61);
+        });
+
+        it('reports not paid off within horizon and the end balance', () => {
+            makeLiability({ name: 'Visa Card', minimum_payment_cents: 3500 });
+            const card = forecast(30).debt_projections[0];
+            expect(card.paid_off_within_horizon).toBe(false);
+            expect(card.payoff_date).toBeNull();
+            const paid = card.months.reduce((sum, m) => sum + m.payment_cents, 0);
+            expect(card.balance_at_horizon_end_cents).toBe(100000 - paid);
+            expect(card.balance_at_horizon_end_cents!).toBeGreaterThan(0);
+        });
+
+        it('sorts projections by currency then name', () => {
+            createAccount(db, {
+                entity_id: entityId, name: 'EUR Checking', type: 'asset', sub_type: 'checking',
+                currency: 'EUR', opening_balance_cents: 50000, opening_date: '2026-01-01'
+            });
+            makeLiability({ name: 'Zed EUR Card', currency: 'EUR', minimum_payment_cents: 3500 });
+            makeLiability({ name: 'Alpha Card', minimum_payment_cents: 3500 });
+            const rows = forecast(30).debt_projections.map(p => [p.currency, p.name]);
+            expect(rows).toEqual([['EUR', 'Zed EUR Card'], ['USD', 'Alpha Card']]);
+        });
+
+        it('returns an empty projections array for a vault without liabilities', () => {
+            expect(forecast(30).debt_projections).toEqual([]);
         });
     });
 

@@ -40,6 +40,17 @@
  *   skipped, the debt analogue of the schedule key check. An active
  *   'Debt Repayment'/sub_type schedule suppresses the debt entirely: schedule
  *   wins, same rule as budgets.
+ * - Debt balance projection (`debt_projections`): FORECAST-ONLY amortization —
+ *   the ledger never accrues interest. Each projected month accrues one month
+ *   of interest at the stored `interest_rate` (ANNUAL PERCENT, 0–100 scale —
+ *   cents × rate ÷ 1200, Math.round per month, integer state so no drift) and
+ *   then applies the same payment the events use, capped so the balance never
+ *   goes negative. Same gates, same month iteration, same `debtPaidInMonth`
+ *   skip as the events → the table and the event list can never disagree.
+ *   Payoff dates are horizon-bounded only: extrapolating a 90-day forecast to
+ *   a payoff years out would be false precision (constant payment, no new
+ *   charges, no rate changes). The current partial month accrues a full
+ *   month's interest — no proration, matching the event model.
  * - Unknown starting balance (currency has liquid accounts but none with a
  *   known balance) → is_unknown with empty points; never fabricate 0.
  * - All date math is integer (year, month) iteration + UTC-parsed calendar
@@ -135,6 +146,50 @@ export interface ExcludedDebtAccount {
     reason: 'no_liquid_accounts' | 'balance_unknown' | 'covered_by_recurring_schedule';
 }
 
+export interface DebtProjectionMonth {
+    /** YYYY-MM of the projected month (already-paid months are absent). */
+    month: string;
+    /** Cents actually applied to the balance (capped at balance+interest in the final month). */
+    payment_cents: number;
+    /** Interest accrued that month (0 when no rate). Projection-only — never posted. */
+    interest_cents: number;
+    /** Credit-normal balance after accrual+payment; never negative. */
+    balance_cents: number;
+}
+
+/**
+ * Per-liability balance projection — FORECAST ONLY. The ledger never accrues
+ * interest; this series exists to show when a balance hits zero within the
+ * horizon. Computed in the same pass with the same gates and payment amounts
+ * as the debt_payment events, so table and event list never disagree.
+ */
+export interface DebtProjection {
+    account_id: string;
+    name: string;
+    currency: CurrencyCode;
+    sub_type: string;
+    /** Credit-normal positive = owed; null ⇔ balance unknown (explicit-terms debt). */
+    starting_balance_cents: number | null;
+    /** Stored annual percent (0–100 scale), as on the account — NOT a decimal. */
+    interest_rate: number | null;
+    /** Contractual monthly payment (explicit or estimate) — same amount the events use. */
+    monthly_payment_cents: number;
+    estimated_payment: boolean;
+    is_unknown: boolean;
+    /** Months projected in order; already-paid months absent; series stops at payoff. */
+    months: DebtProjectionMonth[];
+    /** Last months[].balance_cents; starting balance when no months; null when is_unknown. */
+    balance_at_horizon_end_cents: number | null;
+    paid_off_within_horizon: boolean;
+    /** eventDate of the payoff month; null unless paid_off_within_horizon. */
+    payoff_date: string | null;
+    /** rate > 0 and payment ≤ monthly interest at start → balance never amortises. */
+    non_amortising: boolean;
+    formatted_starting_balance: string | null;
+    formatted_monthly_payment: string;
+    formatted_balance_at_horizon_end: string | null;
+}
+
 export interface CashFlowForecastResult {
     entity_id: string;
     /** Today — the forecast is always anchored at the current local calendar date. */
@@ -146,6 +201,8 @@ export interface CashFlowForecastResult {
     excluded_schedules: ExcludedSchedule[];
     excluded_budget_categories: ExcludedBudgetCategory[];
     excluded_debt_accounts: ExcludedDebtAccount[];
+    /** Per-liability balance projection; sorted by currency then name. */
+    debt_projections: DebtProjection[];
     calculation_version: string;
 }
 
@@ -201,6 +258,26 @@ function* eachMonth(startYear: number, startMonth: number, endYear: number, endM
     }
 }
 
+/**
+ * One projected month of the debt balance series: accrue one month of interest
+ * at the stored annual percent (cents × rate ÷ 1200, rounded per month —
+ * integer state, no drift accumulation), then apply the payment capped at
+ * balance + interest so the balance never goes negative. Projection-only:
+ * nothing here is ever posted to the ledger.
+ */
+function accrueAndPayCents(
+    balanceCents: number,
+    annualRatePercent: number | null,
+    paymentCents: number
+): { interest_cents: number; payment_applied_cents: number; balance_cents: number } {
+    const interest = annualRatePercent !== null && annualRatePercent > 0
+        ? Math.round(balanceCents * annualRatePercent / 1200)
+        : 0;
+    const withInterest = balanceCents + interest;
+    const applied = Math.min(paymentCents, withInterest);
+    return { interest_cents: interest, payment_applied_cents: applied, balance_cents: withInterest - applied };
+}
+
 export function getCashFlowForecast(
     db: Database.Database,
     entityId: string,
@@ -236,6 +313,7 @@ export function getCashFlowForecast(
     const excludedSchedules: ExcludedSchedule[] = [];
     const excludedBudgetCategories: ExcludedBudgetCategory[] = [];
     const excludedDebtAccounts: ExcludedDebtAccount[] = [];
+    const debtProjections: DebtProjection[] = [];
     const eventsByCurrency = new Map<CurrencyCode, ForecastEvent[]>();
     // Daily deltas drive the chart; events are the display list. Both agree in
     // total: schedule events carry the full monthly amount, budget events the
@@ -344,11 +422,43 @@ export function getCashFlowForecast(
             amountCents = Math.round(estimateMinPayment((balanceInfo.balance_cents ?? 0) / 100, debt.interest_rate ?? 0) * 100);
             estimated = true;
         }
+
+        // --- Balance projection (forecast-only; the ledger never accrues). ---
+        // Same gates, same amountCents, same month iteration as the events
+        // below → the projection table and the event list never disagree.
+        // `interest_rate` is an ANNUAL PERCENT (0–100 scale), not a decimal.
+        const rate = typeof debt.interest_rate === 'number' && Number.isFinite(debt.interest_rate) && debt.interest_rate > 0
+            ? debt.interest_rate
+            : null;
+        const projStart = balanceInfo.is_unknown ? null : balanceInfo.balance_cents;
+        // Payment ≤ monthly interest at the start → the balance never amortises
+        // (debtCalculator.ts:111 precedent; integer equality suffices — flat balance).
+        const nonAmortising = projStart !== null && rate !== null
+            && amountCents <= Math.round(projStart * rate / 1200);
+        const projMonths: DebtProjectionMonth[] = [];
+        let projBalance = projStart;
+        let payoffDate: string | null = null;
+
         for (const { key } of eachMonth(todayParts.year, todayParts.month, endParts.year, endParts.month)) {
             const monthStart = `${key}-01`;
             const monthEnd = `${key}-31`; // lexicographic upper bound, as for schedules
             if (debtPaidInMonth(db, debt.id, monthStart, monthEnd)) continue; // already paid this month
             const eventDate = monthStart < today ? today : monthStart;
+
+            // Projection month (skipped months produce neither event nor month
+            // record — the posted repayment is already in projStart).
+            if (projBalance !== null && payoffDate === null) {
+                const step = accrueAndPayCents(projBalance, rate, amountCents);
+                projMonths.push({
+                    month: key,
+                    payment_cents: step.payment_applied_cents,
+                    interest_cents: step.interest_cents,
+                    balance_cents: step.balance_cents
+                });
+                projBalance = step.balance_cents;
+                if (projBalance === 0) payoffDate = eventDate;
+            }
+
             pushEvent(currency, {
                 date: eventDate,
                 kind: 'debt_payment',
@@ -362,6 +472,29 @@ export function getCashFlowForecast(
             });
             addDailyDelta(currency, eventDate, -amountCents);
         }
+
+        const endProj = projStart === null
+            ? null
+            : (projMonths.length ? projMonths[projMonths.length - 1].balance_cents : projStart);
+        debtProjections.push({
+            account_id: debt.id,
+            name: debt.name,
+            currency,
+            sub_type: debt.sub_type,
+            starting_balance_cents: projStart,
+            interest_rate: debt.interest_rate,
+            monthly_payment_cents: amountCents,
+            estimated_payment: estimated,
+            is_unknown: balanceInfo.is_unknown,
+            months: projMonths,
+            balance_at_horizon_end_cents: endProj,
+            paid_off_within_horizon: payoffDate !== null,
+            payoff_date: payoffDate,
+            non_amortising: nonAmortising,
+            formatted_starting_balance: projStart === null ? null : formatMoney({ amount_cents: projStart, currency }),
+            formatted_monthly_payment: formatMoney({ amount_cents: amountCents, currency }),
+            formatted_balance_at_horizon_end: endProj === null ? null : formatMoney({ amount_cents: endProj, currency })
+        });
     }
 
     // --- Budgets: integer-exact daily accrual (never posted, no key check). ---
@@ -476,6 +609,9 @@ export function getCashFlowForecast(
         excluded_schedules: excludedSchedules,
         excluded_budget_categories: excludedBudgetCategories,
         excluded_debt_accounts: excludedDebtAccounts,
+        debt_projections: debtProjections.sort(
+            (a, b) => a.currency.localeCompare(b.currency) || a.name.localeCompare(b.name)
+        ),
         calculation_version: CALCULATION_ENGINE_VERSION
     };
 }
