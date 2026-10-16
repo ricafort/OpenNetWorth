@@ -33,6 +33,7 @@ import { up as migration0005EvidenceLinks } from './migrations/0005_evidence_lin
 import { up as migration0006BackfillLegacyLedger } from './migrations/0006_backfill_legacy_ledger';
 import { up as migration0007DropRetiredM0 } from './migrations/0007_drop_retired_m0';
 import { up as migration0008RenameM1Prefix } from './migrations/0008_rename_m1_prefix';
+import { up as migration0009AccountTerms } from './migrations/0009_account_terms';
 
 export interface SqliteMigration {
     /** Stable, ordered identifier, e.g. '0001_baseline'. Never reused. */
@@ -92,6 +93,11 @@ export const MIGRATIONS: SqliteMigration[] = [
         description: 'Rename every m1_* table (and kept m0 history tables) to plain domain names; idx_* recreated as idx_*',
         backupBefore: true,
         up: migration0008RenameM1Prefix,
+    },
+    {
+        id: '0009_account_terms',
+        description: 'Add account terms columns to accounts: interest_rate, minimum_payment_cents, investment_details',
+        up: migration0009AccountTerms,
     },
 ];
 

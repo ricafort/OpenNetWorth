@@ -32,7 +32,7 @@ import {
     FAMILY_CONFIG,
     GROWING_WEALTH_CONFIG,
 } from '../src/features/demo/demoConfigs';
-import type { ProfileConfig } from '../src/features/demo/demoFactory';
+import { generateDemoProfile, type ProfileConfig } from '../src/features/demo/demoFactory';
 import type { AccountSubType } from '../src/lib/domain/accounting/types';
 import { SAMPLE_FREEDOM_SETTINGS } from '../src/infrastructure/sampleData';
 
@@ -117,10 +117,14 @@ export function seedPersona(cfg: ProfileConfig): void {
     // all entities, so a single entity keeps the demo view unambiguous.
     const household = createEntity(db, { name: cfg.label, type: 'household', currency: 'USD' });
 
-    for (let i = 0; i < cfg.assets.length; i++) {
-        const a = cfg.assets[i];
+    // generateDemoProfile emits the same `${cfg.id}-a-<i>` / `${cfg.id}-l-<i>` ids
+    // as before, and it carries the terms (investment_details, interest_rate,
+    // minimum_payment) that the ledger now persists on the account rows.
+    const generated = generateDemoProfile(cfg);
+
+    for (const a of generated.assets) {
         createAccount(db, {
-            id: `${cfg.id}-a-${i}`,
+            id: a.id,
             entity_id: household.id,
             name: a.name,
             type: 'asset',
@@ -128,14 +132,15 @@ export function seedPersona(cfg: ProfileConfig): void {
             currency: 'USD',
             tracking_mode: 'transactions',
             opening_balance_cents: Math.round(a.value * 100),
-            opening_date: openingDate
+            opening_date: openingDate,
+            interest_rate: a.interest_rate ?? null,
+            investment_details: a.investment_details ? JSON.stringify(a.investment_details) : null
         });
     }
 
-    for (let i = 0; i < cfg.liabilities.length; i++) {
-        const l = cfg.liabilities[i];
+    for (const l of generated.liabilities) {
         createAccount(db, {
-            id: `${cfg.id}-l-${i}`,
+            id: l.id,
             entity_id: household.id,
             name: l.name,
             type: 'liability',
@@ -143,7 +148,9 @@ export function seedPersona(cfg: ProfileConfig): void {
             currency: 'USD',
             tracking_mode: 'transactions',
             opening_balance_cents: Math.round(l.balance * 100),
-            opening_date: openingDate
+            opening_date: openingDate,
+            interest_rate: l.interest_rate ?? null,
+            minimum_payment_cents: l.minimum_payment != null ? Math.round(l.minimum_payment * 100) : null
         });
     }
 

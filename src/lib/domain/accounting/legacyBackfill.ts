@@ -108,12 +108,23 @@ export function backfillLegacyLedgerFromPayload(
         VALUES (?, ?, ?, ?, ?, ?)
     `).run(mapped.entity.id, mapped.entity.name, mapped.entity.type, mapped.entity.currency, mapped.entity.created_at, mapped.entity.updated_at);
 
+    // Terms columns (0009) may not exist yet: on fresh or pre-0008 vaults migration
+    // 0006 runs BEFORE 0009, so probe and only carry terms when the columns are there.
+    const accountColumns = new Set(
+        (db.prepare(`PRAGMA table_info("${t.accounts}")`).all() as { name: string }[]).map(c => c.name)
+    );
+    const hasTermsColumns = accountColumns.has('interest_rate')
+        && accountColumns.has('minimum_payment_cents')
+        && accountColumns.has('investment_details');
+    const termsCols = hasTermsColumns ? ', interest_rate, minimum_payment_cents, investment_details' : '';
+    const termsHolders = hasTermsColumns ? ', ?, ?, ?' : '';
+
     const insertAccount = db.prepare(`
         INSERT OR IGNORE INTO "${t.accounts}" (
             id, entity_id, name, type, sub_type, currency, is_active,
             opening_date, opening_balance_cents, tracking_mode,
-            balance_revision, revision, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'transactions', 1, 1, ?, ?)
+            balance_revision, revision, created_at, updated_at${termsCols}
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'transactions', 1, 1, ?, ?${termsHolders})
     `);
     let accountsInserted = 0;
     for (const acc of mapped.accounts) {
@@ -121,7 +132,10 @@ export function backfillLegacyLedgerFromPayload(
             acc.id, acc.entity_id, acc.name, acc.type, acc.sub_type, acc.currency,
             acc.opening_date ?? null,
             acc.opening_balance_cents ?? null,
-            acc.created_at, acc.updated_at
+            acc.created_at, acc.updated_at,
+            ...(hasTermsColumns
+                ? [acc.interest_rate ?? null, acc.minimum_payment_cents ?? null, acc.investment_details ?? null]
+                : [])
         );
         accountsInserted += res.changes;
     }

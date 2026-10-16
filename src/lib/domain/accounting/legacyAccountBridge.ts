@@ -84,6 +84,9 @@ export async function createLedgerAccount(input: {
     sub_type: string;
     currency: string;
     balance_cents: number;
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null;
+    investment_details?: string | null;
 }): Promise<void> {
     const entity_id = await ensureDefaultEntityId(input.currency);
     await postAction({
@@ -96,7 +99,10 @@ export async function createLedgerAccount(input: {
             sub_type: input.sub_type,
             currency: input.currency,
             opening_balance_cents: input.balance_cents,
-            opening_date: new Date().toISOString().slice(0, 10)
+            opening_date: new Date().toISOString().slice(0, 10),
+            interest_rate: input.interest_rate ?? null,
+            minimum_payment_cents: input.minimum_payment_cents ?? null,
+            investment_details: input.investment_details ?? null
         }
     });
 }
@@ -112,6 +118,9 @@ export async function updateLedgerAccount(input: {
     name?: string;
     sub_type?: string;
     balance_cents?: number;
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null;
+    investment_details?: string | null;
 }): Promise<void> {
     const { accounts } = await fetchLedgerSnapshot();
     const account = accounts.find(a => a.id === input.id);
@@ -120,6 +129,9 @@ export async function updateLedgerAccount(input: {
     const updates: Record<string, unknown> = {};
     if (input.name !== undefined) updates.name = input.name;
     if (input.sub_type !== undefined) updates.sub_type = input.sub_type;
+    if (input.interest_rate !== undefined) updates.interest_rate = input.interest_rate;
+    if (input.minimum_payment_cents !== undefined) updates.minimum_payment_cents = input.minimum_payment_cents;
+    if (input.investment_details !== undefined) updates.investment_details = input.investment_details;
     if (Object.keys(updates).length > 0) {
         await postAction({
             action: 'update_account',

@@ -947,10 +947,12 @@ export async function POST(request: Request) {
                 const insertAccount = db.prepare(`
                     INSERT INTO accounts (
                         id, entity_id, name, type, sub_type, currency, is_active, institution,
-                        account_number_mask, opening_date, opening_balance_cents, tracking_mode, balance_revision, revision, created_at, updated_at
+                        account_number_mask, opening_date, opening_balance_cents, tracking_mode, balance_revision, revision, created_at, updated_at,
+                        interest_rate, minimum_payment_cents, investment_details
                     ) VALUES (
                         @id, @entity_id, @name, @type, @sub_type, @currency, @is_active, @institution,
-                        @account_number_mask, @opening_date, @opening_balance_cents, @tracking_mode, @balance_revision, @revision, @created_at, @updated_at
+                        @account_number_mask, @opening_date, @opening_balance_cents, @tracking_mode, @balance_revision, @revision, @created_at, @updated_at,
+                        @interest_rate, @minimum_payment_cents, @investment_details
                     )
                 `);
                 for (const a of rawVault.accounts) {
@@ -970,7 +972,10 @@ export async function POST(request: Request) {
                         balance_revision: a.balance_revision || 1,
                         revision: a.revision || 1,
                         created_at: a.created_at || new Date().toISOString(),
-                        updated_at: a.updated_at || new Date().toISOString()
+                        updated_at: a.updated_at || new Date().toISOString(),
+                        interest_rate: a.interest_rate ?? null,
+                        minimum_payment_cents: a.minimum_payment_cents ?? null,
+                        investment_details: a.investment_details ?? null
                     });
                 }
 
