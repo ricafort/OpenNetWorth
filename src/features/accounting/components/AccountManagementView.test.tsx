@@ -7,6 +7,8 @@
  * - Closing Batch Item 3 (Functional Record Balance recovery): opens manual observation flow
  *   preserving the target account (even for accounts with an existing opening balance),
  *   and reopens the balance check modal after save to verify the updated balance.
+ * - Liability debt terms (interest rate / minimum payment): card display, edit pre-population,
+ *   create/update payloads, and blank-clears-terms semantics (null = clear the column).
  * 
  * Tricky logic:
  * Simulates the modal handoff sequence: click "Check balance" -> click "Record Balance" ->
@@ -117,6 +119,8 @@ const mockAccounts: AccountWithBalance[] = [
         tracking_mode: 'transactions',
         balance_revision: 1,
         revision: 1,
+        interest_rate: 18.99,
+        minimum_payment_cents: 3500,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         formatted_balance: '$-500.00'
@@ -273,5 +277,123 @@ describe('AccountManagementView', () => {
         expect(container.textContent).toContain('Edit account');
         const nameInput = container.querySelector('input[type="text"]') as HTMLInputElement;
         expect(nameInput?.value).toBe('Credit Card');
+    });
+
+    // --- Liability debt terms (interest_rate / minimum_payment_cents) ---
+
+    const setInputValue = (el: Element | null, value: string) => {
+        act(() => {
+            // Native setter bypasses React's value tracker so the synthetic onChange fires
+            // (same approach as DailyEventsView.test.tsx).
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+            nativeInputValueSetter?.call(el, value);
+            (el as HTMLInputElement).dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    };
+
+    const postedPayloads = () =>
+        (global.fetch as any).mock.calls
+            .filter((c: any[]) => typeof c[1]?.body === 'string')
+            .map((c: any[]) => JSON.parse(c[1].body));
+
+    it('shows stored debt terms on liability cards only', async () => {
+        await act(async () => {
+            root.render(<AccountManagementView entities={mockEntities} selectedEntityId="all" />);
+        });
+
+        const terms = container.querySelector('[data-testid="terms-acc-2"]');
+        expect(terms?.textContent).toContain('18.99% p.a.');
+        expect(terms?.textContent).toContain('min payment $35.00');
+        // Asset cards never show a terms row.
+        expect(container.querySelector('[data-testid="terms-acc-1"]')).toBeNull();
+    });
+
+    it('pre-populates debt terms when editing a liability and sends them in update_account', async () => {
+        await act(async () => {
+            root.render(<AccountManagementView entities={mockEntities} selectedEntityId="all" />);
+        });
+
+        const editButtons = Array.from(container.querySelectorAll('button')).filter(b => b.textContent === 'Edit');
+        act(() => {
+            editButtons[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        const rateInput = container.querySelector('input[placeholder="e.g. 18.99"]');
+        const minInput = container.querySelector('input[placeholder="e.g. 35.00"]');
+        expect((rateInput as HTMLInputElement)?.value).toBe('18.99');
+        expect((minInput as HTMLInputElement)?.value).toBe('35.00');
+
+        setInputValue(minInput, '50.00');
+
+        const submit = Array.from(container.querySelectorAll('button[type="submit"]'))
+            .find(b => b.textContent?.includes('Save changes'));
+        await act(async () => {
+            submit?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        const updateCall = postedPayloads().find((p: any) => p.action === 'update_account');
+        expect(updateCall).toBeTruthy();
+        expect(updateCall.account_id).toBe('acc-2');
+        expect(updateCall.updates.interest_rate).toBe(18.99);
+        expect(updateCall.updates.minimum_payment_cents).toBe(5000);
+    });
+
+    it('clearing the minimum payment input sends null to clear the stored terms', async () => {
+        await act(async () => {
+            root.render(<AccountManagementView entities={mockEntities} selectedEntityId="all" />);
+        });
+
+        const editButtons = Array.from(container.querySelectorAll('button')).filter(b => b.textContent === 'Edit');
+        act(() => {
+            editButtons[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        setInputValue(container.querySelector('input[placeholder="e.g. 35.00"]'), '');
+
+        const submit = Array.from(container.querySelectorAll('button[type="submit"]'))
+            .find(b => b.textContent?.includes('Save changes'));
+        await act(async () => {
+            submit?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        const updateCall = postedPayloads().find((p: any) => p.action === 'update_account');
+        expect(updateCall).toBeTruthy();
+        // null = clear the column (updateAccount semantics); untouched rate is resent as-is.
+        expect(updateCall.updates.minimum_payment_cents).toBeNull();
+        expect(updateCall.updates.interest_rate).toBe(18.99);
+    });
+
+    it('includes debt terms in the create_account payload for new liabilities', async () => {
+        await act(async () => {
+            root.render(<AccountManagementView entities={mockEntities} selectedEntityId="all" />);
+        });
+
+        const addBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('Add account'));
+        act(() => {
+            addBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        // Switch the type selector to Liability (terms inputs only render for liabilities).
+        const liabilityBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('What you owe'));
+        act(() => {
+            liabilityBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        setInputValue(container.querySelector('input[placeholder="e.g. Chase Total Checking"]'), 'Store Card');
+        setInputValue(container.querySelector('input[placeholder="e.g. 18.99"]'), '22.5');
+        setInputValue(container.querySelector('input[placeholder="e.g. 35.00"]'), '40.50');
+
+        const submit = Array.from(container.querySelectorAll('button[type="submit"]'))
+            .find(b => b.textContent?.includes('Save account'));
+        await act(async () => {
+            submit?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+
+        const createCall = postedPayloads().find((p: any) => p.action === 'create_account');
+        expect(createCall).toBeTruthy();
+        expect(createCall.account.name).toBe('Store Card');
+        expect(createCall.account.type).toBe('liability');
+        expect(createCall.account.interest_rate).toBe(22.5);
+        expect(createCall.account.minimum_payment_cents).toBe(4050);
     });
 });
