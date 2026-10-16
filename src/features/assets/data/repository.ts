@@ -1,4 +1,4 @@
-import { Asset, AssetType } from '@/features/assets/types';
+import { Asset, AssetType, InvestmentDetails } from '@/features/assets/types';
 import { IRepository } from '@/types/repository';
 import { CurrencyCode } from '@/types';
 import {
@@ -52,10 +52,18 @@ function assetTypeToSubType(type?: AssetType): string {
  * - Unknown balances map to 0, matching the summary's "known totals"
  *   semantics; unrecorded accounts are surfaced separately by
  *   `useSharedFinancialSummary`.
- * - `investment_details` has no `accounts` column yet; consumers already
- *   handle its absence (flagged as a follow-up feature gap).
+ * - `investment_details` is stored as JSON text on the account (migration
+ *   0009); malformed JSON degrades to "no details" rather than throwing.
  */
 function toAsset(row: LedgerAccountRow): Asset {
+    let investment_details: InvestmentDetails | undefined;
+    if (row.investment_details) {
+        try {
+            investment_details = JSON.parse(row.investment_details) as InvestmentDetails;
+        } catch {
+            investment_details = undefined;
+        }
+    }
     return {
         id: row.id,
         user_id: 'local_user',
@@ -66,7 +74,9 @@ function toAsset(row: LedgerAccountRow): Asset {
         currency: row.currency as CurrencyCode,
         is_liquid: LIQUID_SUB_TYPES.includes(row.sub_type),
         account_id: row.id,
-        last_updated: row.updated_at
+        last_updated: row.updated_at,
+        interest_rate: row.interest_rate ?? undefined,
+        investment_details
     };
 }
 
@@ -103,7 +113,9 @@ export class LocalAssetRepository implements IAssetRepository {
             type: 'asset',
             sub_type: assetTypeToSubType(item.type),
             currency: item.currency || 'AUD',
-            balance_cents: Math.round((item.value || 0) * 100)
+            balance_cents: Math.round((item.value || 0) * 100),
+            interest_rate: item.interest_rate ?? null,
+            investment_details: item.investment_details ? JSON.stringify(item.investment_details) : null
         });
         return item;
     }
@@ -114,7 +126,11 @@ export class LocalAssetRepository implements IAssetRepository {
             type: 'asset',
             name: item.name,
             sub_type: assetTypeToSubType(item.type),
-            balance_cents: Math.round((item.value || 0) * 100)
+            balance_cents: Math.round((item.value || 0) * 100),
+            interest_rate: item.interest_rate,
+            investment_details: item.investment_details !== undefined
+                ? (item.investment_details ? JSON.stringify(item.investment_details) : null)
+                : undefined
         });
         return item;
     }

@@ -44,9 +44,9 @@ function liabilityTypeToSubType(type?: LiabilityType): string {
  * - `account_id` is set to the account id itself so the pages' "unlinked
  *   legacy" dedupe collapses ledger-backed rows out of the legacy section.
  * - Unknown balances map to 0, matching the summary's "known totals".
- * - `interest_rate`/`minimum_payment` have no `accounts` columns yet;
- *   consumers already handle missing terms ("Repayment details needed").
- *   Flagged as a follow-up feature gap.
+ * - Terms (`interest_rate`, `minimum_payment`) live on the account row
+ *   (migration 0009); `minimum_payment_cents` follows the ledger cents
+ *   convention and is divided back to major units here, like `balance`.
  */
 function toLiability(row: LedgerAccountRow): Liability {
     return {
@@ -59,7 +59,9 @@ function toLiability(row: LedgerAccountRow): Liability {
         currency: row.currency as CurrencyCode,
         is_good_debt: row.sub_type === 'mortgage',
         account_id: row.id,
-        last_updated: row.updated_at
+        last_updated: row.updated_at,
+        interest_rate: row.interest_rate ?? 0,
+        minimum_payment: row.minimum_payment_cents != null ? row.minimum_payment_cents / 100 : undefined
     } as Liability;
 }
 
@@ -96,7 +98,9 @@ export class LocalLiabilityRepository implements ILiabilityRepository {
             type: 'liability',
             sub_type: liabilityTypeToSubType(item.type),
             currency: item.currency || 'AUD',
-            balance_cents: Math.round((item.balance || 0) * 100)
+            balance_cents: Math.round((item.balance || 0) * 100),
+            interest_rate: item.interest_rate ?? null,
+            minimum_payment_cents: item.minimum_payment != null ? Math.round(item.minimum_payment * 100) : null
         });
         return item;
     }
@@ -107,7 +111,11 @@ export class LocalLiabilityRepository implements ILiabilityRepository {
             type: 'liability',
             name: item.name,
             sub_type: liabilityTypeToSubType(item.type),
-            balance_cents: Math.round((item.balance || 0) * 100)
+            balance_cents: Math.round((item.balance || 0) * 100),
+            interest_rate: item.interest_rate,
+            minimum_payment_cents: item.minimum_payment !== undefined
+                ? (item.minimum_payment != null ? Math.round(item.minimum_payment * 100) : null)
+                : undefined
         });
         return item;
     }

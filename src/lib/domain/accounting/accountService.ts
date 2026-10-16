@@ -59,6 +59,9 @@ export interface CreateAccountInput {
     opening_date?: string | null; // YYYY-MM-DD
     opening_balance_cents?: number | null; // Integer cents
     tracking_mode?: TrackingMode;
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null; // Integer cents
+    investment_details?: string | null; // JSON string
 }
 
 export interface UpdateAccountInput {
@@ -68,6 +71,36 @@ export interface UpdateAccountInput {
     account_number_mask?: string | null;
     is_active?: boolean;
     tracking_mode?: TrackingMode;
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null; // Integer cents
+    investment_details?: string | null; // JSON string
+}
+
+/**
+ * Validates the optional terms fields shared by create and update paths.
+ * `investment_details` is stored as JSON text; we reject malformed JSON at the
+ * boundary so readers never have to guard against it.
+ */
+function assertValidAccountTerms(input: {
+    interest_rate?: number | null;
+    minimum_payment_cents?: number | null;
+    investment_details?: string | null;
+}): void {
+    if (input.interest_rate !== undefined && input.interest_rate !== null) {
+        if (typeof input.interest_rate !== 'number' || !Number.isFinite(input.interest_rate) || input.interest_rate < 0) {
+            throw new ValidationError('Interest rate must be a finite non-negative number.');
+        }
+    }
+    if (input.minimum_payment_cents !== undefined && input.minimum_payment_cents !== null) {
+        assertValidMoneyCents(input.minimum_payment_cents, 'Minimum payment cents');
+    }
+    if (input.investment_details !== undefined && input.investment_details !== null) {
+        try {
+            JSON.parse(input.investment_details);
+        } catch {
+            throw new ValidationError('Investment details must be valid JSON.');
+        }
+    }
 }
 
 export class ConflictError extends Error {
@@ -224,6 +257,8 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
     const accountId = input.id || crypto.randomUUID();
     const now = new Date().toISOString();
 
+    assertValidAccountTerms(input);
+
     const isOpeningBasisKnown = input.opening_balance_cents !== undefined && input.opening_balance_cents !== null;
     const hasOpeningTransaction = isOpeningBasisKnown && input.opening_balance_cents !== 0;
 
@@ -251,8 +286,9 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             INSERT INTO accounts (
                 id, entity_id, name, type, sub_type, currency, is_active,
                 institution, account_number_mask, opening_date, opening_balance_cents,
-                tracking_mode, balance_revision, revision, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+                tracking_mode, balance_revision, revision, created_at, updated_at,
+                interest_rate, minimum_payment_cents, investment_details
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?)
         `).run(
             accountId,
             input.entity_id,
@@ -266,7 +302,10 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             isOpeningBasisKnown ? input.opening_balance_cents : null,
             trackingMode,
             now,
-            now
+            now,
+            input.interest_rate ?? null,
+            input.minimum_payment_cents ?? null,
+            input.investment_details ?? null
         );
 
         createdAccount = {
@@ -285,7 +324,10 @@ export function createAccount(db: Database.Database, input: CreateAccountInput):
             balance_revision: 1,
             revision: 1,
             created_at: now,
-            updated_at: now
+            updated_at: now,
+            interest_rate: input.interest_rate ?? null,
+            minimum_payment_cents: input.minimum_payment_cents ?? null,
+            investment_details: input.investment_details ?? null
         };
 
         // 2. If opening balance provided, post balanced double-entry transaction (M1-FLOW-01, T1)
@@ -378,6 +420,8 @@ export function updateAccount(
         throw new ValidationError(`Account not found with ID: ${accountId}`);
     }
 
+    assertValidAccountTerms(updates);
+
     const now = new Date().toISOString();
     const newName = updates.name !== undefined ? updates.name.trim() : existing.name;
     const newSubType = updates.sub_type !== undefined ? updates.sub_type : existing.sub_type;
@@ -385,12 +429,17 @@ export function updateAccount(
     const newMask = updates.account_number_mask !== undefined ? updates.account_number_mask : existing.account_number_mask;
     const newActive = updates.is_active !== undefined ? (updates.is_active ? 1 : 0) : existing.is_active;
     const newTracking = updates.tracking_mode !== undefined ? updates.tracking_mode : (existing.tracking_mode || 'transactions');
+    const newInterestRate = updates.interest_rate !== undefined ? updates.interest_rate : (existing.interest_rate ?? null);
+    const newMinimumPaymentCents = updates.minimum_payment_cents !== undefined ? updates.minimum_payment_cents : (existing.minimum_payment_cents ?? null);
+    const newInvestmentDetails = updates.investment_details !== undefined ? updates.investment_details : (existing.investment_details ?? null);
 
     const res = db.prepare(`
         UPDATE accounts
-        SET name = ?, sub_type = ?, institution = ?, account_number_mask = ?, is_active = ?, tracking_mode = ?, revision = revision + 1, updated_at = ?
+        SET name = ?, sub_type = ?, institution = ?, account_number_mask = ?, is_active = ?, tracking_mode = ?,
+            interest_rate = ?, minimum_payment_cents = ?, investment_details = ?,
+            revision = revision + 1, updated_at = ?
         WHERE id = ? AND revision = ?
-    `).run(newName, newSubType, newInst, newMask, newActive, newTracking, now, accountId, expectedRevision);
+    `).run(newName, newSubType, newInst, newMask, newActive, newTracking, newInterestRate, newMinimumPaymentCents, newInvestmentDetails, now, accountId, expectedRevision);
 
     if (res.changes === 0) {
         throw new ConflictError(`Account update failed due to stale revision (expected revision ${expectedRevision}). Another update has occurred.`);
@@ -412,7 +461,10 @@ export function updateAccount(
         balance_revision: existing.balance_revision || 1,
         revision: expectedRevision + 1,
         created_at: existing.created_at,
-        updated_at: now
+        updated_at: now,
+        interest_rate: newInterestRate,
+        minimum_payment_cents: newMinimumPaymentCents,
+        investment_details: newInvestmentDetails
     };
 }
 
@@ -439,7 +491,10 @@ export function getAccount(db: Database.Database, accountId: string): Account | 
         balance_revision: r.balance_revision || 1,
         revision: r.revision,
         created_at: r.created_at,
-        updated_at: r.updated_at
+        updated_at: r.updated_at,
+        interest_rate: r.interest_rate ?? null,
+        minimum_payment_cents: r.minimum_payment_cents ?? null,
+        investment_details: r.investment_details ?? null
     };
 }
 
@@ -467,7 +522,10 @@ export function listAccounts(db: Database.Database, entityId?: string): Account[
         balance_revision: r.balance_revision || 1,
         revision: r.revision,
         created_at: r.created_at,
-        updated_at: r.updated_at
+        updated_at: r.updated_at,
+        interest_rate: r.interest_rate ?? null,
+        minimum_payment_cents: r.minimum_payment_cents ?? null,
+        investment_details: r.investment_details ?? null
     }));
 }
 

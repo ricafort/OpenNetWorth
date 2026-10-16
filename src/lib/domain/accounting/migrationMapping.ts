@@ -167,7 +167,10 @@ export function mapLegacyDataToLedger(
             opening_balance_cents: valueCents,
             revision: 1,
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            // Terms carried verbatim (investment_details is already JSON text on legacy rows).
+            interest_rate: asset.interest_rate ?? null,
+            investment_details: asset.investment_details ?? null
         };
         accounts.push(account);
 
@@ -228,7 +231,12 @@ export function mapLegacyDataToLedger(
             opening_balance_cents: balanceCents,
             revision: 1,
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            // Terms converted to ledger conventions (minimum payment in cents).
+            interest_rate: liability.interest_rate ?? null,
+            minimum_payment_cents: liability.minimum_payment !== undefined && liability.minimum_payment !== null
+                ? parseToCents(liability.minimum_payment, currency)
+                : null
         };
         accounts.push(account);
 

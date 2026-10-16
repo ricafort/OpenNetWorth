@@ -258,6 +258,12 @@ export interface Account {
     revision?: number;
     created_at: string;
     updated_at: string;
+    /** Annual interest rate as a percentage (e.g. 18.5). Liability/loan terms. */
+    interest_rate?: number | null;
+    /** Minimum periodic payment in cents. Liability terms. */
+    minimum_payment_cents?: number | null;
+    /** JSON-encoded investment metadata (ticker, shares, cost basis, …). Asset terms. */
+    investment_details?: string | null;
 }
 
 // --- BALANCE OBSERVATIONS & RECONCILIATION ---
