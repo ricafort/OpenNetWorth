@@ -3,7 +3,7 @@
 **Status**: Accepted / Implemented (shipped in 1.2.0 — `/api/documents`, `m1_documents`, `pdfTextExtractor`)  
 **Date**: 2026-09-13  
 **Deciders**: OpenNetWorth Engineering  
-**Consulted**: OpenTax-AU Reference Project (`D:\AntiGravityProjects\opentax-au`)
+**Consulted**: OpenTax-AU Reference Project (local companion repo; located via `OPENTAX_PATH`)
 
 ---
 
@@ -15,7 +15,7 @@ $$\text{Import} \longrightarrow \text{Extract} \longrightarrow \text{Validate} \
 Users struggle with collecting disparate documents (bank CSVs, XLSX spreadsheets, property management statements, receipts, invoices, mortgage notices), manually keying in numbers, cross-checking spreadsheets, and maintaining agreement across accounts.
 
 We need an architecture that:
-1. Reuses battle-tested extraction and validation components from the reference project **OpenTax-AU** (`D:\AntiGravityProjects\opentax-au`).
+1. Reuses battle-tested extraction and validation components from the reference project **OpenTax-AU** (located via `OPENTAX_PATH`).
 2. Adopts UX lessons from **Wealthfolio** (repeat-import column mappings, preview before recording, understandable duplicate matching, shared health findings).
 3. Strictly upholds all **Milestone 0 Safety Guarantees**:
    - Zero test leakage into live vaults (`M1-SAFE-01`: in-memory `:memory:` isolation).
@@ -34,7 +34,7 @@ We need an architecture that:
 - **Save Integrity**: Scoped saves (`persistScopedRecord`) commit to SQLite before updating caches, returning authoritative persisted records.
 - **Existing Collections**: `assets`, `liabilities`, `goals`, `recurring_transactions`, `net_worth_history`, `cash_flow_history`, `settings`, `profiles`.
 
-### B. OpenTax-AU Reference Audit (`D:\AntiGravityProjects\opentax-au`)
+### B. OpenTax-AU Reference Audit (located via `OPENTAX_PATH`)
 - **License**: MIT (`Francis Ricafort`). Suitable for adaptation and reuse.
 - **Document Routing**: `UniversalTaxDocumentRouter` in `opentax_au/parser/router.py` dispatches files across specialized parsers.
 - **Parsing Components**:

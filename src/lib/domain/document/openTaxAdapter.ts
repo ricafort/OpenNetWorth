@@ -76,9 +76,16 @@ function getPythonPath(): string {
     if (process.env.OPENTAX_PYTHON) {
         return process.env.OPENTAX_PYTHON;
     }
-    const standardVenv = path.resolve('D:\\', 'AntiGravityProjects', 'opentax-au', '.venv', 'Scripts', 'python.exe');
-    if (fs.existsSync(standardVenv)) {
-        return standardVenv;
+    if (process.env.OPENTAX_PATH) {
+        const venvPython = path.resolve(
+            process.env.OPENTAX_PATH,
+            '.venv',
+            process.platform === 'win32' ? 'Scripts' : 'bin',
+            process.platform === 'win32' ? 'python.exe' : 'python'
+        );
+        if (fs.existsSync(venvPython)) {
+            return venvPython;
+        }
     }
     return 'python';
 }

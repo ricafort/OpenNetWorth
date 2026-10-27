@@ -32,8 +32,18 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-# Add OpenTax-AU directory to sys.path if not already present
-OPENTAX_PATH = os.environ.get("OPENTAX_PATH", r"D:\AntiGravityProjects\opentax-au")
+# Add OpenTax-AU directory to sys.path if not already present.
+# OPENTAX_PATH must point at a local OpenTax-AU checkout (see .env.example).
+OPENTAX_PATH = os.environ.get("OPENTAX_PATH")
+if not OPENTAX_PATH:
+    output = {
+        "supported": False,
+        "error": "OPENTAX_PATH environment variable is not set. "
+                 "Set it to a local OpenTax-AU checkout before extracting documents.",
+        "warnings": ["OpenTax-AU Python environment is not available."]
+    }
+    print(json.dumps(output, ensure_ascii=False))
+    sys.exit(0)
 if OPENTAX_PATH not in sys.path:
     sys.path.insert(0, OPENTAX_PATH)
 
