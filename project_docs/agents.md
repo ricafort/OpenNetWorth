@@ -13,7 +13,7 @@
 
 ### 🛡️ 1. Zero Cloud Data Leakage (The Privacy Hard-Lock)
 *   **Financial Balances & Holdings**: NEVER route user financial numbers, balances, or transactions to third-party cloud AI APIs (OpenAI, Anthropic, Gemini, etc.).
-*   **Local AI Execution**: All AI features (mentorship, natural language action parsing) MUST route through [src/lib/api/localLlm.ts](file:///d:/LocalVersions/OpenNetWorth/src/lib/api/localLlm.ts) to a Local LLM (LM Studio `:1234`, Ollama `:11434`, or Strata `:8080`).
+*   **Local AI Execution**: All AI features (mentorship, natural language action parsing) MUST route through [src/lib/api/localLlm.ts](src/lib/api/localLlm.ts) to a Local LLM (LM Studio `:1234`, Ollama `:11434`, or Strata `:8080`).
 *   **Offline Fallbacks**: Always provide deterministic offline rule-based fallbacks so unstarted LLM servers never block the user.
 
 ### 🧠 2. Cognitive Load Optimization

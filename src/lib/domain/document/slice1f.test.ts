@@ -40,7 +40,12 @@ import { extractInvoiceFromPdf } from './openTaxAdapter';
 import { parseCsvWithMapping } from './csvParserService';
 import { CsvMappingProfile } from './types';
 
-const OPENTAX_SAMPLE_DIR = path.resolve('D:\\', 'AntiGravityProjects', 'opentax-au', 'samples');
+// OpenTax-AU sample fixtures come from the companion repo, located via OPENTAX_PATH
+// (set it in .env.local, e.g. OPENTAX_PATH=C:\path\to\opentax-au). Tests skip when absent.
+const OPENTAX_SAMPLE_DIR = process.env.OPENTAX_PATH
+    ? path.resolve(process.env.OPENTAX_PATH, 'samples')
+    : '';
+const HAS_OPENTAX_SAMPLES = !!process.env.OPENTAX_PATH && fs.existsSync(OPENTAX_SAMPLE_DIR);
 const SUPPLIES_INVOICE_PDF = path.join(
     OPENTAX_SAMPLE_DIR,
     'employee_receipt_edge_cases_fy2025_26',
@@ -54,7 +59,7 @@ const UNSUPPORTED_STATEMENT_PDF = path.join(
     '01_rideshare_annual_statement.pdf'
 );
 
-describe('Milestone 1 Slice 1F — First Document Extraction Integration', () => {
+describe.skipIf(!HAS_OPENTAX_SAMPLES)('Milestone 1 Slice 1F — First Document Extraction Integration', () => {
     let db: any;
     let entityId: string;
     let checkingAccountId: string;

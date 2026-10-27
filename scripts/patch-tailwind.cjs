@@ -3,10 +3,10 @@
  * In Next.js 16 with Turbopack, virtual CSS modules or chunk compilations invoke PostCSS
  * without passing `from` (`opts.from` is undefined or "").
  * In `@tailwindcss/postcss`, `c` is computed as `path.dirname(path.resolve(u))`.
- * When `u` is `""`, `path.resolve("")` is `process.cwd()` (e.g. `D:\LocalVersions\OpenNetWorth`),
- * and `path.dirname` moves UP to the parent directory (`D:\LocalVersions`).
- * Enhanced-resolve then fails to find `tailwindcss` in `D:\LocalVersions\node_modules` (which does not exist),
- * throwing `Error: Can't resolve 'tailwindcss' in 'D:\LocalVersions'`.
+ * When `u` is `""`, `path.resolve("")` is `process.cwd()` (the project directory),
+ * and `path.dirname` moves UP to the parent directory.
+ * Enhanced-resolve then fails to find `tailwindcss` in `<parent>/node_modules` (which does not exist),
+ * throwing `Error: Can't resolve 'tailwindcss' in '<parent dir>'`.
  * This causes Next.js to fail to load or deliver CSS on initial page loads or refreshes,
  * resulting in an unstyled page ("Times New Roman" FOUC) until a subsequent refresh.
  *

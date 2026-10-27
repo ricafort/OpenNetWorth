@@ -28,7 +28,7 @@
 
 ### 🛡️ 1. Zero Cloud Leakage (Privacy Hard-Lock)
 - **Financial Balances & Portfolio Holdings**: Must **never** be sent to external cloud AI APIs (such as OpenAI, Anthropic, or Google Gemini).
-- **AI Queries**: Must route strictly through the local LLM interface ([src/lib/api/localLlm.ts](file:///d:/LocalVersions/OpenNetWorth/src/lib/api/localLlm.ts)), targeting `localhost:1234` or `localhost:11434`.
+- **AI Queries**: Must route strictly through the local LLM interface ([src/lib/api/localLlm.ts](src/lib/api/localLlm.ts)), targeting `localhost:1234` or `localhost:11434`.
 - **Offline Determinism**: If the user's Local LLM is offline or not installed, the application must never freeze or display blank UI. It must seamlessly fall back to deterministic regex heuristic parsers and classical mentor wisdom.
 
 ### 📐 2. Vertical Slice Architecture
